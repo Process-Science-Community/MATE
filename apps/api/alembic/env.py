@@ -1,7 +1,8 @@
 """Alembic environment - uses sync URL derived from the app's async URL.
 
-Alembic itself runs synchronously; we strip the `+aiosqlite` driver token
-so the same `DATABASE_URL` env var works for both runtime and migrations.
+Alembic itself runs synchronously; we swap the async driver token for its
+sync counterpart so the same `DATABASE_URL` env var works for both runtime
+and migrations.
 """
 
 from __future__ import annotations
@@ -22,8 +23,13 @@ target_metadata = Base.metadata
 
 
 def _sync_url() -> str:
+    """Alembic runs synchronously, so swap the async driver for its sync twin.
+
+    `postgresql+asyncpg` -> `postgresql+psycopg` (psycopg 3), `sqlite+aiosqlite`
+    -> `sqlite`. Anything else is passed through untouched.
+    """
     url = get_settings().database_url
-    return url.replace("+aiosqlite", "")
+    return url.replace("+aiosqlite", "").replace("+asyncpg", "+psycopg")
 
 
 def run_migrations_offline() -> None:

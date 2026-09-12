@@ -1,6 +1,6 @@
 """FastAPI entry point.
 
-Starts the SQLite engine (PRAGMAs applied lazily on first connect), the
+Starts the database engine (pool created lazily on first connect), the
 DuckDB connection pool, and the asyncio job runtime with the import handler
 registered.
 """

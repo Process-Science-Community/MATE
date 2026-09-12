@@ -64,7 +64,19 @@ def backup_sync() -> bool:
     if not is_s3():
         return False
     path = _db_path()
-    if path is None or not path.exists():
+    if path is None:
+        # Non-SQLite URL (PostgreSQL). This module snapshots a file, which has
+        # no meaning against a database server - and returning False quietly
+        # would mean the deployment silently has no metadata backup at all.
+        # Say so; the replacement is pg_dump to the same bucket (or the
+        # cluster's CloudNativePG backups once we are on Kubernetes).
+        log.warning(
+            "db_backup.skipped_non_sqlite",
+            detail="DATABASE_URL is not SQLite; file snapshots do not apply. "
+            "Configure pg_dump-based backups instead.",
+        )
+        return False
+    if not path.exists():
         return False
     work = Path(tempfile.mkdtemp(prefix="ff-dbbak-"))
     snapshot = work / "metadata.db"
