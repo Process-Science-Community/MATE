@@ -33,7 +33,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, text
 from sqlalchemy import case as sa_case
 from sqlalchemy.engine import make_url
 from sqlalchemy.sql import Select
@@ -46,6 +46,7 @@ from mate.api.db.models import AnalyticsEvent, User
 from mate.api.db.session import SessionDep
 from mate.api.routes.analytics import event_to_dict
 from mate.api.schemas.common import UtcDateTime
+from mate.api.storage import db_backup
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -135,6 +136,9 @@ def _log_filters(
 def _db_path() -> Path:
     """Resolve the on-disk SQLite file backing ``database_url``.
 
+    SQLite only - PostgreSQL deployments go through ``db_backup.dump_postgres``
+    instead, since there is no file to point at.
+
     ``make_url`` turns ``sqlite+aiosqlite:////app/data/metadata.db`` into the
     absolute ``/app/data/metadata.db`` and the dev ``...:///data/metadata.db``
     into the CWD-relative ``data/metadata.db``.
@@ -197,8 +201,14 @@ async def export_info(user: CurrentUserDep, session: SessionDep) -> ExportInfo:
 
     user_count = await session.scalar(select(func.count()).select_from(User)) or 0
     event_count = await session.scalar(select(func.count()).select_from(AnalyticsEvent)) or 0
-    src = _db_path()
-    size = src.stat().st_size if src.exists() else None
+    if db_backup.is_postgres():
+        # No file to stat; ask the server for the database's on-disk footprint.
+        size = int(
+            await session.scalar(text("SELECT pg_database_size(current_database())")) or 0
+        )
+    else:
+        src = _db_path()
+        size = src.stat().st_size if src.exists() else None
     return ExportInfo(
         is_admin=True,
         user_count=int(user_count),
@@ -214,13 +224,35 @@ async def export_metadata_db(user: AdminUserDep) -> FileResponse:
     Admin-only. The snapshot is written to a private temp file and deleted once
     the response finishes streaming.
     """
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+
+    if db_backup.is_postgres():
+        fd, tmp_name = tempfile.mkstemp(prefix="metadata-export-", suffix=".dump")
+        os.close(fd)
+        snapshot = Path(tmp_name)
+        snapshot.chmod(0o600)
+        try:
+            await run_in_threadpool(db_backup.dump_postgres, snapshot)
+        except Exception as exc:
+            snapshot.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Database export failed: {exc}",
+            ) from exc
+        log.info("admin_db_export", admin_id=user.id, bytes=snapshot.stat().st_size)
+        return FileResponse(
+            snapshot,
+            media_type="application/octet-stream",
+            filename=f"metadata-{ts}.dump",
+            background=BackgroundTask(_unlink, snapshot),
+        )
+
     src = _db_path()
     if not src.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Database file not found")
 
     snapshot = await run_in_threadpool(_snapshot_db, src)
     log.info("admin_db_export", admin_id=user.id, bytes=snapshot.stat().st_size)
-    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return FileResponse(
         snapshot,
         media_type="application/x-sqlite3",
