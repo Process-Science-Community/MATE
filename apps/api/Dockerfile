@@ -6,11 +6,25 @@ ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-# git – required by the module install + AI-refactor flows when the source
-# is a git URL (shell-out via `asyncio.create_subprocess_exec("git", ...)`).
+# git - required by the module install + AI-refactor flows when the source is a
+#       git URL (shell-out via `asyncio.create_subprocess_exec("git", ...)`).
+# postgresql-client-16 - pg_dump/pg_restore for the metadata backup
+#       (storage/db_backup.py). The MAJOR VERSION MUST MATCH THE SERVER: a newer
+#       pg_dump emits directives an older server cannot execute (18 writes
+#       `SET transaction_timeout`, which 16 rejects), producing a dump that
+#       uploads fine and fails on restore - db_backup refuses rather than take
+#       one. The base image's own Debian ships a different major, so this comes
+#       from PGDG via their setup script, which picks the right codename for
+#       whatever Debian the base image is on today. Bump this and the server
+#       together.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \
+    curl \
+    gnupg \
+    postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
     && rm -rf /var/lib/apt/lists/*
 
 # uv binary

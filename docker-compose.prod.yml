@@ -220,6 +220,12 @@ services:
       KC_HOSTNAME_PORT: !reset null
     ports: !reset []
 
+  app-db:
+    # Same envelope as keycloak-db: a handful of small tables, idles low.
+    mem_limit: 512m
+    memswap_limit: 512m
+    logging: *log
+
   keycloak-db:
     # Postgres for Keycloak only – a handful of tiny tables. Idles at ~30 MiB.
     mem_limit: 512m

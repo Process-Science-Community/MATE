@@ -26,8 +26,17 @@ class Settings(BaseSettings):
     )
     database_url: str = Field(
         default="sqlite+aiosqlite:///data/metadata.db",
-        description="aiosqlite URL - async SQLAlchemy engine.",
+        description=(
+            "Async SQLAlchemy URL. Production is PostgreSQL "
+            "(postgresql+asyncpg://user:pass@host/db); the SQLite default exists "
+            "so `make dev` and the test suite run without a database server."
+        ),
     )
+    # Per-process connection pool (PostgreSQL only; ignored on SQLite). Each api
+    # and worker replica opens its own pool, so keep the product of replicas x
+    # (pool_size + max_overflow) under the server's max_connections.
+    db_pool_size: int = Field(default=5, ge=1, le=50)
+    db_max_overflow: int = Field(default=5, ge=0, le=50)
 
     log_level: Literal["debug", "info", "warning", "error"] = "info"
 

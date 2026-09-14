@@ -1,4 +1,23 @@
 services:
+  # Application database. Deliberately a separate instance from keycloak-db:
+  # different failure domain, different backup cadence, and on Kubernetes the
+  # two become separate CloudNativePG clusters anyway.
+  app-db:
+    image: postgres:16-alpine
+    container_name: mate-app-db
+    environment:
+      POSTGRES_DB: mate
+      POSTGRES_USER: mate
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:-mate}
+    volumes:
+      - app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mate -d mate"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   keycloak-db:
     image: postgres:16-alpine
     container_name: mate-keycloak-db
@@ -76,7 +95,7 @@ services:
     environment:
       DATA_DIR: /app/data
       MODULES_DIR: /app/modules
-      DATABASE_URL: sqlite+aiosqlite:////app/data/metadata.db
+      DATABASE_URL: postgresql+asyncpg://mate:${APP_DB_PASSWORD:-mate}@app-db:5432/mate
       LOG_LEVEL: info
       # Usage-tracking default/policy: force | on | off. `force` keeps tracking
       # on for everyone and hides the privacy step + Settings → Privacy tab.
@@ -136,6 +155,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      app-db:
+        condition: service_healthy
       keycloak:
         condition: service_healthy
     healthcheck:
@@ -254,5 +275,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  app-db-data:
   kc-data:
   neo4j-data:

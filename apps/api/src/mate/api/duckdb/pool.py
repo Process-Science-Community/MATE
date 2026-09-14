@@ -1,8 +1,7 @@
 """Per-thread DuckDB connection pool.
 
 DuckDB is single-threaded per connection (§9). We hand out one connection per
-worker thread via `contextvars` and re-attach the SQLite metadata DB on demand
-so DuckDB queries can join Parquet event logs against SQLite tables (§3.3).
+worker thread via `contextvars`.
 
 For phase 3, the pool is initialised but only consumed by ad-hoc DuckDB
 queries inside the ingest path. Module-author access via `EventLogAccess`
@@ -16,7 +15,6 @@ import contextlib
 import contextvars
 import threading
 from collections.abc import Callable
-from pathlib import Path
 from typing import TypeVar
 
 import duckdb
@@ -30,17 +28,8 @@ _thread_conn: contextvars.ContextVar[duckdb.DuckDBPyConnection | None] = context
 )
 
 
-def _sqlite_path_from_url(url: str) -> Path | None:
-    if "sqlite" not in url:
-        return None
-    if "///" not in url:
-        return None
-    raw = url.split("///", 1)[1]
-    return Path(raw)
-
-
 class DuckDBPool:
-    """Lazy thread-local DuckDB connections, all attached to the same SQLite metadata DB."""
+    """Lazy thread-local in-memory DuckDB connections."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -67,16 +56,6 @@ class DuckDBPool:
         _try("PRAGMA enable_object_cache=true")
         _try("SET preserve_insertion_order=false")
 
-        sqlite_path = _sqlite_path_from_url(settings.database_url)
-        if sqlite_path is not None and sqlite_path.exists():
-            try:
-                conn.execute("INSTALL sqlite_scanner")
-                conn.execute("LOAD sqlite_scanner")
-                conn.execute(f"ATTACH '{sqlite_path}' AS meta (TYPE sqlite)")
-            except duckdb.Error:
-                # SQLite extension may not be available in some builds; queries that
-                # need the metadata join will surface an explicit error instead.
-                pass
         with self._lock:
             self._conns.append(conn)
         return conn

@@ -1,10 +1,17 @@
-"""SQLAlchemy async engine + sessionmaker, configured for SQLite + WAL."""
+"""SQLAlchemy async engine + sessionmaker.
+
+PostgreSQL in production; SQLite is still accepted so `make dev` and the
+test suite can run without a database server. The dialect is derived from
+`DATABASE_URL` - the SQLite PRAGMAs below are applied only when it is one,
+since `PRAGMA` is a syntax error on PostgreSQL.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from sqlalchemy import event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from mate.api.config import get_settings
@@ -29,15 +36,35 @@ def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         settings = get_settings()
+        url = make_url(settings.database_url)
+        is_sqlite = url.get_backend_name() == "sqlite"
+        # SQLite is a single file with one writer - a pool is meaningless. On
+        # PostgreSQL each replica keeps its own pool, so size it modestly:
+        # api + worker pods multiply, and the server's max_connections is shared.
+        pool_kwargs: dict[str, object] = (
+            {}
+            if is_sqlite
+            else {
+                "pool_size": settings.db_pool_size,
+                "max_overflow": settings.db_max_overflow,
+                # Recycle below any proxy/server idle timeout so a pooled
+                # connection is never handed out already dead.
+                "pool_recycle": 1800,
+            }
+        )
         _engine = create_async_engine(
             settings.database_url,
             future=True,
             echo=False,
             pool_pre_ping=True,
+            **pool_kwargs,
         )
-        # SQLAlchemy fires `connect` against the underlying DBAPI connection (aiosqlite
-        # exposes `sync_connection`), so PRAGMAs apply on every new connection.
-        event.listen(_engine.sync_engine, "connect", _enable_wal_and_fk)
+        if is_sqlite:
+            # SQLAlchemy fires `connect` against the underlying DBAPI connection
+            # (aiosqlite exposes `sync_connection`), so PRAGMAs apply on every
+            # new connection. PostgreSQL needs none of this: WAL, durability and
+            # FK enforcement are server-side defaults.
+            event.listen(_engine.sync_engine, "connect", _enable_wal_and_fk)
     return _engine
 
 
