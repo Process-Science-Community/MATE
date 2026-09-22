@@ -1,11 +1,20 @@
 # Landing page
 
 The public marketing page for [MATE](https://mate.uni-muenster.de), served
-from GitHub Pages. One dependency-free `index.html` plus `assets/` - no build
-step, no framework, no tracking.
+from GitHub Pages. One dependency-free `index.html` plus `assets/` and the
+static documentation under `docs/` (the Docs tab) - no build step, no framework,
+no tracking.
 
 Deployed by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) on
 every push to `main` that touches this directory. Edit `index.html`, push, done.
+
+The documentation under `docs/site/` is generated - edit the markdown under
+`docs/content/` and run `make docs` (`node landing/docs/build.mjs`), then commit
+the regenerated pages. `docs/build.mjs` keeps the landing page's design system
+(tokens, background, top bar, buttons, cards, footer) and layers on the docs
+layout of Starlight/Fumadocs (group rail with nested sections, "On this page",
+pager, Ctrl+K search, a generated index page). Change `index.html`, change
+`build.mjs`.
 
 To preview locally:
 

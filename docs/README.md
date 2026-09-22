@@ -21,6 +21,13 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | [`MCP.md`](./MCP.md) | MCP server **consumer** reference: endpoint, auth (PAT/OAuth), scopes, tool catalog, data wall, client setup. Operator-side setup lives in `DEPLOY.md` ("MCP server"). |
 | [`S3_OFFLOAD.md`](./S3_OFFLOAD.md) | S3 storage design doc (all phases implemented): local cache + eviction, bypass-hole closure, migration + quota, hydration performance, and the still-open multi-node seams. Storage code docstrings cite it. |
 
+## The published manual
+
+| File | What it is |
+| --- | --- |
+| [`landing/docs/content/`](../landing/docs/content/) | The user-facing manual — what this index describes in one line, those chapters explain in full. Eight numbered files, one per sidebar group; run `make docs` after every edit. |
+| [`landing/docs/`](../landing/docs/README.md) | The generator (`build.mjs`), the authoring guide with the component reference, and the generated `site/` — never edit `site/` by hand. |
+
 ## `modules/`
 
 | File | What it is |

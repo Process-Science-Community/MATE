@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install preflight dev dev-api dev-web up up-dev down build test typecheck fmt clean codegen deploy
+.PHONY: help install preflight dev dev-api dev-web up up-dev down build test typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -61,6 +61,9 @@ fmt: ## Format Python with ruff
 
 codegen: ## Regenerate TS types from the running API's /openapi.json
 	cd apps/web && pnpm codegen
+
+docs: ## Rebuild the landing page's documentation site from landing/docs/content/*.md
+	node landing/docs/build.mjs
 
 deploy: ## Push + redeploy to the uni VM (run on the FB4-DEV-VPN)
 	./scripts/deploy.sh

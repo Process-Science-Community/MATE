@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboards - MATE Docs</title>
+<meta name="description" content="A dashboard is a canvas of cards from any module, scoped by one filter bar and shareable read-only.">
+<link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
+<script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+<style>
+/* NOTE: this is a JS template literal. A backtick or ${ anywhere below ends it
+   and produces a confusing syntax error — write comments without them. */
+:root {
+  --bg: #fdfdfd; --surface: #ffffff; --panel: #f7f7f9; --card: #ffffff;
+  --ink: #17181c; --ink-soft: #494c57; --muted: #6b6f7d;
+  --line: #e7e8ee; --line-soft: #f0f1f5;
+  --btn-bg: #141414; --btn-ink: #ffffff; --chip-bg: rgba(255, 255, 255, 0.75);
+  --header-bg: rgba(253, 253, 253, 0.82);
+  --lav: rgba(196, 181, 253, 0.55); --rose: rgba(247, 200, 221, 0.6); --sky: rgba(186, 210, 253, 0.45);
+  --av-lav: rgba(196, 181, 253, 0.35); --av-rose: rgba(247, 200, 221, 0.4); --av-sky: rgba(186, 210, 253, 0.35);
+  --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --maxw: 1180px; --radius: 14px;
+  --card-shadow: 0 1px 2px rgba(23, 24, 28, 0.05), 0 8px 28px rgba(23, 24, 28, 0.06);
+  --frame-shadow: 0 2px 6px rgba(23, 24, 28, 0.06), 0 16px 48px rgba(23, 24, 28, 0.10);
+  --hero-shadow: 0 2px 6px rgba(23, 24, 28, 0.06), 0 24px 70px rgba(23, 24, 28, 0.13);
+
+  /* --- docs shell ---------------------------------------------------------
+     One rail, one article. The rail carries the whole hierarchy — group →
+     chapter → section — so there is no second "on this page" column; the
+     article is centred in what remains of the landing page's 1180px container. */
+  --nav-h: 60px;
+  --docs-side: 236px; --docs-gap: 24px;
+  /* accent: the landing page's lavender, dialled down to a working UI colour */
+  --accent: #6d4de0; --accent-soft: rgba(109, 77, 224, 0.09);
+  --c-note: #3f6fd8; --c-note-soft: rgba(63, 111, 216, 0.09);
+  --c-tip: #2b8f63; --c-tip-soft: rgba(43, 143, 99, 0.09);
+  --c-warn: #b45309; --c-warn-soft: rgba(180, 83, 9, 0.10);
+  --c-danger: #ad3a5e; --c-danger-soft: rgba(173, 58, 94, 0.09);
+  /* motion tokens, named after the ones in fumadocs' base.css */
+  --ease-collapse: cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-dialog: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-base: cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-theme="dark"] {
+  --bg: #0e0e12; --surface: #121217; --panel: #14141a; --card: #17171d;
+  --ink: #f0f0f4; --ink-soft: #b4b6c1; --muted: #8b8e9b;
+  --line: #26262e; --line-soft: #1d1d24;
+  --btn-bg: #f0f0f4; --btn-ink: #141414; --chip-bg: rgba(23, 23, 29, 0.75);
+  --header-bg: rgba(14, 14, 18, 0.82);
+  --lav: rgba(110, 84, 210, 0.28); --rose: rgba(170, 50, 110, 0.2); --sky: rgba(60, 90, 190, 0.2);
+  --av-lav: rgba(110, 84, 210, 0.32); --av-rose: rgba(170, 50, 110, 0.28); --av-sky: rgba(60, 90, 190, 0.3);
+  --c-warn: #fbbf24; --c-warn-soft: rgba(251, 191, 36, 0.14);
+  --c-danger: #f2a7c0; --c-danger-soft: rgba(242, 167, 192, 0.13);
+  --accent: #a78bfa; --accent-soft: rgba(167, 139, 250, 0.13);
+  --c-note: #7fa4ff; --c-note-soft: rgba(127, 164, 255, 0.13);
+  --c-tip: #63d3a2; --c-tip-soft: rgba(99, 211, 162, 0.13);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.35);
+  --frame-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 48px rgba(0, 0, 0, 0.45);
+  --hero-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans); background: var(--bg); color: var(--ink);
+  line-height: 1.65; font-size: 16.5px;
+  -webkit-font-smoothing: antialiased;
+}
+html.theme-snap *, html.theme-snap *::before, html.theme-snap *::after { transition: none !important; }
+a { color: var(--ink); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+code, pre { font-family: var(--mono); }
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
+::selection { background: rgba(196, 181, 253, 0.45); }
+
+/* reveal-on-scroll was only used by the splash index; the docs pages have no
+   reveal targets, so the rule and its observer are gone. */
+
+/* keyboard focus: visible ring on every interactive element */
+:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; }
+
+/* theme change: crossfade the whole page instead of an abrupt brightness jump */
+::view-transition-old(root) { animation: vt-fade-out 220ms ease; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: vt-fade-in 220ms ease; mix-blend-mode: normal; }
+@keyframes vt-fade-out { to { opacity: 0; } }
+@keyframes vt-fade-in { from { opacity: 0; } }
+.label {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+}
+.label-warn { color: var(--c-warn); }
+
+/* ---------- marketing blocks — verbatim from ../index.html ---------- */
+.hero { position: relative; padding: 88px 0 72px; text-align: center; overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; inset: -20% -10%; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 560px 420px at 24% 30%, var(--lav), transparent 68%),
+    radial-gradient(ellipse 620px 460px at 76% 26%, var(--rose), transparent 70%),
+    radial-gradient(ellipse 520px 420px at 55% 72%, var(--sky), transparent 70%);
+  filter: blur(46px);
+}
+.hero > .wrap { position: relative; z-index: 1; }
+.hero-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 550; color: var(--ink-soft);
+  background: var(--chip-bg); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px 16px; margin-bottom: 26px;
+  box-shadow: 0 1px 4px rgba(23, 24, 28, 0.05);
+}
+.hero-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: #a78bfa; }
+h1 {
+  font-size: clamp(36px, 5vw, 58px);
+  line-height: 1.06; letter-spacing: -0.028em; font-weight: 700;
+  max-width: 17em; margin: 0 auto;
+}
+.hero p.sub { margin: 22px auto 0; font-size: 18px; color: var(--ink-soft); max-width: 38em; }
+.cta-row { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; align-items: center; justify-content: center; }
+.home section { padding: 92px 0; }
+.sec-head { max-width: 44em; margin: 0 auto 48px; text-align: center; }
+.sec-head .label { display: inline-block; margin-bottom: 14px; }
+h2 { font-size: clamp(28px, 3.4vw, 40px); letter-spacing: -0.025em; line-height: 1.12; font-weight: 700; }
+.sec-head p { margin-top: 14px; color: var(--ink-soft); font-size: 17px; }
+.closing { position: relative; overflow: hidden; text-align: center; }
+.closing::before {
+  content: ""; position: absolute; inset: -30% -10%; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 620px 420px at 30% 60%, var(--lav), transparent 68%),
+    radial-gradient(ellipse 620px 440px at 72% 45%, var(--rose), transparent 70%);
+  filter: blur(48px);
+}
+.closing > .wrap { position: relative; z-index: 1; }
+.closing h2 { max-width: 16em; margin: 0 auto; }
+.closing p { margin: 16px auto 0; color: var(--ink-soft); font-size: 17px; max-width: 34em; }
+
+/* header — the site chrome, Docs tab active */
+header {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--header-bg); backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 200ms ease;
+}
+header.scrolled { border-bottom-color: var(--line-soft); }
+.nav { display: flex; align-items: center; height: 60px; gap: 26px; }
+.brand { display: flex; align-items: center; gap: 11px; font-weight: 650; font-size: 17px; letter-spacing: -0.015em; }
+.brand:hover { text-decoration: none; }
+.brand img { width: 22px; height: 22px; }
+[data-theme="dark"] .logo-dark-invert { filter: invert(1); }
+.nav-links { display: flex; gap: 24px; margin-left: auto; font-size: 14.5px; font-weight: 500; align-items: center; }
+.nav-links a { color: var(--ink-soft); }
+.nav-links a:hover { color: var(--ink); text-decoration: none; }
+.nav-links a.active { color: var(--ink); font-weight: 650; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 11px 22px; font-size: 15px; font-weight: 600; border-radius: 10px;
+  border: 1px solid transparent; cursor: pointer; font-family: inherit;
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out;
+}
+.btn:active { transform: scale(0.97); transition-duration: 60ms; }
+.btn-black { background: var(--btn-bg); color: var(--btn-ink); }
+.btn-ghost { border-color: var(--line); color: var(--ink); background: var(--card); }
+.nav .btn { padding: 8px 16px; font-size: 14px; min-height: 44px; }
+.nav-links a.btn-black, .nav-links a.btn-black:hover { color: var(--btn-ink); }
+.theme-toggle, .menu-btn {
+  background: transparent; border: 1px solid var(--line); border-radius: 8px;
+  height: 40px; cursor: pointer; color: var(--ink-soft);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: inherit; transition: background 140ms ease-out, color 140ms ease-out;
+}
+.theme-toggle { width: 40px; font-size: 15px; line-height: 1; }
+.menu-btn { width: 40px; display: none; }
+.menu-btn svg { width: 17px; height: 17px; }
+.theme-toggle:active, .menu-btn:active { background: var(--panel); }
+@media (hover: hover) {
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn-black:hover { box-shadow: 0 6px 20px rgba(20, 20, 20, 0.25); }
+  .btn-ghost:hover { box-shadow: 0 4px 14px rgba(23, 24, 28, 0.12); }
+  .theme-toggle:hover, .menu-btn:hover { background: var(--panel); color: var(--ink); }
+}
+@media (max-width: 820px) { .nav-links a:not(.btn-black) { display: none; } }
+
+/* ==========================================================================
+   Docs shell — Starlight/Fumadocs anatomy inside the landing page's design
+   system: one 1180px container, a sticky rail, and the article.
+   ========================================================================== */
+.docs {
+  max-width: var(--maxw); margin: 0 auto; padding: 0 28px;
+  display: grid; grid-template-columns: var(--docs-side) minmax(0, 1fr);
+  gap: 0 var(--docs-gap); align-items: start;
+}
+
+/* --- left rail ---------------------------------------------------------- */
+.side {
+  position: sticky; top: var(--nav-h); align-self: start;
+  max-height: calc(100dvh - var(--nav-h));
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 32px 0 48px; scrollbar-width: thin;
+  /* fumadocs fades scroll containers at the edges instead of drawing a border */
+  mask-image: linear-gradient(to bottom, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+}
+.side::-webkit-scrollbar { width: 6px; }
+.side::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+.side-group { border: 0; }
+.side-group + .side-group { margin-top: 22px; }
+.side-group > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px; border-radius: 8px; cursor: pointer; user-select: none;
+  list-style: none;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+}
+.side-group > summary::-webkit-details-marker { display: none; }
+.side-group > summary:hover { color: var(--ink-soft); }
+.side-group .caret { flex-shrink: 0; transition: transform 200ms ease-in-out; }
+.side-group[open] .caret { transform: rotate(90deg); }
+.side-group > ul { list-style: none; padding: 2px 0 0; }
+.side-link {
+  position: relative; display: block; padding: 6px 10px; border-radius: 8px;
+  font-size: 14px; line-height: 1.45; color: var(--ink-soft);
+  transition: background-color 150ms var(--ease-base), color 150ms var(--ease-base);
+}
+/* fumadocs' trick: hover-in is instant, hover-out animates */
+.side-link:hover { background: var(--panel); color: var(--ink); text-decoration: none; transition: none; }
+.side-link[aria-current="page"] { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+.side-link[aria-current="page"]::before {
+  content: ""; position: absolute; inset-block: 7px; inset-inline-start: 0;
+  width: 1px; border-radius: 1px; background: var(--accent);
+}
+/* the current chapter's own sections — this rail is the page's only table of
+   contents, so it carries both heading levels and marks the active one */
+.side-sub {
+  list-style: none; margin: 2px 0 8px; padding: 0 0 0 11px; border: 0;
+  border-left: 1px solid var(--line);
+}
+.side-sub a {
+  display: block; padding: 4px 8px; border-radius: 6px;
+  font-size: 13px; line-height: 1.4; color: var(--muted);
+  transition: background-color 150ms var(--ease-base), color 150ms var(--ease-base);
+}
+.side-sub a:hover { color: var(--ink); background: var(--panel); text-decoration: none; }
+.side-sub a[aria-current="true"] { color: var(--accent); font-weight: 600; }
+.side-sub .side-sub-2 { list-style: none; margin: 0; padding: 0 0 2px 11px; }
+.side-sub .side-sub-2 a { padding: 3px 8px; font-size: 12.5px; }
+/* site links live in the drawer on phones only — the top bar hides them there */
+.side-site {
+  display: none; flex-direction: column; gap: 2px;
+  margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line-soft);
+}
+.side-site a {
+  display: flex; align-items: center; min-height: 40px; padding: 0 10px;
+  border-radius: 8px; font-size: 14px; color: var(--ink-soft);
+}
+.side-site a:hover { background: var(--panel); color: var(--ink); text-decoration: none; }
+
+/* search trigger, at the top of the rail */
+.side-search {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  height: 40px; margin-bottom: 22px; padding: 0 11px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); color: var(--muted);
+  font-family: inherit; font-size: 14px; cursor: pointer;
+  transition: border-color 150ms var(--ease-base), color 150ms var(--ease-base);
+}
+.side-search svg { width: 15px; height: 15px; flex-shrink: 0; }
+.side-search span { flex: 1; text-align: left; }
+.side-search kbd { height: 18px; font-size: 10px; padding: 0 5px; border-bottom-width: 1px; }
+.side-search kbd + kbd { margin-left: 2px; }
+@media (hover: hover) { .side-search:hover { border-color: var(--muted); color: var(--ink); } }
+
+/* --- article ------------------------------------------------------------ */
+/* Fills its grid column, so the article's edges line up with the top bar's
+   container. No max-width: the container already bounds the measure. */
+.doc { min-width: 0; padding: 32px 0 96px; }
+/* the skip link and the "Overview" TOC entry target these, not a prose heading */
+.doc, .doc-title { scroll-margin-top: calc(var(--nav-h) + 24px); }
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--ink); text-decoration: none; }
+.crumbs svg { width: 13px; height: 13px; flex-shrink: 0; opacity: 0.6; }
+.crumbs .cur { color: var(--accent); font-weight: 500; }
+.doc-head {
+  position: relative; isolation: isolate;
+  margin: 14px 0 30px; padding-bottom: 22px; border-bottom: 1px solid var(--line-soft);
+}
+/* the landing page's lavender/rose/sky wash, dialled down to a hint. No
+   horizontal bleed: the article now reaches the container edge, so bleeding
+   would push the document 2px wider than the viewport on a phone. */
+.doc-head::before {
+  content: ""; position: absolute; z-index: -1; inset: -20px 0 auto 0; height: 180px;
+  background:
+    radial-gradient(ellipse 300px 170px at 14% 30%, var(--lav), transparent 70%),
+    radial-gradient(ellipse 320px 180px at 66% 4%, var(--sky), transparent 72%),
+    radial-gradient(ellipse 260px 160px at 96% 62%, var(--rose), transparent 74%);
+  filter: blur(36px); opacity: 0.5; pointer-events: none;
+}
+@media (prefers-reduced-transparency: reduce) { .doc-head::before { display: none; } }
+.doc-title {
+  /* margin: 0 — the landing page's h1 rule sets a centred auto margin, which
+     would offset the title from the article's left edge */
+  margin: 0;
+  font-size: clamp(28px, 3.4vw, 36px); line-height: 1.14;
+  letter-spacing: -0.026em; font-weight: 700; max-width: 22em;
+}
+.doc-lead { margin-top: 12px; font-size: 17px; color: var(--ink-soft); }
+
+/* --- prose -------------------------------------------------------------- */
+/* the column is the measure: no cap, so tables, code cards and diagrams reach
+   the same right edge as the top bar */
+.prose { max-width: none; }
+.prose p, .prose li { font-size: 16.5px; color: var(--ink-soft); line-height: 1.78; }
+.prose p { margin: 16px 0; }
+.prose strong { color: var(--ink); font-weight: 650; }
+.prose a {
+  color: var(--ink); text-decoration: underline;
+  text-decoration-color: var(--accent); text-decoration-thickness: 1.5px;
+  text-underline-offset: 3.5px;
+  transition: opacity 200ms var(--ease-base);
+}
+.prose a:hover { opacity: 0.8; }
+.prose h2 {
+  font-size: clamp(23px, 2.6vw, 27px); letter-spacing: -0.02em; line-height: 1.2;
+  font-weight: 700; margin: 52px 0 12px; scroll-margin-top: calc(var(--nav-h) + 24px);
+}
+.prose h3 {
+  font-size: 19px; letter-spacing: -0.015em; font-weight: 650;
+  margin: 34px 0 8px; scroll-margin-top: calc(var(--nav-h) + 24px);
+}
+.prose h4 {
+  font-size: 16.5px; letter-spacing: -0.01em; font-weight: 650; color: var(--ink);
+  margin: 26px 0 6px; scroll-margin-top: calc(var(--nav-h) + 24px);
+}
+.prose ul, .prose ol { margin: 16px 0; padding-left: 24px; }
+.prose li { margin: 6px 0; }
+.prose li::marker { color: var(--muted); }
+.prose li .codeblock { margin: 12px 0 4px; }
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+.h-anchor {
+  margin-left: 9px; font-size: 0.62em; font-weight: 600;
+  color: var(--muted); text-decoration: none;
+}
+@media (hover: hover) { .h-anchor { opacity: 0; } .prose :is(h2, h3):hover .h-anchor, .h-anchor:focus-visible { opacity: 1; } }
+
+/* --- on this page, small screens only ----------------------------------- */
+/* The rail carries the section list on desktop; this sticky bar is the same
+   list for phones, where the rail lives in a drawer. */
+.toc-list { position: relative; list-style: none; padding-left: 14px; }
+.toc-list::before {
+  content: ""; position: absolute; inset-block: 6px; inset-inline-start: 3px;
+  width: 1px; background: var(--line);
+}
+.toc-list a {
+  display: block; padding: 5px 0; font-size: 13px; line-height: 1.45;
+  color: var(--muted); transition: color 150ms var(--ease-base);
+}
+.toc-list a:hover { color: var(--ink); text-decoration: none; }
+.toc-list a[aria-current="true"] { color: var(--accent); font-weight: 600; }
+.toc-list a.sub { padding-left: 12px; font-size: 12.5px; }
+
+/* --- prev / next -------------------------------------------------------- */
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 64px; }
+.pager a {
+  display: flex; flex-direction: column; gap: 6px; padding: 14px 18px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--card-shadow); color: var(--ink);
+  transition: box-shadow 150ms var(--ease-base), border-color 150ms var(--ease-base);
+}
+.pager a:hover { text-decoration: none; border-color: var(--muted); }
+.pager .dir { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.pager .dir svg { width: 14px; height: 14px; }
+.pager b { font-size: 15px; font-weight: 650; }
+.pager a.next { align-items: flex-end; text-align: right; }
+.pager a.next .dir { flex-direction: row-reverse; }
+
+/* --- mobile on-this-page bar (shown when the rail is hidden) ------------ */
+.xtoc {
+  display: none; position: sticky; top: var(--nav-h); z-index: 30;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--header-bg); backdrop-filter: blur(12px);
+}
+.xtoc > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  height: 44px; padding: 0 28px; cursor: pointer; list-style: none;
+  font-size: 13px; color: var(--ink-soft);
+}
+.xtoc > summary::-webkit-details-marker { display: none; }
+.xtoc .now { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xtoc .caret { flex-shrink: 0; transition: transform 200ms var(--ease-base); }
+.xtoc[open] .caret { transform: rotate(180deg); }
+.xtoc-body {
+  max-height: 50vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 10px 28px 18px; border-top: 1px solid var(--line-soft);
+}
+
+/* cards — linked and informational card grids, in the landing page's language */
+.cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 16px; margin: 26px 0;
+}
+.card {
+  display: block; background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px 22px 22px;
+  box-shadow: var(--card-shadow); color: var(--ink); overflow-wrap: break-word;
+  transition: transform 160ms var(--ease-base), box-shadow 160ms var(--ease-base),
+    border-color 160ms var(--ease-base);
+}
+.card .label { display: block; margin-bottom: 10px; }
+.card h3 { font-size: 17px; letter-spacing: -0.015em; margin: 0 0 6px; font-weight: 650; }
+.card p { font-size: 14.5px; color: var(--ink-soft); margin: 0; line-height: 1.65; }
+.card h3 a { text-decoration: none; }
+a.card { text-decoration: none; }
+a.card:hover { text-decoration: none; transform: translateY(-2px); border-color: var(--muted); box-shadow: var(--frame-shadow); }
+
+/* steps — a numbered rail for procedures (code stays inside its step) */
+.steps { list-style: none; margin: 26px 0; padding: 0; }
+.step {
+  position: relative; display: grid; grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 14px; padding-bottom: 20px;
+}
+.step:last-child { padding-bottom: 0; }
+.step::before {
+  content: ""; position: absolute; left: 0.9375rem; top: 2.25rem; bottom: 0;
+  width: 1px; background: var(--line);
+}
+.step:last-child::before { display: none; }
+.step-num {
+  position: relative; z-index: 1; width: 2rem; height: 2rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink);
+}
+.step-body { min-width: 0; padding-top: 0.175rem; }
+.step-body p { font-size: 16px; color: var(--ink-soft); line-height: 1.72; margin: 0 0 4px; }
+.step-body .codeblock { margin: 14px 0 4px; }
+.step-body strong { color: var(--ink); }
+
+/* diagrams — flow chains and layered stacks, drawn with the site's own tokens */
+.diagram {
+  margin: 26px 0; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--card-shadow); overflow: hidden;
+}
+.dg-canvas {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  padding: 24px 20px; overflow-x: auto;
+  background-image: radial-gradient(var(--line-soft) 1px, transparent 1px);
+  background-size: 14px 14px; background-position: -6px -6px;
+}
+.dg-row {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 8px; width: 100%;
+}
+.dg-row + .dg-row { margin-top: 12px; }
+.dg-layer { display: flex; flex-direction: column; align-items: center; }
+.dg-node {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); box-shadow: 0 1px 2px rgba(23, 24, 28, 0.04);
+  font-size: 14px; line-height: 1.35; color: var(--ink); text-align: left;
+  max-width: 22rem;
+}
+[data-theme="dark"] .dg-node { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.dg-node .dg-note { font-size: 12px; color: var(--muted); }
+.dg-node code { background: none; border: 0; padding: 0; font-size: 0.92em; }
+.dg-arrow { width: 26px; height: 10px; flex: none; color: var(--muted); }
+.dg-connector {
+  width: 1px; height: 22px; background: var(--line);
+  position: relative;
+}
+.dg-connector::after {
+  content: ""; position: absolute; left: 50%; bottom: 0; width: 7px; height: 7px;
+  border-right: 1px solid var(--muted); border-bottom: 1px solid var(--muted);
+  transform: translate(-50%, 1px) rotate(45deg);
+}
+.dg-children {
+  position: relative; display: flex; flex-wrap: nowrap; justify-content: center;
+  gap: 12px; margin-top: 16px; padding-top: 16px;
+}
+/* the fan-out rail: one line across the row, one stub per child. nowrap keeps
+   every child under the rail; if the row is wider than the figure, the canvas
+   scrolls rather than wrapping the stubs away from it. */
+.dg-children::before {
+  content: ""; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+  background: var(--line);
+}
+.dg-child { position: relative; display: inline-flex; }
+.dg-child::before {
+  content: ""; position: absolute; top: -16px; left: 50%; width: 1px; height: 16px;
+  background: var(--line);
+}
+.dg-child .dg-node { padding: 7px 12px; font-size: 13.5px; }
+.dg-cap {
+  padding: 12px 20px 14px; border-top: 1px solid var(--line-soft);
+  font-size: 13px; line-height: 1.6; color: var(--muted);
+}
+.dg-cap b { color: var(--ink-soft); font-weight: 650; }
+@media (max-width: 700px) {
+  .dg-canvas { padding: 18px 12px; }
+  .dg-node { font-size: 13px; padding: 7px 11px; max-width: none; }
+  .dg-arrow { width: 18px; }
+}
+
+/* tables */
+.tbl {
+  margin: 26px 0; border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; background: var(--card); box-shadow: var(--card-shadow);
+  max-width: 100%;
+}
+.tbl-scroll { overflow-x: auto; }
+.tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl thead { background: var(--panel); }
+.tbl th {
+  text-align: left; font-weight: 600; font-size: 12.5px; letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--muted);
+  padding: 12px 18px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.tbl td { padding: 12px 18px; border-bottom: 1px solid var(--line-soft); vertical-align: top; line-height: 1.6; color: var(--ink-soft); }
+/* long identifiers (route paths, tool names) may break, but only when a word
+   cannot fit at all — the anywhere value would let columns shrink until words
+   split mid-word */
+.tbl th, .tbl td { overflow-wrap: break-word; }
+.tbl tbody tr:last-child td { border-bottom: none; }
+
+/* code — a card with a header strip, so a block reads as a file, not a wall */
+.codeblock {
+  margin: 24px 0; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--card-shadow); overflow: hidden;
+}
+.cb-head {
+  display: flex; align-items: center; gap: 8px; min-height: 40px;
+  padding: 0 8px 0 16px; border-bottom: 1px solid var(--line-soft); background: var(--panel);
+}
+.cb-title {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+}
+.codeblock pre {
+  margin: 0; padding: 16px 18px; overflow-x: auto;
+  font-size: 13.5px; line-height: 1.72;
+  background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--ink);
+}
+.codeblock code { background: none; padding: 0; font-size: inherit; color: inherit; }
+/* whole-line comments dim out; a file tree also dims its connectors + notes */
+.t-note { color: var(--muted); }
+.t-glyph { color: var(--muted); }
+:not(pre) > code {
+  background: var(--panel); border: 1px solid var(--line-soft);
+  border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
+}
+.copy {
+  flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: var(--muted); cursor: pointer; opacity: 0.6;
+  transition: opacity 150ms var(--ease-base), color 150ms var(--ease-base),
+    background 150ms var(--ease-base), border-color 150ms var(--ease-base);
+}
+.codeblock:hover .copy, .copy:focus-visible { opacity: 1; }
+.copy:hover { color: var(--ink); background: var(--card); border-color: var(--line); }
+/* on touch there is no hover, so the button must be visible at rest */
+@media (hover: none) { .copy { opacity: 1; } }
+.copy.done { color: var(--c-tip); opacity: 1; }
+.copy svg { width: 15px; height: 15px; }
+@media (scripting: none) { .copy { display: none; } }
+
+/* method chips — the REST chapter is a long table of method + path cells */
+.mchip {
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-right: 3px; padding: 0.06em 0.42em; border-radius: 5px;
+  border: 1px solid currentColor;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+}
+.m-get { color: var(--c-tip); }
+.m-post { color: var(--c-note); }
+.m-put, .m-patch { color: var(--accent); }
+.m-delete { color: var(--c-danger); }
+
+/* callouts — a tinted card with an icon badge and a mono label */
+.callout {
+  --callout: var(--line); --callout-soft: var(--panel);
+  display: flex; gap: 14px; margin: 24px 0; padding: 16px 18px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--card-shadow);
+}
+.callout-icon {
+  flex: none; width: 1.625rem; height: 1.625rem; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--callout); background: var(--callout-soft);
+}
+.callout-icon svg { width: 15px; height: 15px; }
+.callout-body { min-width: 0; }
+.callout .label { display: block; margin-bottom: 6px; color: var(--callout); }
+.callout p { font-size: 15.5px; color: var(--ink-soft); line-height: 1.7; margin: 0; }
+.callout strong { color: var(--ink); }
+.callout-note { --callout: var(--c-note); --callout-soft: var(--c-note-soft); }
+.callout-tip { --callout: var(--c-tip); --callout-soft: var(--c-tip-soft); }
+.callout-warning { --callout: var(--c-warn); --callout-soft: var(--c-warn-soft); }
+
+/* chips — [[Category]] in the source: small, quiet metadata pills */
+.chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.08em 0.46em; border-radius: 999px; vertical-align: middle;
+  background: var(--panel); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 0.72em; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--ink-soft); white-space: nowrap;
+}
+
+/* kbd */
+kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 22px; padding: 0 7px;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px;
+  background: var(--card); font-family: var(--mono);
+  font-size: 11px; font-weight: 600; color: var(--ink-soft); vertical-align: middle;
+}
+
+/* --- mobile sidebar drawer ---------------------------------------------- */
+/* fumadocs: overlay fades 300ms ease, panel slides 250ms ease.
+   starlight uses a native popover with no animation at all — this is the
+   middle ground, and it is guarded by prefers-reduced-motion further down. */
+.backdrop {
+  position: fixed; inset: var(--nav-h) 0 0; z-index: 44;
+  background: rgba(23, 24, 28, 0.4);
+  opacity: 0; pointer-events: none; transition: opacity 300ms ease;
+}
+.backdrop.show { opacity: 1; pointer-events: auto; }
+body.drawer-open { overflow: hidden; }
+
+@media (max-width: 900px) {
+  .docs { grid-template-columns: minmax(0, 1fr); }
+  .xtoc { display: block; }
+  .menu-btn { display: inline-flex; }
+  .side {
+    position: fixed; top: var(--nav-h); bottom: 0; left: 0; z-index: 45;
+    width: min(85%, 320px); height: auto; max-height: none;
+    padding: 18px 16px 40px 18px; border-right: 1px solid var(--line);
+    background: var(--bg); box-shadow: var(--hero-shadow);
+    mask-image: none;
+    transform: translateX(-100%); transition: transform 250ms ease;
+  }
+  .side.open { transform: none; }
+  .side-site { display: flex; }
+  .doc { padding: 24px 0 72px; }
+  .pager { grid-template-columns: 1fr; }
+  .pager a.next { align-items: flex-start; text-align: left; }
+  .pager a.next .dir { flex-direction: row; }
+}
+@media (min-width: 901px) { .backdrop { display: none !important; } }
+
+/* --- search (Ctrl+K) ---------------------------------------------------- */
+.search-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(23, 24, 28, 0.44); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 20px 20px;
+  animation: fade-in 300ms ease;
+}
+.search-overlay[hidden] { display: none; }
+.search-panel {
+  width: min(40rem, 100%); overflow: hidden;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--hero-shadow);
+  animation: dialog-in 300ms var(--ease-dialog);
+}
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes dialog-in { from { opacity: 0; transform: scale(1.03) translateY(-4px); } }
+.search-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px; border-bottom: 1px solid var(--line-soft);
+}
+.search-row svg { width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; }
+.search-row input {
+  flex: 1; height: 48px; border: none; background: transparent;
+  font-family: inherit; font-size: 16px; color: var(--ink); outline: none;
+}
+.search-row input::placeholder { color: var(--muted); }
+.search-results { max-height: 54vh; overflow-y: auto; padding: 8px; }
+.sr-empty { padding: 24px 14px; font-size: 14px; color: var(--muted); text-align: center; }
+.sr-item {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  padding: 10px 12px; border: none; border-radius: 10px;
+  background: transparent; text-align: left; cursor: pointer;
+  font-family: inherit; color: var(--ink);
+}
+.sr-item .sr-group {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); flex-shrink: 0;
+}
+.sr-item .sr-title { font-size: 14.5px; font-weight: 600; white-space: nowrap; }
+.sr-item .sr-sec {
+  font-size: 13px; color: var(--ink-soft); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.sr-item.active, .sr-item:hover { background: var(--panel); }
+.search-foot {
+  display: flex; gap: 16px; padding: 10px 14px;
+  border-top: 1px solid var(--line-soft); font-size: 12px; color: var(--muted);
+}
+.search-foot span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* --- skip link (starlight makes this the first focusable element) ------- */
+.skip {
+  position: fixed; top: 10px; left: 10px; z-index: 70;
+  padding: 8px 14px; border-radius: 10px;
+  background: var(--btn-bg); color: var(--btn-ink);
+  font-size: 14px; font-weight: 600;
+  clip-path: inset(50%);
+}
+.skip:focus { clip-path: none; text-decoration: none; }
+
+/* footer — the site chrome */
+footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size: 14px; color: var(--muted); background: var(--surface); }
+.foot-grid { display: flex; gap: 26px; flex-wrap: wrap; align-items: center; }
+.foot-mark { font-weight: 650; font-size: 16.5px; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+.foot-mark svg, .foot-mark img { width: 19px; height: 19px; color: var(--ink); }
+.foot-links { margin-left: auto; display: flex; gap: 22px; flex-wrap: wrap; }
+.foot-links a { color: var(--muted); }
+.foot-links a:hover { color: var(--ink); }
+.colophon { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+
+/* Starlight guards 1 of its 4 transitions and fumadocs guards none. Guarding
+   everything is a deliberate divergence from both. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  header, .xtoc { background: var(--bg); backdrop-filter: none; }
+  .hero-chip { background: var(--card); }
+}
+@media (prefers-contrast: more) {
+  :root { --line: #c9cbd4; --muted: #4a4d58; }
+  [data-theme="dark"] { --line: #4a4d58; --muted: #a9adb8; }
+  header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
+}
+@media print {
+  header, footer, .side, .xtoc, .backdrop,
+  .pager, .search-overlay, .skip { display: none !important; }
+  .docs { display: block; padding: 0; }
+  .hero::before { display: none; }
+  .copy { display: none; }
+  body { background: #fff; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <div class="wrap nav">
+    <button class="menu-btn" id="menu-btn" aria-label="Open navigation" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <a class="brand" href="../../index.html"><img class="logo-dark-invert" src="../../assets/mate-icon-black.svg" alt=""> MATE</a>
+    <nav class="nav-links">
+      <a href="../../index.html#platform">Platform</a>
+      <a href="../../index.html#community">Community</a>
+      <a href="../../index.html#people">People</a>
+      <a class="active" href="introduction.html">Docs</a>
+      <a href="https://github.com/Process-Science-Community/MATE">GitHub</a>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle color theme">&#9790;</button>
+      <a class="btn btn-black" href="https://mate.uni-muenster.de/login">Open MATE</a>
+    </nav>
+  </div>
+</header>
+<div class="backdrop" id="backdrop"></div>
+<details class="xtoc" id="xtoc">
+  <summary><span class="now" id="xtoc-now">On this page</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+  <div class="xtoc-body">
+    <div class="toc-list">
+        <a data-toc href="#_top">Overview</a>
+        <a data-toc href="#creating-and-editing">Creating and editing</a>
+        <a data-toc href="#cards">Cards</a>
+        <a data-toc href="#sharing">Sharing</a>
+    </div>
+  </div>
+</details>
+<div class="docs">
+  <aside class="side" id="side" aria-label="Documentation">
+    <button class="side-search" id="search-open" type="button" aria-label="Search the documentation" aria-keyshortcuts="Control+K"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Search</span><kbd>Ctrl</kbd><kbd>K</kbd></button>
+    <details class="side-group" data-group="Getting started" open>
+      <summary><span>Getting started</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="introduction.html">Introduction</a></li>
+        <li><a class="side-link" href="install-and-start.html">Install and start</a></li>
+        <li><a class="side-link" href="your-first-analysis.html">Your first analysis</a></li>
+      </ul>
+    </details>
+    <details class="side-group" data-group="Using MATE" open>
+      <summary><span>Using MATE</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="importing-event-logs.html">Importing event logs</a></li>
+        <li><a class="side-link" href="working-with-logs.html">Working with logs</a></li>
+        <li><a class="side-link" href="exploring-a-process.html">Exploring a process</a></li>
+        <li><a class="side-link" href="modules.html">Modules</a></li>
+        <li><a class="side-link" href="jobs-and-the-interface.html">Jobs and the interface</a></li>
+        <li><a class="side-link" href="dashboards.html" aria-current="page">Dashboards</a></li>
+        <li><ul class="side-sub"><li><a data-toc href="#creating-and-editing">Creating and editing</a></li><li><a data-toc href="#cards">Cards</a></li><li><a data-toc href="#sharing">Sharing</a></li></ul></li>
+        <li><a class="side-link" href="mate-ai.html">MATE AI</a></li>
+        <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
+      </ul>
+    </details>
+    <details class="side-group" data-group="Platform" open>
+      <summary><span>Platform</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="architecture.html">Architecture and data</a></li>
+        <li><a class="side-link" href="jobs-modules-and-isolation.html">Jobs, modules and isolation</a></li>
+        <li><a class="side-link" href="security-and-privacy.html">Security and privacy</a></li>
+      </ul>
+    </details>
+    <details class="side-group" data-group="Module development" open>
+      <summary><span>Module development</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="your-first-module.html">Your first module</a></li>
+        <li><a class="side-link" href="the-manifest.html">The manifest</a></li>
+        <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
+        <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
+        <li><a class="side-link" href="module-communication.html">Module communication</a></li>
+        <li><a class="side-link" href="frontend-panels-widgets-and-datasets.html">Frontend: panels, widgets and datasets</a></li>
+        <li><a class="side-link" href="dependencies-isolation-and-runtimes.html">Dependencies, isolation and runtimes</a></li>
+        <li><a class="side-link" href="testing-and-publishing.html">Testing and publishing</a></li>
+      </ul>
+    </details>
+    <details class="side-group" data-group="Interfaces" open>
+      <summary><span>Interfaces</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="rest-api.html">REST API</a></li>
+        <li><a class="side-link" href="mcp-server.html">MCP server</a></li>
+      </ul>
+    </details>
+    <details class="side-group" data-group="Operate" open>
+      <summary><span>Operate</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="deployment.html">Deployment</a></li>
+        <li><a class="side-link" href="configuration.html">Configuration</a></li>
+        <li><a class="side-link" href="backup-and-storage.html">Backup, storage and limits</a></li>
+        <li><a class="side-link" href="troubleshooting.html">Troubleshooting</a></li>
+      </ul>
+    </details>
+    <details class="side-group" data-group="Project" open>
+      <summary><span>Project</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="contributing.html">Contributing and development</a></li>
+      </ul>
+    </details>
+    <nav class="side-site" aria-label="Site">
+      <a href="../../index.html#platform">Platform</a>
+      <a href="../../index.html#community">Community</a>
+      <a href="../../index.html#people">People</a>
+      <a href="https://github.com/Process-Science-Community/MATE">GitHub</a>
+      <a href="https://mate.uni-muenster.de/login">Open MATE</a>
+    </nav>
+  </aside>
+  <main class="doc" id="main" tabindex="-1">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <span>Using MATE</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+      <span class="cur" aria-current="page">Dashboards</span>
+    </nav>
+    <div class="doc-head">
+      <h1 class="doc-title" id="_top">Dashboards</h1>
+      <p class="doc-lead">A dashboard is a canvas of cards from any module, scoped by one filter bar and shareable read-only.</p>
+    </div>
+    <div class="prose">
+<h2 id="creating-and-editing">Creating and editing<a class="h-anchor" href="#creating-and-editing" aria-label="Link to this section">#</a></h2>
+<ol class="steps">
+    <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p>Open <strong>Dashboards</strong> and choose <strong>New dashboard</strong>, <strong>Start from template</strong>, or <strong>Import</strong> a JSON snapshot.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p>Switch to edit mode: the palette lists widgets modules ship and datasets the platform renders.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">3</span><div class="step-body"><p>Drag a card onto the grid, move it by its body, resize it by its corner.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p>Select a card to open the inspector: title, and the options the card declares.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p>Leave edit mode — changes autosave, there is no save button.</p></div></li>
+  </ol>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Control</th><th>Behaviour</th></tr></thead><tbody><tr><td>Zoom</td><td>Buttons, <kbd>cmd</kbd>/<kbd>ctrl</kbd> + wheel, pinch, <em>Fit</em>.</td></tr><tr><td>Selection</td><td>Click, shift-click, or drag; arrows nudge.</td></tr><tr><td>Undo / redo</td><td>Toolbar buttons.</td></tr><tr><td>Board filters</td><td>Column filters and a time range, applied to every card.</td></tr></tbody></table></div></div>
+<p>Card filtering is deliberately not per card: filtering belongs to the board or to the card's own declared options. Sizes are enforced in two units — grid units keep the layout tidy, and the card's declared pixel floors keep it readable.</p>
+<h2 id="cards">Cards<a class="h-anchor" href="#cards" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Kind</th><th>Source</th><th>When to use it</th></tr></thead><tbody><tr><td>Widget</td><td>A React component the module ships, declared in <code>manifest.frontend.widgets</code></td><td>The visual is the point: a bespoke chart or layout.</td></tr><tr><td>Dataset</td><td>A typed data output (<code>table</code>, <code>graph</code>, <code>kpi</code>, <code>tree</code>, <code>blob</code>) rendered by the platform</td><td>The result is data: you get the platform's table, graph, or KPI rendering for free.</td></tr></tbody></table></div></div>
+<h2 id="sharing">Sharing<a class="h-anchor" href="#sharing" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Action</th><th>Who</th><th>Notes</th></tr></thead><tbody><tr><td>Share with a user or a team</td><td>Owner</td><td>Read-only; recipients find it under <em>Shared with me</em>.</td></tr><tr><td>Revoke</td><td>Owner</td><td>Immediate.</td></tr><tr><td>Join a team</td><td>Admin-managed</td><td>Teams are the sharing unit; without one, the dialog says so.</td></tr></tbody></table></div></div>
+<p>A shared board opens read-only — no palette, no inspector — but readers can still apply their own filters without changing what the owner saved. <strong>Export</strong> writes a portable JSON snapshot with placements and settings but no ids, so it can be imported into another account or installation.</p>
+    </div>
+  <nav class="pager" aria-label="Pagination">
+    <a class="prev" href="jobs-and-the-interface.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Jobs and the interface</b></a>
+    <a class="next" href="mate-ai.html" rel="next"><span class="dir">Next <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span><b>MATE AI</b></a>
+  </nav>
+  </main>
+</div>
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <span class="foot-mark"><img class="logo-dark-invert" src="../../assets/mate-icon-black.svg" alt=""> MATE</span>
+      <nav class="foot-links">
+        <a href="https://mate.uni-muenster.de/login">Open MATE</a>
+        <a href="https://github.com/Process-Science-Community/MATE">GitHub</a>
+        <a href="introduction.html">Docs</a>
+        <a href="../../index.html#platform">Platform</a>
+        <a href="../../index.html#people">People</a>
+      </nav>
+    </div>
+    <p class="colophon">Built by the community &middot; &copy; 2026 MATE</p>
+  </div>
+</footer>
+<div class="search-overlay" id="search-overlay" hidden>
+  <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search documentation">
+    <div class="search-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search-input" type="text" placeholder="Search the documentation&hellip;" autocomplete="off" spellcheck="false" />
+      <kbd>esc</kbd>
+    </div>
+    <div class="search-results" id="search-results"></div>
+    <div class="search-foot">
+      <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> select</span>
+      <span><kbd>&crarr;</kbd> open</span>
+      <span><kbd>ctrl</kbd><kbd>k</kbd> toggle</span>
+    </div>
+  </div>
+</div>
+<script>
+  /* Theme: system default, manual override persisted. Same shape as the landing
+     page's script (commit/apply split, View Transitions when available) — the
+     one difference is commit() clears theme-snap synchronously, because a
+     throttled rAF would leave the class on <html> and
+     `html.theme-snap * { transition: none !important }` would then disable
+     every transition on the page. */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('theme-toggle');
+    var stored = null;
+    try { stored = localStorage.getItem('pmmate-theme'); } catch (e) {}
+    function systemDark() { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+    var transitioning = false;
+    function commit(theme) {
+      root.classList.add('theme-snap');
+      if (theme === 'dark') { root.setAttribute('data-theme', 'dark'); }
+      else { root.removeAttribute('data-theme'); }
+      if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+      void root.offsetHeight;
+      root.classList.remove('theme-snap');
+    }
+    function apply(theme) {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var visible = document.visibilityState === 'visible';
+      if (document.startViewTransition && !reduce && visible && !transitioning) {
+        transitioning = true;
+        try {
+          var vt = document.startViewTransition(function () { commit(theme); });
+          vt.finished.then(function () { transitioning = false; }, function () { transitioning = false; });
+          return;
+        } catch (e) {
+          transitioning = false;
+        }
+      }
+      commit(theme);
+    }
+    var current = stored || (systemDark() ? 'dark' : 'light');
+    commit(current);
+    if (btn) btn.addEventListener('click', function () {
+      current = current === 'dark' ? 'light' : 'dark';
+      /* assign 'stored' too: otherwise a first visit (storage empty) leaves it
+         null and the OS listener below keeps overriding the manual choice */
+      stored = current;
+      try { localStorage.setItem('pmmate-theme', current); } catch (e) {}
+      apply(current);
+    });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+      if (!stored) { current = e.matches ? 'dark' : 'light'; apply(current); }
+    });
+  })();
+  /* Sidebar: fold animation + state persistence.
+     Fumadocs animates height+opacity for 150ms on cubic-bezier(.45,0,.55,1);
+     Starlight's native <details> does not animate at all. This keeps the
+     <details> (so it works without JS) and animates the fold on top. */
+  (function () {
+    var KEY_OPEN = 'mate-docs-groups';
+    var KEY_SCROLL = 'mate-docs-side-scroll';
+    var EASE = 'cubic-bezier(0.45, 0, 0.55, 1)';
+    var DUR = 150;
+    var groups = [].slice.call(document.querySelectorAll('.side-group'));
+    var stored = null;
+    try { stored = JSON.parse(sessionStorage.getItem(KEY_OPEN) || 'null'); } catch (e) {}
+
+    function panelOf(g) { return g.querySelector('ul'); }
+    function persist() {
+      try {
+        var state = {};
+        groups.forEach(function (g) { state[g.dataset.group] = g.open; });
+        sessionStorage.setItem(KEY_OPEN, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    groups.forEach(function (g) {
+      var panel = panelOf(g);
+      if (!panel) return;
+      panel.style.transition = 'height ' + DUR + 'ms ' + EASE + ', opacity ' + DUR + 'ms ' + EASE;
+      panel.style.overflow = 'hidden';
+      /* restore, then normalise to an explicit height so the fold can animate */
+      if (stored && Object.prototype.hasOwnProperty.call(stored, g.dataset.group)) {
+        g.open = stored[g.dataset.group];
+      }
+      panel.style.height = g.open ? '' : '0px';
+      panel.style.opacity = g.open ? '' : '0';
+      var summary = g.querySelector('summary');
+      if (!summary) return;
+      summary.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        /* Target state is explicit: g.open only flips once the fold finishes, so
+           finish() and the persisted state must not read it back. And for the
+           opening direction scrollHeight has to be measured *after* g.open=true,
+           otherwise a closed <details> reports 0 and the panel never expands. */
+        var opening = !g.open;
+        if (opening) {
+          g.open = true;
+          panel.style.height = '0px';
+          panel.style.opacity = '0';
+          void panel.offsetHeight;
+          panel.style.height = panel.scrollHeight + 'px';
+          panel.style.opacity = '1';
+        } else {
+          var h = panel.scrollHeight;
+          panel.style.height = h + 'px';
+          panel.style.opacity = '1';
+          void panel.offsetHeight;
+          panel.style.height = '0px';
+          panel.style.opacity = '0';
+        }
+        /* <details>/<summary> already expose expanded/collapsed natively — do
+           not duplicate it with aria-expanded here. */
+        /* One pending finish per panel. Without cancelling the previous listener
+           and timer, a rapid double click leaves two closures alive: the first
+           still holds opening=true and would yank the panel back to full height
+           while the second collapses it. */
+        if (panel._te) panel.removeEventListener('transitionend', panel._te);
+        if (panel._timer) clearTimeout(panel._timer);
+        var done = false;
+        function finish() {
+          if (done) return;
+          done = true;
+          panel._te = null;
+          panel._timer = null;
+          if (opening) { panel.style.height = ''; panel.style.opacity = ''; }
+          else { g.open = false; }
+          persist();
+        }
+        panel._te = function (e) {
+          if (e.propertyName !== 'height') return;
+          panel.removeEventListener('transitionend', panel._te);
+          finish();
+        };
+        panel.addEventListener('transitionend', panel._te);
+        /* reduced-motion (or a throttled tab) may never fire transitionend */
+        panel._timer = setTimeout(finish, DUR + 60);
+      });
+    });
+
+    /* the sidebar keeps its scroll position between pages, like starlight's */
+    var side = document.getElementById('side');
+    if (!side) return;
+    var restored = 0;
+    try {
+      restored = parseFloat(sessionStorage.getItem(KEY_SCROLL) || '0');
+      if (restored > 0) side.scrollTop = restored;
+    } catch (e) {}
+    /* first visit to a deep chapter: bring the current entry into view, so the
+       rail never opens on a chapter the reader is not looking at. Deferred to
+       the load event because the rail's height (and therefore what counts as
+       "in view") is only final once layout has settled. */
+    function revealActive() {
+      if (side.scrollTop > 0) return;
+      var active = side.querySelector('[aria-current="page"]');
+      if (active && active.offsetTop > side.clientHeight - 80) {
+        side.scrollTop = active.offsetTop - 80;
+      }
+    }
+    if (!(restored > 0)) {
+      revealActive();
+      window.addEventListener('load', revealActive, { once: true });
+    }
+    function saveScroll() {
+      try { sessionStorage.setItem(KEY_SCROLL, String(side.scrollTop)); } catch (e) {}
+    }
+    side.addEventListener('scroll', saveScroll);
+    window.addEventListener('pagehide', saveScroll);
+  })();
+
+  /* Mobile drawer. Fumadocs: 300ms overlay fade + 250ms panel slide.
+     Focus moves in, returns to the toggle on close, and Escape closes. */
+  (function () {
+    var btn = document.getElementById('menu-btn');
+    var side = document.getElementById('side');
+    var bd = document.getElementById('backdrop');
+    if (!btn || !side || !bd) return;
+    function set(open) {
+      side.classList.toggle('open', open);
+      bd.classList.toggle('show', open);
+      document.body.classList.toggle('drawer-open', open);
+      btn.setAttribute('aria-expanded', String(open));
+      if (open) {
+        var first = side.querySelector('a');
+        if (first) first.focus({ preventScroll: true });
+      } else if (document.activeElement && side.contains(document.activeElement)) {
+        btn.focus({ preventScroll: true });
+      }
+    }
+    btn.addEventListener('click', function () { set(!side.classList.contains('open')); });
+    bd.addEventListener('click', function () { set(false); });
+    side.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('a')) set(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && side.classList.contains('open')) set(false);
+    });
+    window.matchMedia('(min-width: 901px)').addEventListener('change', function (e) {
+      if (e.matches) set(false);
+    });
+  })();
+
+  /* Scroll spy. The rail and the phone bar share one section list (links carry
+     the data-toc attribute), so a single pass highlights both. A heading counts
+     as current once it reaches the live header height plus 24px. */
+  (function () {
+    var links = [].slice.call(document.querySelectorAll('a[data-toc]'));
+    /* the page title is included so the top of the page can clear the marker */
+    var heads = [].slice.call(
+      document.querySelectorAll('.doc-title[id], .prose h2[id], .prose h3[id]')
+    );
+    var now = document.getElementById('xtoc-now');
+    if (!links.length || !heads.length) return;
+
+    function setActive(id) {
+      var matched = false;
+      links.forEach(function (a) {
+        var on = a.getAttribute('href') === '#' + id;
+        if (on) {
+          a.setAttribute('aria-current', 'true');
+          matched = true;
+          if (now) now.textContent = a.textContent;
+        } else {
+          a.removeAttribute('aria-current');
+        }
+      });
+      if (!matched && now) now.textContent = 'On this page';
+    }
+
+    function update() {
+      var offset = (document.querySelector('header').offsetHeight || 60) + 24;
+      var current = heads[0].id;
+      for (var i = 0; i < heads.length; i++) {
+        if (heads[i].getBoundingClientRect().top <= offset) current = heads[i].id;
+        else break;
+      }
+      setActive(current);
+    }
+
+    /* Coalesce with a timer, not requestAnimationFrame: rAF never fires in a
+       hidden tab (and is throttled hard in some embedded webviews), which would
+       freeze the rail at whatever was current on load. */
+    var pending = false;
+    function onScroll() {
+      if (pending) return;
+      pending = true;
+      setTimeout(function () { pending = false; update(); }, 16);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', update);
+    /* a hidden tab throttles timers, so re-sync the moment it is shown again */
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') update();
+    });
+    update();
+  })();
+
+  /* Mobile "On this page" bar: closes on pick, and on a click outside. */
+  (function () {
+    var box = document.getElementById('xtoc');
+    if (!box) return;
+    box.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('a')) box.open = false;
+    });
+    document.addEventListener('click', function (e) {
+      if (box.open && !box.contains(e.target)) box.open = false;
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && box.open) { box.open = false; e.target.blur && box.querySelector('summary').focus(); }
+    });
+  })();
+
+  /* Copy buttons on every code card, in the card's header strip. */
+  (function () {
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    document.querySelectorAll('.codeblock').forEach(function (wrap) {
+      var code = wrap.querySelector('code');
+      if (!code) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy';
+      btn.setAttribute('aria-label', 'Copy code to clipboard');
+      btn.innerHTML = COPY;
+      btn.addEventListener('click', function () {
+        var text = code.innerText;
+        function ok() {
+          btn.innerHTML = CHECK;
+          btn.classList.add('done');
+          btn.setAttribute('aria-label', 'Copied');
+          setTimeout(function () {
+            btn.innerHTML = COPY;
+            btn.classList.remove('done');
+            btn.setAttribute('aria-label', 'Copy code to clipboard');
+          }, 2000);
+        }
+        function fallback() {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.top = '-1000px';
+          document.body.appendChild(ta);
+          ta.select();
+          /* execCommand reports failure by returning false, not by throwing */
+          try { if (document.execCommand('copy')) ok(); } catch (e) {}
+          document.body.removeChild(ta);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          /* a denied clipboard permission rejects; fall back rather than no-op */
+          navigator.clipboard.writeText(text).then(ok, fallback);
+        } else {
+          fallback();
+        }
+      });
+      wrap.appendChild(btn);
+      (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Search: a build-time index fetched on first open, so pages stay light. */
+  (function () {
+    var overlay = document.getElementById('search-overlay');
+    var input = document.getElementById('search-input');
+    var results = document.getElementById('search-results');
+    var openBtn = document.getElementById('search-open');
+    if (!overlay || !input || !results) return;
+    var INDEX = null, loading = false, active = 0, items = [];
+
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function ensure() {
+      if (INDEX || loading) return;
+      loading = true;
+      fetch('search-index.json').then(function (r) { return r.json(); }).then(function (d) {
+        INDEX = d; loading = false; render(search(input.value));
+      }).catch(function () { loading = false; });
+    }
+    function score(entry, words) {
+      var t = entry.t.toLowerCase(), g = entry.g.toLowerCase(), total = 0;
+      for (var w = 0; w < words.length; w++) {
+        var word = words[w], hit = 0;
+        if (t.indexOf(word) !== -1) hit += 5;
+        if (g.indexOf(word) !== -1) hit += 2;
+        if (entry.k.indexOf(word) !== -1) hit += 1;
+        for (var s = 0; s < entry.s.length; s++) {
+          if (entry.s[s].t.toLowerCase().indexOf(word) !== -1) hit += 3;
+        }
+        if (!hit) return 0;
+        total += hit;
+      }
+      return total;
+    }
+    function search(q) {
+      if (!INDEX) return [];
+      var words = q.trim().toLowerCase().split(' ').filter(Boolean);
+      var out = [];
+      for (var e = 0; e < INDEX.length; e++) {
+        var entry = INDEX[e];
+        var sc = words.length ? score(entry, words) : 1;
+        if (!sc) continue;
+        var sec = null;
+        for (var s = 0; !sec && s < entry.s.length; s++) {
+          var st = entry.s[s].t.toLowerCase();
+          for (var w = 0; w < words.length; w++) {
+            if (st.indexOf(words[w]) !== -1) { sec = entry.s[s]; break; }
+          }
+        }
+        out.push({
+          href: entry.u + (sec ? '#' + sec.i : ''),
+          group: entry.g, title: entry.t, sec: sec ? sec.t : null, score: sc
+        });
+      }
+      out.sort(function (a, b) { return b.score - a.score; });
+      return out.slice(0, 12);
+    }
+    function render(list) {
+      items = list; active = 0;
+      if (!INDEX) { results.innerHTML = '<div class="sr-empty">Loading&hellip;</div>'; return; }
+      if (!list.length) { results.innerHTML = '<div class="sr-empty">No matches.</div>'; return; }
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i];
+        html += '<button type="button" class="sr-item' + (i === 0 ? ' active' : '') + '" data-href="' + r.href + '">'
+          + '<span class="sr-group">' + esc(r.group) + '</span>'
+          + '<span class="sr-title">' + esc(r.title) + '</span>'
+          + (r.sec ? '<span class="sr-sec">&middot; ' + esc(r.sec) + '</span>' : '')
+          + '</button>';
+      }
+      results.innerHTML = html;
+    }
+    function open() {
+      overlay.hidden = false;
+      input.value = '';
+      render(search(''));
+      ensure();
+      /* the panel claims aria-modal, so the rest of the page must not be
+         tabbable behind it */
+      document.querySelectorAll('header, main, footer, .xtoc, .side').forEach(function (n) {
+        n.setAttribute('inert', '');
+      });
+      input.focus();
+    }
+    function close() {
+      overlay.hidden = true;
+      document.querySelectorAll('[inert]').forEach(function (n) { n.removeAttribute('inert'); });
+      if (openBtn) openBtn.focus({ preventScroll: true });
+    }
+    function toggle() { if (overlay.hidden) open(); else close(); }
+    function move(d) {
+      if (!items.length) return;
+      active = (active + d + items.length) % items.length;
+      var els = results.querySelectorAll('.sr-item');
+      for (var i = 0; i < els.length; i++) els[i].classList.toggle('active', i === active);
+      if (els[active] && els[active].scrollIntoView) els[active].scrollIntoView({ block: 'nearest' });
+    }
+    results.addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('.sr-item') : null;
+      if (b) location.href = b.getAttribute('data-href');
+    });
+    input.addEventListener('input', function () { render(search(input.value)); });
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowDown') { move(1); ev.preventDefault(); }
+      else if (ev.key === 'ArrowUp') { move(-1); ev.preventDefault(); }
+      else if (ev.key === 'Enter' && items.length) { location.href = items[active].href; }
+    });
+    document.addEventListener('keydown', function (ev) {
+      var tag = document.activeElement ? document.activeElement.tagName : '';
+      if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'k' || ev.key === 'K')) { ev.preventDefault(); toggle(); }
+      else if (ev.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') { ev.preventDefault(); open(); }
+      else if (ev.key === 'Escape' && !overlay.hidden) close();
+    });
+    if (openBtn) openBtn.addEventListener('click', open);
+    overlay.addEventListener('mousedown', function (ev) { if (ev.target === overlay) close(); });
+  })();
+  /* the header's bottom edge appears only once content scrolls under it */
+  (function () {
+    var header = document.querySelector('header');
+    if (!header) return;
+    var onScroll = function () {
+      header.classList.toggle('scrolled', window.scrollY > 4);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+  })();</script>
+</body>
+</html>
