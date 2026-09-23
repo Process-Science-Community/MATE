@@ -98,6 +98,27 @@
   .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 1.75rem; }
   ::selection { background: rgba(196, 181, 253, 0.45); }
 
+  /* ---------- cursor glow ----------
+     Three soft colour fields behind the whole page, trailing the pointer. They
+     are moved with `transform` only, so a frame costs no repaint - the browser
+     keeps them as composited layers. Rest position is slightly above centre,
+     where the hero sits; each field follows at a different rate, which is what
+     makes the motion read as a drift rather than a cursor. */
+  .cursor-glow {
+    position: fixed; inset: 0; z-index: -1; overflow: hidden;
+    pointer-events: none; opacity: 0;
+    transition: opacity 900ms ease;
+  }
+  .cursor-glow.on { opacity: 1; }
+  .cursor-glow span {
+    position: absolute; left: 0; top: 0;
+    width: 78vmax; height: 78vmax; margin: -39vmax 0 0 -39vmax;
+    border-radius: 50%; will-change: transform;
+  }
+  .cursor-glow .g1 { background: radial-gradient(circle, var(--av-lav) 0%, transparent 58%); }
+  .cursor-glow .g2 { background: radial-gradient(circle, var(--av-rose) 0%, transparent 60%); }
+  .cursor-glow .g3 { background: radial-gradient(circle, var(--av-sky) 0%, transparent 62%); }
+
   /* reveal-on-scroll only when JS is present — content is never hidden without it */
   html.js .reveal { opacity: 0; transform: translateY(0.875rem); transition: opacity 0.5s ease-out, transform 0.5s ease-out; }
   html.js .reveal.on { opacity: 1; transform: none; }
@@ -220,7 +241,7 @@
   .hero-cap { position: relative; z-index: 1; margin-top: 0.875rem; font-size: 0.8125rem; color: var(--muted); }
 
   /* ---------- stats ---------- */
-  .stats-outer { border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); background: var(--surface); }
+  .stats-outer { border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--surface) 72%, transparent); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
   .stat { padding: 2.125rem 1.75rem; border-left: 1px solid var(--line-soft); }
@@ -252,7 +273,7 @@
   .prop p { font-size: 0.90625rem; color: var(--ink-soft); }
 
   /* ---------- theater ---------- */
-  .theater-outer { background: var(--panel); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+  .theater-outer { background: color-mix(in srgb, var(--panel) 76%, transparent); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
   .th-tabs {
     display: flex; gap: 0.375rem; margin: 0 auto 1.5rem; padding: 0.3125rem;
     background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem;
@@ -300,7 +321,7 @@
   @media (max-width: 880px) { .res-grid { grid-template-columns: 1fr; } }
 
   /* ---------- people ---------- */
-  .people { position: relative; overflow: hidden; background: var(--panel); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+  .people { position: relative; overflow: hidden; background: color-mix(in srgb, var(--panel) 76%, transparent); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
   .people::before {
     content: ""; position: absolute; inset: -10%; pointer-events: none; z-index: 0;
     background:
@@ -341,7 +362,7 @@
   .closing p { margin: 1rem auto 0; color: var(--ink-soft); font-size: 1.0625rem; max-width: 34em; }
 
   /* ---------- footer ---------- */
-  footer { border-top: 1px solid var(--line-soft); padding: 2.5rem 0 3.25rem; font-size: 0.875rem; color: var(--muted); background: var(--surface); }
+  footer { border-top: 1px solid var(--line-soft); padding: 2.5rem 0 3.25rem; font-size: 0.875rem; color: var(--muted); background: color-mix(in srgb, var(--surface) 72%, transparent); }
   .foot-grid { display: flex; gap: 1.625rem; flex-wrap: wrap; align-items: center; }
   .foot-mark { font-weight: 650; font-size: 1.03125rem; color: var(--ink); display: flex; align-items: center; gap: 0.625rem; }
   .foot-mark img { width: 1.1875rem; height: 1.1875rem; }
@@ -354,6 +375,7 @@
     html { scroll-behavior: auto; }
     html.js .reveal { opacity: 1; transform: none; transition: none; }
     .btn, .th-tab, body { transition: none; }
+    .cursor-glow { display: none; }
     ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
   }
   @media (prefers-reduced-transparency: reduce) {
@@ -368,6 +390,10 @@
 </style>
 </head>
 <body>
+
+<div class="cursor-glow" id="cursor-glow" aria-hidden="true">
+  <span class="g1"></span><span class="g2"></span><span class="g3"></span>
+</div>
 
 <header>
   <div class="wrap nav">
@@ -810,6 +836,74 @@
       img.addEventListener('error', function () { fallback(img); });
       if (img.complete && img.naturalWidth === 0) fallback(img);
     });
+  })();
+
+  /* Cursor glow. Pointer events only set a target; the animation loop eases each
+     field toward its own offset of that target with an exponential filter, so the
+     motion is frame-rate independent and never snaps. The loop stops as soon as
+     everything has settled (no idle CPU), and is skipped entirely for touch
+     pointers and for users who asked for reduced motion. */
+  (function () {
+    var layer = document.getElementById('cursor-glow');
+    if (!layer) return;
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    /* f = how far this field follows the pointer, s = easing per frame at 60fps,
+       ox/oy = a fixed offset so the three colours never sit on top of each other */
+    var fields = [
+      { el: layer.querySelector('.g1'), f: 1, s: 0.085, ox: 0, oy: 0, sc: 1 },
+      { el: layer.querySelector('.g2'), f: 0.74, s: 0.065, ox: 140, oy: -110, sc: 0.86 },
+      { el: layer.querySelector('.g3'), f: 0.5, s: 0.045, ox: -160, oy: 120, sc: 0.72 }
+    ].filter(function (b) { return b.el; });
+    if (!fields.length) return;
+
+    var cx = window.innerWidth / 2, cy = window.innerHeight * 0.42;
+    var tx = cx, ty = cy, running = false, last = 0, revealed = false;
+
+    fields.forEach(function (b) { b.x = cx + b.ox; b.y = cy + b.oy; });
+
+    function place(b) {
+      b.el.style.transform =
+        'translate3d(' + b.x.toFixed(1) + 'px,' + b.y.toFixed(1) + 'px,0) scale(' + b.sc + ')';
+    }
+    fields.forEach(place);
+
+    function frame(now) {
+      var dt = last ? Math.min(now - last, 64) : 16.7;
+      last = now;
+      var settled = true;
+      for (var i = 0; i < fields.length; i++) {
+        var b = fields[i];
+        var goalX = cx + (tx - cx) * b.f + b.ox;
+        var goalY = cy + (ty - cy) * b.f + b.oy;
+        var k = 1 - Math.pow(1 - b.s, dt / 16.7);
+        b.x += (goalX - b.x) * k;
+        b.y += (goalY - b.y) * k;
+        if (Math.abs(goalX - b.x) > 0.2 || Math.abs(goalY - b.y) > 0.2) settled = false;
+        place(b);
+      }
+      if (settled) { running = false; last = 0; return; }
+      requestAnimationFrame(frame);
+    }
+    function kick() { if (!running) { running = true; requestAnimationFrame(frame); } }
+
+    window.addEventListener('pointermove', function (e) {
+      tx = e.clientX;
+      ty = e.clientY;
+      if (!revealed) { revealed = true; layer.classList.add('on'); }
+      kick();
+    }, { passive: true });
+
+    window.addEventListener('resize', function () {
+      cx = window.innerWidth / 2;
+      cy = window.innerHeight * 0.42;
+      kick();
+    });
+
+    /* fade out while the pointer is outside the window, back in when it returns */
+    document.addEventListener('pointerleave', function () { layer.classList.remove('on'); });
+    document.addEventListener('pointerenter', function () { if (revealed) layer.classList.add('on'); });
   })();
 </script>
 

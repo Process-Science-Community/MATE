@@ -12,8 +12,8 @@ The documentation under `docs/site/` is generated - edit the markdown under
 `docs/content/` and run `make docs` (`node landing/docs/build.mjs`), then commit
 the regenerated pages. `docs/build.mjs` keeps the landing page's design system
 (tokens, background, top bar, buttons, cards, footer) and layers on the docs
-layout of Starlight/Fumadocs (group rail with nested sections, "On this page",
-pager, Ctrl+K search, a generated index page). Change `index.html`, change
+layout: a rail that carries the whole hierarchy (group, chapter, and the current
+chapter's sections), a pager, and Ctrl+K search. Change `index.html`, change
 `build.mjs`.
 
 To preview locally:
@@ -21,6 +21,26 @@ To preview locally:
 ```bash
 python3 -m http.server -d landing 8081
 ```
+
+## Cursor glow
+
+The page background follows the pointer: three soft colour fields in a fixed
+layer behind everything (`.cursor-glow`), each easing toward its own offset of
+the pointer at a different rate. A few properties keep it cheap and calm:
+
+- The fields move with `transform` only, so a frame is a compositor update and
+  never a repaint of a 78vmax gradient.
+- Pointer events only set a target; an exponential filter (frame-rate
+  independent, `dt`-compensated) does the easing, so motion never snaps.
+- The loop stops as soon as every field has settled, and is skipped entirely for
+  touch pointers and `prefers-reduced-motion: reduce`.
+- It fades in on the first pointer move and fades out while the pointer is
+  outside the window.
+
+Because the layer sits *behind* the page (`z-index: -1`), a full-width section
+with an opaque background would hide it. The bands that span the page therefore
+use `color-mix(in srgb, var(--surface) 72%, transparent)` (or `--panel` at 76%).
+Keep that in mind when adding a new full-width section.
 
 ## Screenshots
 
