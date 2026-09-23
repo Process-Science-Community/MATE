@@ -65,11 +65,16 @@
 	@kc path /auth/*
 	reverse_proxy @kc keycloak:8080
 
-	# Public landing page at the site root, served straight from the repo's
-	# landing/ (bind-mounted read-only by docker-compose.prod.yml). The same
-	# directory is published to GitHub Pages, so its "Open MATE" CTAs use the
-	# absolute https://mate.uni-muenster.de/login - a relative /login would
-	# 404 under the Pages path prefix.
+	# Public landing page at the site root, served straight from landing/
+	# (bind-mounted read-only by docker-compose.prod.yml - LANDING_DIR points
+	# it at the auto-synced copy in prod). The same directory is published to
+	# GitHub Pages, so its "Open MATE" CTAs use the absolute
+	# https://mate.uni-muenster.de/login - a relative /login would 404 under
+	# the Pages path prefix.
+	#
+	# /docs/* is the generated documentation site (landing/docs/). Its links
+	# are all relative, so it works at both mount points, but it needs its own
+	# path here or it falls through to Next and 404s.
 	#
 	# `handle` (not a bare `file_server`) is deliberate: in Caddy's default
 	# directive order file_server sorts AFTER reverse_proxy, so the catch-all
@@ -77,8 +82,8 @@
 	# be reached. `handle` sorts before it.
 	#
 	# The app's own `/` is only `redirect("/processes")` (apps/web/app/page.tsx)
-	# and nothing under /assets belongs to Next, so neither is shadowed.
-	@landing path / /index.html /assets/*
+	# and nothing under /assets or /docs belongs to Next, so none is shadowed.
+	@landing path / /index.html /assets/* /docs /docs/*
 	handle @landing {
 		root * /srv/landing
 		file_server

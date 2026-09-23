@@ -54,7 +54,10 @@ services:
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       # Served at the site root by the @landing route in the Caddyfile.
-      - ./landing:/srv/landing:ro
+      # Defaults to the repo's own landing/, which only advances on a full
+      # deploy. In prod, LANDING_DIR points at /srv/mate-landing/current, which
+      # a systemd timer keeps in step with origin/main - see docs/DEPLOY.md.
+      - ${LANDING_DIR:-./landing}:/srv/landing:ro
       # Mount the whole letsencrypt dir, not just live/: live/ is symlinks
       # into archive/, so a narrower mount breaks the cert chain.
       - /etc/letsencrypt:/etc/letsencrypt:ro

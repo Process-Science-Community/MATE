@@ -1,0 +1,18 @@
+[Unit]
+Description=Sync the MATE landing page from origin/main
+Documentation=https://github.com/Process-Science-Community/MATE/blob/main/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=__MATE_DIR__/scripts/sync-landing.sh
+# The served copy lives outside the deploy clone, so this needs no write access
+# to it. Root is only needed because /srv is root-owned.
+User=root
+# Fail quietly on a transient network blip - the timer retries in 5 minutes.
+SuccessExitStatus=0
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
