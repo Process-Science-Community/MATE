@@ -6,6 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Written by infra/install-landing-sync.sh when it is given overrides
+# (LANDING_LIVE_DIR, LANDING_BRANCH, ...). The leading `-` makes it optional.
+EnvironmentFile=-/etc/default/mate-landing-sync
 ExecStart=__MATE_DIR__/scripts/sync-landing.sh
 # The served copy lives outside the deploy clone, so this needs no write access
 # to it. Root is only needed because /srv is root-owned.

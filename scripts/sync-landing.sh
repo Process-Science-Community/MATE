@@ -20,8 +20,12 @@ REPO_URL="${LANDING_REPO_URL:-https://github.com/Process-Science-Community/MATE.
 BRANCH="${LANDING_BRANCH:-main}"
 ROOT="${LANDING_SYNC_ROOT:-/srv/mate-landing}"
 
-SRC="$ROOT/repo"      # sparse clone - landing/ only
-LIVE="$ROOT/current"  # what Caddy serves
+SRC="$ROOT/repo"                              # sparse clone - landing/ only
+# What Caddy serves. Defaults to a directory outside any checkout, paired with
+# LANDING_DIR in .env. Override it to write straight into a directory the proxy
+# already mounts - on the legacy VM that is the deploy clone's own landing/,
+# which avoids touching docker-compose at all. See docs/DEPLOY.md.
+LIVE="${LANDING_LIVE_DIR:-$ROOT/current}"
 
 for cmd in git rsync; do
   command -v "$cmd" >/dev/null || { echo "✗ $cmd is required but not installed" >&2; exit 1; }
