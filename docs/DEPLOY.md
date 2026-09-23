@@ -94,6 +94,7 @@ so the per-port CORS and `/etc/hosts` Keycloak hacks from the local setup are go
 | --- | --- |
 | [`docker-compose.prod.yml`](../docker-compose.prod.yml) | Prod overlay – adds the proxy, repoints URLs, drops public ports + the macOS cv4cdd mount. |
 | [`infra/caddy/Caddyfile`](../infra/caddy/Caddyfile) | TLS termination on `:443` + path routing. |
+| [`scripts/sync-landing.sh`](../scripts/sync-landing.sh) + [`infra/systemd/`](../infra/systemd) | Keeps the public landing page in step with `origin/main` – see [Landing page auto-sync](#landing-page-auto-sync). |
 | `.env` (you create it on the VM – see §4) | Rotated secrets + Keycloak admin creds. |
 
 ## 0. Smoke-test the `:443` pipe first
@@ -442,6 +443,52 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 - Changing `NEXT_PUBLIC_API_URL` (or any `NEXT_PUBLIC_*`) requires `--build` – it's inlined into the client bundle.
 - After editing only `infra/caddy/Caddyfile`: `docker compose -f docker-compose.yml -f docker-compose.prod.yml restart proxy`.
 - The realm JSON is **not** re-imported once the Keycloak DB exists – change realm settings in the admin console, or `docker compose down -v` to wipe the Keycloak volume and re-import (this also drops all Keycloak users).
+
+## Landing page auto-sync
+
+`https://mate.uni-muenster.de/` and `https://process-science-community.github.io/MATE/`
+serve the **same** `landing/` directory, but they get it by different routes,
+and only one of them is automatic by default:
+
+| | Source | Updates when |
+| --- | --- | --- |
+| GitHub Pages | `landing/` on `main` | every push to `main` (`.github/workflows/pages.yml`) |
+| `mate.uni-muenster.de/` | `LANDING_DIR`, bind-mounted into Caddy | the timer below – or a full deploy, if it isn't installed |
+
+Without the timer the VM's copy only advances on `scripts/deploy.sh`, so the
+site silently drifts behind Pages between deploys. GitHub can't push the update
+to us – its runners aren't on the VPN – so the VM polls instead.
+
+Install it once, on the VM:
+
+```bash
+cd ~/mate
+sudo ./infra/install-landing-sync.sh
+```
+
+Then point the proxy at the synced copy and restart it:
+
+```bash
+echo 'LANDING_DIR=/srv/mate-landing/current' >> .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d proxy
+```
+
+How it works:
+
+- A systemd timer runs [`scripts/sync-landing.sh`](../scripts/sync-landing.sh) every 5 minutes.
+- That script keeps a blobless sparse clone at `/srv/mate-landing/repo` (only `landing/` is checked out), resets it to `origin/main`, and `rsync`s it into `/srv/mate-landing/current`. `rsync` renames each file into place, so an in-flight request never sees a half-written page.
+- **App code is deliberately not touched.** Advancing the deploy clone without rebuilding would leave the checkout ahead of the running containers; shipping code stays a `make deploy`.
+- `LANDING_DIR` is unset for local dev, where the mount falls back to the repo's own `landing/`.
+
+Check on it:
+
+```bash
+systemctl list-timers mate-landing-sync.timer
+journalctl -u mate-landing-sync.service -n 20
+```
+
+The generated documentation site under `landing/docs/` is served at
+`/docs` by the same `@landing` route, so it tracks the same way.
 
 ## MCP server (external AI tools on the platform)
 
