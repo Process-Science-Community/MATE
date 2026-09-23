@@ -473,6 +473,33 @@ echo 'LANDING_DIR=/srv/mate-landing/current' >> .env
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d proxy
 ```
 
+### On a stack you don't want to recreate
+
+The steps above need the proxy container recreated once, to pick up
+`LANDING_DIR`. When the checkout is behind and recreating anything is
+unwelcome - the legacy VM during the Kubernetes migration, say - point the sync
+straight at the directory the proxy **already** mounts, the deploy clone's own
+`landing/`. Nothing about `docker-compose` changes, and the running app
+containers are never touched:
+
+```bash
+cd ~/mate
+git fetch origin main
+# Only these four paths. HEAD stays where it is, so nothing app-side moves.
+git checkout origin/main -- infra/caddy/Caddyfile scripts/sync-landing.sh \
+                            infra/systemd infra/install-landing-sync.sh
+sudo LANDING_LIVE_DIR="$PWD/landing" ./infra/install-landing-sync.sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart proxy
+```
+
+`restart` (not `up -d`) is the point: it re-reads the bind-mounted Caddyfile
+without re-reading `docker-compose.yml`, so services the current checkout
+doesn't know about can't be created by accident.
+
+The trade-off: `landing/` in the deploy clone is now maintained by the timer,
+so `git status` there shows it as modified. A later `scripts/deploy.sh` resets
+it and the timer restores it within 5 minutes - it is self-healing, just noisy.
+
 How it works:
 
 - A systemd timer runs [`scripts/sync-landing.sh`](../scripts/sync-landing.sh) every 5 minutes.
