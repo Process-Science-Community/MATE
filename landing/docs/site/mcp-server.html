@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MCP server - MATE Docs</title>
-<meta name="description" content="The Model Context Protocol interface gives external AI clients scoped access to the same platform. It is opt-in, and its limits are the…">
+<meta name="description" content="The Model Context Protocol interface gives external AI clients scoped access to the same platform. It is opt-in, and its limits are enforced…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,14 +829,14 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#enabling-it">Enabling it</a>
+        <a data-toc href="#enabling-the-server">Enabling the server</a>
         <a data-toc href="#authentication">Authentication</a>
         <a data-toc href="#scopes-and-toolsets">Scopes and toolsets</a>
         <a data-toc href="#conventions">Conventions</a>
         <a data-toc href="#the-data-wall">The data wall</a>
         <a data-toc href="#client-setup">Client setup</a>
-        <a data-toc href="#workflows-that-work-well">Workflows that work well</a>
-        <a data-toc href="#when-it-misbehaves">When it misbehaves</a>
+        <a data-toc href="#common-workflows">Common workflows</a>
+        <a data-toc href="#failure-modes">Failure modes</a>
     </div>
   </div>
 </details>
@@ -834,7 +890,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <ul>
         <li><a class="side-link" href="rest-api.html">REST API</a></li>
         <li><a class="side-link" href="mcp-server.html" aria-current="page">MCP server</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#enabling-it">Enabling it</a></li><li><a data-toc href="#authentication">Authentication</a></li><li><a data-toc href="#scopes-and-toolsets">Scopes and toolsets</a></li><li><a data-toc href="#conventions">Conventions</a></li><li><a data-toc href="#the-data-wall">The data wall</a></li><li><a data-toc href="#client-setup">Client setup</a></li><li><a data-toc href="#workflows-that-work-well">Workflows that work well</a></li><li><a data-toc href="#when-it-misbehaves">When it misbehaves</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#enabling-the-server">Enabling the server</a></li><li><a data-toc href="#authentication">Authentication</a></li><li><a data-toc href="#scopes-and-toolsets">Scopes and toolsets</a></li><li><a data-toc href="#conventions">Conventions</a></li><li><a data-toc href="#the-data-wall">The data wall</a></li><li><a data-toc href="#client-setup">Client setup</a></li><li><a data-toc href="#common-workflows">Common workflows</a></li><li><a data-toc href="#failure-modes">Failure modes</a></li></ul></li>
       </ul>
     </details>
     <details class="side-group" data-group="Operate" open>
@@ -867,11 +923,11 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">MCP server</h1>
-      <p class="doc-lead">The Model Context Protocol interface gives external AI clients scoped access to the same platform. It is opt-in, and its limits are the interesting part.</p>
+      <p class="doc-lead">The Model Context Protocol interface gives external AI clients scoped access to the same platform. It is opt-in, and its limits are enforced structurally rather than by prompt instructions.</p>
     </div>
     <div class="prose">
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Aspect</th><th>Detail</th></tr></thead><tbody><tr><td>Transport</td><td>Streamable HTTP at <code>/mcp</code></td></tr><tr><td>Identity</td><td>Exactly one authenticated account per call; <code>user_id</code> is never a tool argument</td></tr><tr><td>Default state</td><td><strong>Off</strong> — <code>MCP_ENABLED=true</code> mounts it, read at boot</td></tr><tr><td>Live governance</td><td>An admin can disable it, force read-only, or restrict token minting without a redeploy</td></tr><tr><td>Resources</td><td><code>mate://docs/usage</code>, <code>mate://processes</code>, <code>mate://process/{log_id}/module/{module_id}</code></td></tr><tr><td>Discovery</td><td><code>get_server_info</code> reports the live toolset and scope set; <code>mate://docs/usage</code> is the agent's starting document</td></tr></tbody></table></div></div>
-<h2 id="enabling-it">Enabling it<a class="h-anchor" href="#enabling-it" aria-label="Link to this section">#</a></h2>
+<h2 id="enabling-the-server">Enabling the server<a class="h-anchor" href="#enabling-the-server" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">.env on the server</span></figcaption>
   <pre><code>MCP_ENABLED=true
@@ -889,7 +945,7 @@ MCP_REQUIRE_EGRESS_CONSENT=true</code></pre>
 <p>Independently of the credential, each user opts in once to <em>external data access</em>; without it, tools answer <code>[consent_required]</code>. That makes consent a per-user switch rather than a per-token one, so a stolen token cannot silently widen egress.</p>
 <h2 id="scopes-and-toolsets">Scopes and toolsets<a class="h-anchor" href="#scopes-and-toolsets" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Scope</th><th>Grants</th></tr></thead><tbody><tr><td><code>processes:read</code> / <code>processes:write</code></td><td>Log metadata and aggregates / import, rename, filter, delete, folders</td></tr><tr><td><code>modules:read</code> / <code>modules:write</code> / <code>modules:manage</code></td><td>Module outputs and datasets / per-module configuration / install lifecycle</td></tr><tr><td><code>dashboards:read</code> / <code>dashboards:write</code></td><td>Read boards (own and shared) / create, edit, share, delete</td></tr><tr><td><code>jobs:read</code> / <code>jobs:control</code></td><td>List, get, wait / cancel, retry, queue pause and resume</td></tr><tr><td><code>watched:read</code> / <code>watched:write</code></td><td>Read watched folders / create, update, scan, delete</td></tr><tr><td><code>account:read</code> / <code>account:write</code></td><td>Usage summary and token list / revoke your own tokens</td></tr><tr><td><code>admin</code></td><td>The admin toolset — OAuth plus the admin realm role only</td></tr></tbody></table></div></div>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Toolset</th><th>Covers</th></tr></thead><tbody><tr><td><code>meta</code> (always on)</td><td><code>get_server_info</code>, <code>whoami</code></td></tr><tr><td><code>processes</code></td><td>Log listing and detail, activities, variants, data quality, OCEL views, folders, import, remap, re-import, duplicate, delete</td></tr><tr><td><code>analysis</code></td><td>Module inventory and availability, curated module outputs, dataset catalogue, cached guidance, module configuration, plus the convenience readers <code>get_bottlenecks</code>, <code>get_conformance</code>, <code>get_process_model</code>, <code>get_drifts</code></td></tr><tr><td><code>dashboards</code></td><td>Board CRUD, card catalogue, export and import, shares, share targets</td></tr><tr><td><code>jobs</code></td><td>List, get, wait, cancel, retry, queue control</td></tr><tr><td><code>watched</code></td><td>Watched-folder CRUD and scan</td></tr><tr><td><code>account</code></td><td>Usage summary, token list, revoke</td></tr><tr><td><code>admin</code></td><td>Cross-user jobs, users, teams, module policies, insights, MCP governance, token oversight</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Toolset</th><th>Covers</th></tr></thead><tbody><tr><td><code>meta</code> (always on)</td><td><code>get_server_info</code>, <code>whoami</code></td></tr><tr><td><code>processes</code></td><td>Log listing and detail, activities, variants, data quality, OCEL views, folders, import, remap, re-import, duplicate, delete</td></tr><tr><td><code>analysis</code></td><td>Module inventory and availability, curated module outputs, dataset catalogue, cached guidance, module configuration, plus the convenience readers <code>get_bottlenecks</code>, <code>get_conformance</code>, <code>get_process_model</code>, <code>get_drifts</code></td></tr><tr><td><code>dashboards</code></td><td>Board CRUD, card catalogue, export and import, shares, share targets</td></tr><tr><td><code>jobs</code></td><td>List, get, wait, cancel, retry, queue control</td></tr><tr><td><code>watched</code></td><td>Watched-folder CRUD and scan</td></tr><tr><td><code>account</code></td><td>Usage summary, token list, revoke</td></tr><tr><td><code>admin</code></td><td>Cross-user jobs, users, teams, insights, MCP governance, token oversight — module policy stays REST-only</td></tr></tbody></table></div></div>
 <h2 id="conventions">Conventions<a class="h-anchor" href="#conventions" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Convention</th><th>Behaviour</th></tr></thead><tbody><tr><td>Dry runs</td><td>Destructive tools take <code>confirm: bool</code>; without it they return a preview and mutate nothing.</td></tr><tr><td>Long operations</td><td>Answer with <code>{ job_id }</code>; follow up with <code>get_job</code> or block on <code>wait_for_job</code>, where a timeout returns the current state with <code>timed_out: true</code> rather than an error.</td></tr><tr><td>Pagination</td><td><code>cursor</code> and <code>limit</code> (max 200), returning <code>{ items, next_cursor, total }</code>.</td></tr><tr><td>Output cap</td><td>About 200 KB per result, truncated with a preview — narrow the query instead.</td></tr><tr><td>Rate limits</td><td>120 requests/min per user (burst 40), writes 30/min (burst 10), 4 concurrent calls, 30 s per call.</td></tr><tr><td>Errors</td><td>A stable prefix: <code>[not_found]</code>, <code>[forbidden]</code>, <code>[conflict]</code>, <code>[invalid]</code>, <code>[rate_limited]</code>, <code>[timeout]</code>, <code>[read_only]</code>, <code>[consent_required]</code>, <code>[scope_missing]</code>, <code>[confirm_required]</code>, <code>[internal]</code>.</td></tr></tbody></table></div></div>
 <h2 id="the-data-wall">The data wall<a class="h-anchor" href="#the-data-wall" aria-label="Link to this section">#</a></h2>
@@ -897,15 +953,17 @@ MCP_REQUIRE_EGRESS_CONSENT=true</code></pre>
 <h2 id="client-setup">Client setup<a class="h-anchor" href="#client-setup" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="json">
   <figcaption class="cb-head"><span class="cb-title">MCP client configuration (PAT)</span></figcaption>
-  <pre><code>{
-  &quot;mcpServers&quot;: {
-    &quot;mate&quot;: {
-      &quot;type&quot;: &quot;http&quot;,
-      &quot;url&quot;: &quot;https://mate.example.org/mcp&quot;,
-      &quot;headers&quot;: { &quot;Authorization&quot;: &quot;Bearer mate_pat_…&quot; }
-    }
-  }
-}</code></pre>
+  <pre><code><span class="j-pun">{</span>
+  <span class="j-key">&quot;mcpServers&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;mate&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+      <span class="j-key">&quot;type&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;http&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://mate.example.org/mcp&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;headers&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+        <span class="j-key">&quot;Authorization&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;Bearer mate_pat_…&quot;</span>
+      <span class="j-pun">}</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">}</span></code></pre>
 </figure>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Claude Code</span></figcaption>
@@ -913,11 +971,10 @@ MCP_REQUIRE_EGRESS_CONSENT=true</code></pre>
   --header &quot;Authorization: Bearer $MATE_PAT&quot;</code></pre>
 </figure>
 <p>For an OAuth-capable client, omit the header and point it at the same URL: the first unauthenticated call answers <code>401</code> with the Keycloak authorization server, and the client runs auth-code with PKCE.</p>
-<h2 id="workflows-that-work-well">Workflows that work well<a class="h-anchor" href="#workflows-that-work-well" aria-label="Link to this section">#</a></h2>
+<h2 id="common-workflows">Common workflows<a class="h-anchor" href="#common-workflows" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>Tools behind it</th></tr></thead><tbody><tr><td>Orient</td><td><code>get_server_info</code>, <code>whoami</code>, <code>list_processes</code></td></tr><tr><td>Import and wait</td><td><code>import_process_from_url</code> → <code>wait_for_job</code></td></tr><tr><td>Understand a process</td><td><code>get_process</code>, <code>get_process_overview</code>, then <code>get_bottlenecks</code> / <code>get_drifts</code> / <code>get_conformance</code></td></tr><tr><td>Drill into detail</td><td><code>get_variants</code> → <code>get_variant</code> → <code>get_variant_cases</code></td></tr><tr><td>Explain a number</td><td><code>get_cached_guidance</code>, <code>get_module_output</code> (cache-only, never triggers a model call)</td></tr><tr><td>Build a board</td><td><code>get_dashboard_card_catalog</code> → <code>create_dashboard</code> → <code>share_dashboard</code></td></tr><tr><td>Recover a failure</td><td><code>list_jobs(status=&quot;failed&quot;)</code> → <code>get_job</code> → <code>retry_job</code></td></tr></tbody></table></div></div>
-<h2 id="when-it-misbehaves">When it misbehaves<a class="h-anchor" href="#when-it-misbehaves" aria-label="Link to this section">#</a></h2>
+<h2 id="failure-modes">Failure modes<a class="h-anchor" href="#failure-modes" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Cause</th></tr></thead><tbody><tr><td><code>503</code> &quot;MCP is disabled&quot;</td><td>The boot flag is off, or the live admin kill switch is on.</td></tr><tr><td><code>401</code> on every call</td><td>Token missing, expired, revoked, or wrong OAuth audience.</td></tr><tr><td><code>[consent_required]</code></td><td>The user has not enabled external data access.</td></tr><tr><td><code>[scope_missing]</code></td><td>The token lacks the scope; scopes are fixed at mint time.</td></tr><tr><td><code>[read_only]</code> on a write</td><td>Server-wide read-only, from the boot flag or the live toggle.</td></tr><tr><td><code>404</code> on <code>/mcp</code></td><td>The flag never reached the container, or the proxy route is missing.</td></tr><tr><td><code>403</code> &quot;Origin not allowed&quot;</td><td>A browser-based client on a foreign origin — use a native or server-side client.</td></tr></tbody></table></div></div>
-<p>&lt;!-- Operate — deploying, configuring, backing up, and repairing an installation. --&gt;</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="rest-api.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>REST API</b></a>
@@ -1269,6 +1326,103 @@ MCP_REQUIRE_EGRESS_CONSENT=true</code></pre>
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

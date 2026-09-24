@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Backup, storage and limits - MATE Docs</title>
-<meta name="description" content="Two things hold state — the metadata database and the filesystem (or the bucket) — plus the Keycloak volume.">
+<meta name="description" content="Three stores hold state: the metadata database, the filesystem (or the bucket), and the Keycloak volume.">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,10 +829,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#what-to-back-up">What to back up</a>
-        <a data-toc href="#restoring">Restoring</a>
+        <a data-toc href="#backup-scope">Backup scope</a>
+        <a data-toc href="#restoring-a-backup">Restoring a backup</a>
         <a data-toc href="#s3-mode">S3 mode</a>
-        <a data-toc href="#fairness-on-a-shared-host">Fairness on a shared host</a>
+        <a data-toc href="#resource-limits-on-a-shared-host">Resource limits on a shared host</a>
     </div>
   </div>
 </details>
@@ -838,7 +894,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="deployment.html">Deployment</a></li>
         <li><a class="side-link" href="configuration.html">Configuration</a></li>
         <li><a class="side-link" href="backup-and-storage.html" aria-current="page">Backup, storage and limits</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#what-to-back-up">What to back up</a></li><li><a data-toc href="#restoring">Restoring</a></li><li><a data-toc href="#s3-mode">S3 mode</a></li><li><a data-toc href="#fairness-on-a-shared-host">Fairness on a shared host</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#backup-scope">Backup scope</a></li><li><a data-toc href="#restoring-a-backup">Restoring a backup</a></li><li><a data-toc href="#s3-mode">S3 mode</a></li><li><a data-toc href="#resource-limits-on-a-shared-host">Resource limits on a shared host</a></li></ul></li>
         <li><a class="side-link" href="troubleshooting.html">Troubleshooting</a></li>
       </ul>
     </details>
@@ -863,10 +919,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Backup, storage and limits</h1>
-      <p class="doc-lead">Two things hold state — the metadata database and the filesystem (or the bucket) — plus the Keycloak volume.</p>
+      <p class="doc-lead">Three stores hold state: the metadata database, the filesystem (or the bucket), and the Keycloak volume.</p>
     </div>
     <div class="prose">
-<h2 id="what-to-back-up">What to back up<a class="h-anchor" href="#what-to-back-up" aria-label="Link to this section">#</a></h2>
+<h2 id="backup-scope">Backup scope<a class="h-anchor" href="#backup-scope" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Asset</th><th>Where</th><th>Why it matters</th></tr></thead><tbody><tr><td>Metadata</td><td>Postgres (<code>app-db</code>)</td><td>Users, logs, jobs, settings, dashboards, shares, tokens.</td></tr><tr><td>Event data and results</td><td><code>data/</code> or the S3 bucket</td><td>Parquet logs, module results, retained originals.</td></tr><tr><td>Keycloak</td><td>the <code>kc-data</code> volume</td><td>Accounts, realm settings, roles, IdP configuration.</td></tr><tr><td>Module sources</td><td><code>modules/</code>, <code>data/uploaded_modules/</code></td><td>Bundled and user-installed modules.</td></tr><tr><td>Environment</td><td><code>.env</code>, <code>scripts/deploy.env</code></td><td>Secrets and deployment configuration — keep them in a secret manager.</td></tr></tbody></table></div></div>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Backup, in four commands</span></figcaption>
@@ -877,7 +933,7 @@ docker run --rm -v kc-data:/v -v &quot;$PWD&quot;:/b alpine tar czf /b/kc-data-$
 cp .env mate-env-$(date +%F).bak        # encrypt this</code></pre>
 </figure>
 <p>In S3 mode the bucket already holds the authoritative event data; the platform also writes an hourly metadata snapshot to <code>_system/metadata.dump</code> (or <code>metadata.db</code> on SQLite deployments) and archives uploaded module sources to <code>_system/modules/</code>.</p>
-<h2 id="restoring">Restoring<a class="h-anchor" href="#restoring" aria-label="Link to this section">#</a></h2>
+<h2 id="restoring-a-backup">Restoring a backup<a class="h-anchor" href="#restoring-a-backup" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p><strong>Stop the stack</strong> so nothing writes during the restore: <code>docker compose down</code>.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p><strong>Restore the files</strong>: <code>tar xzf mate-data-&lt;date&gt;.tgz</code> into the repository root.</p></div></li>
@@ -889,7 +945,7 @@ docker compose run --rm api python -m mate.api.storage.db_backup restore</code><
 </figure></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p><strong>Start the stack</strong>, then verify: sign in, open a process, run one module, check the storage gauge.</p></div></li>
   </ol>
-<p><code>db_backup restore</code> refuses to write into a database that already has tables — deliberately, because restoring over a live schema produces a half-broken platform that is harder to diagnose than an empty one. From S3, the same command restores on a fresh VM <em>before</em> the first boot, after which logs hydrate on demand as users open them.</p>
+<p><code>db_backup restore</code> refuses to write into a database that already has tables — deliberately, because restoring over a live schema produces an inconsistent platform that is harder to diagnose than an empty one. From S3, the same command restores on a fresh VM <em>before</em> the first boot, after which logs hydrate on demand as users open them.</p>
 <h2 id="s3-mode">S3 mode<a class="h-anchor" href="#s3-mode" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead><tbody><tr><td>Authoritative store</td><td>The bucket holds event logs, module results, the metadata snapshot, and uploaded module sources.</td></tr><tr><td>Local disk</td><td>A working cache. <code>LOCAL_CACHE_MAX_BYTES</code> bounds it; the reaper trims least-recently-used directories to 90 % of the budget.</td></tr><tr><td>Safety</td><td>A directory is deleted locally only after its bucket prefix is confirmed non-empty, and never while a job holds a lease on it.</td></tr><tr><td>Never synced</td><td>Staging, module virtual environments and bundles, cached interpreters — all reproducible.</td></tr></tbody></table></div></div>
 <figure class="codeblock" data-lang="bash">
@@ -898,11 +954,11 @@ docker compose run --rm api python -m mate.api.storage.db_backup restore</code><
 docker compose exec api python -m mate.api.storage.migration check     # probe + usage report
 docker compose exec api python -m mate.api.storage.migration to_s3     # copy-only, re-runnable
 
-<span class="t-note"># 2. set LOCAL_CACHE_MAX_BYTES, soak with CACHE_EVICT_DRY_RUN=true, then enable deletes</span>
+<span class="t-note"># 2. set LOCAL_CACHE_MAX_BYTES, run with CACHE_EVICT_DRY_RUN=true, then enable deletes</span>
 <span class="t-note"># to go back: run `to_local` while the mode still says s3, then flip the mode</span></code></pre>
 </figure>
 <p>Both migration directions are copy-only: they never delete the source.</p>
-<h2 id="fairness-on-a-shared-host">Fairness on a shared host<a class="h-anchor" href="#fairness-on-a-shared-host" aria-label="Link to this section">#</a></h2>
+<h2 id="resource-limits-on-a-shared-host">Resource limits on a shared host<a class="h-anchor" href="#resource-limits-on-a-shared-host" aria-label="Link to this section">#</a></h2>
 <p>By default the platform behaves as if it owned the machine. On a shared VM, bound it:</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Setting</th><th>Suggested</th></tr></thead><tbody><tr><td><code>WORKER_CONCURRENCY</code></td><td>2–3</td></tr><tr><td><code>MODULE_PROCESS_POOL_SIZE</code></td><td>2–4</td></tr><tr><td><code>MAX_OFFLOADS_PER_USER</code></td><td>At least one below the pool size, so no account can hold every slot</td></tr><tr><td><code>DUCKDB_THREADS</code> / <code>DUCKDB_MEMORY_LIMIT</code></td><td>Half the cores, half the RAM</td></tr><tr><td>Container memory limits</td><td>The shipped overlay: <code>api</code> 8 GB, <code>web</code> 768 MB, Keycloak 1 GB, databases 512 MB, proxy 128 MB</td></tr></tbody></table></div></div>
 <p>Capacity rules of thumb: RAM = 2 GB baseline + the largest expected module working set + 1 GB headroom; disk = total log size × 3 for caches and working copies, plus 20 %; and keep <code>MAX_OFFLOADS_PER_USER</code> × expected users below <code>MODULE_PROCESS_POOL_SIZE</code>, or the cap never bites.</p>
@@ -1257,6 +1313,103 @@ docker compose exec api python -m mate.api.storage.migration to_s3     # copy-on
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

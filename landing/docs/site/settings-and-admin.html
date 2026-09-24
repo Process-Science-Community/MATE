@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -868,12 +924,11 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <h2 id="settings-tabs">Settings tabs<a class="h-anchor" href="#settings-tabs" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Tab</th><th>Contents</th></tr></thead><tbody><tr><td>General</td><td>Theme (light/dark/system), back-button behaviour, notification muting, process proficiency, confidential-modules-only filter, time zone, date format, CSV delimiter and timestamp format, storage gauge.</td></tr><tr><td>Privacy</td><td>Tracking explainer, master switch and its granular toggles (form values, keyboard, pointer), your data by type, exports (NDJSON, OCEL 2.0 JSON/SQLite), delete-all. Hidden when the operator forces tracking.</td></tr><tr><td>AI</td><td>Provider, key, base URL, model, and prompt fields for <a href="mate-ai.html">MATE AI</a>.</td></tr><tr><td>API &amp; MCP</td><td>MCP endpoint and client snippet, the external-data-access consent, and personal access tokens (name + scopes at creation, secret shown once, revoke).</td></tr><tr><td>About</td><td>Version, restart the product tour, and <strong>Copy diagnostics</strong> — one blob with system facts, versions, module summaries, and recent log lines.</td></tr></tbody></table></div></div>
 <h2 id="onboarding">Onboarding<a class="h-anchor" href="#onboarding" aria-label="Link to this section">#</a></h2>
-<p>A first login walks through a welcome step (experience level), the privacy choice (omitted when tracking is forced), an embedded import form, then a seven-step product tour. Completion is per-user server state, resettable from <em>About</em>.</p>
+<p>The first login walks through a welcome step (experience level), the privacy choice (omitted when tracking is forced), an embedded import form, and then a seven-step product tour. Completion is per-user server state, resettable from <em>About</em>.</p>
 <h2 id="admin">Admin<a class="h-anchor" href="#admin" aria-label="Link to this section">#</a></h2>
 <p>The <code>admin</code> realm role unlocks an <strong>Admin</strong> section. Every page is gated server-side and says so when the role is missing.</p>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Page</th><th>Use it for</th></tr></thead><tbody><tr><td>Overview</td><td>Platform analytics: new users, logs by status and format, top users, job throughput, sessions, top pages, activity by hour.</td></tr><tr><td>Users</td><td>Search, per-user ownership detail, account deletion (Mate data plus the Keycloak identity).</td></tr><tr><td>Teams</td><td>Create, rename, delete teams; manage members.</td></tr><tr><td>Jobs</td><td>The whole queue: pause/resume, cancel, retry, force-kill a process tree, live per-job log tail.</td></tr><tr><td>Modules</td><td>Per-user installs, defaults, withholding a module platform-wide.</td></tr><tr><td>Controls</td><td>Platform-wide module configuration, the shared AI configuration, per-module model pins, worker-pool sizing.</td></tr><tr><td>Logs</td><td>Every log with owner, status, format, and a download of the original upload.</td></tr><tr><td>System</td><td>Live CPU and memory, load by source, running jobs.</td></tr><tr><td>Export</td><td>The metadata export with preview. It spans all users — treat the file as sensitive.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Page</th><th>Use it for</th></tr></thead><tbody><tr><td>Overview</td><td>Platform analytics: new users, logs by status and format, top users, jobs by status and failures, sessions, top pages, activity by hour.</td></tr><tr><td>Users</td><td>Search, per-user ownership detail, account deletion (Mate data plus the Keycloak identity).</td></tr><tr><td>Teams</td><td>Create, rename, delete teams; manage members.</td></tr><tr><td>Jobs</td><td>The whole queue: pause/resume, cancel, retry, force-kill a process tree, live per-job log tail.</td></tr><tr><td>Modules</td><td>Per-user installs, defaults, withholding a module platform-wide.</td></tr><tr><td>Controls</td><td>Platform-wide module configuration, the shared AI configuration, per-module model pins, worker-pool sizing.</td></tr><tr><td>Event logs</td><td>Every log with owner, status, format, and a download of the original upload.</td></tr><tr><td>System</td><td>Live CPU and memory, load by source, running jobs.</td></tr><tr><td>Data export</td><td>The metadata snapshot (download only — it spans all users, so treat it as sensitive) plus a filterable behaviour export with a live preview.</td></tr></tbody></table></div></div>
 <p>Anything an administrator sets at platform level wins over a user's own setting; users see a read-only banner naming who controls it.</p>
-<p>&lt;!-- Platform — how MATE works, for contributors and operators. --&gt;</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="mate-ai.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>MATE AI</b></a>
@@ -1225,6 +1280,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

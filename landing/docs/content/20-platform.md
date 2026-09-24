@@ -5,7 +5,7 @@
 # Architecture and data
 <!-- slug: architecture -->
 
-What runs, where state lives, and how a file becomes a queryable log.
+Services, state locations, and the path from an uploaded file to a queryable log.
 
 ## Services
 
@@ -79,7 +79,7 @@ mate/
 
 Logs, folders, watched folders, and teams use soft deletes: the row stays for audit and cascade bookkeeping while the data is removed.
 
-## On disk
+## On-disk layout
 
 ```tree title="data/"
 data/
@@ -123,7 +123,7 @@ Details, including migration and quota: [Backup, storage and limits](backup-and-
 
 # Jobs, modules and isolation
 
-The three mechanisms a module author and an operator both need to understand.
+The job queue, the event bus, and the module system, for module authors and operators.
 
 ## The job model
 
@@ -145,7 +145,7 @@ The queue is an in-process asyncio queue sized by `WORKER_CONCURRENCY` (default 
 
 ## The event bus
 
-In-process pub/sub, with a bounded queue per subscriber: when one fills, the oldest entry is dropped — a progress tick is expendable, a terminal event is not.
+In-process pub/sub, with a bounded queue per subscriber: when one fills, the oldest entry is dropped — acceptable for a progress tick, not for a terminal event.
 
 | Topic | Emitted when |
 | --- | --- |
@@ -162,7 +162,7 @@ In-process pub/sub, with a bounded queue per subscriber: when one fills, the old
 | Stage | Behaviour |
 | --- | --- |
 | Discovery | Scans `modules/*/manifest.yaml` one level deep, plus installed packages exposing the `mate.modules` entry point. |
-| Validation | Parses manifests and builds the dependency graph; a cycle or a missing hard dependency aborts startup with a named error. |
+| Validation | Parses manifests and builds the dependency graph; a cycle or a missing hard dependency logs a named error (`modules.discovery.dependency_cycle`, `…requirement_missing`) and drops that module plus everything depending on it — the rest still boots. |
 | Materialisation | Creates or reuses `modules/<folder>/.venv` (hashed dependency block) and bundles the frontend into `.dist/`. |
 | Mount | Routes under `/api/v1/modules/{id}/*`, event handlers on the bus, job handlers on the queue, capabilities in the registry. |
 | Gating | Per log: log model, required columns, `min_events`/`min_cases`, required modules, and the user's enable switch. |
@@ -170,7 +170,7 @@ In-process pub/sub, with a bounded queue per subscriber: when one fills, the old
 
 **Precompute** is declared by stacking `@on_event("log.imported")` and `@job` on one handler. The closure — those handlers plus everything chained off `<module_id>.completed` — is frozen onto the log at import time. A module's precompute that succeeds publishes `<module_id>.completed`; if an upstream job fails or is cancelled, its dependents are **skipped**, so a log always reaches `ready` instead of hanging in `processing`. Skipped steps appear in the import's plan; no job row is created for them.
 
-**Install paths** are all jobs: upload (`data/uploaded_modules/{id}/`), git URL (shallow clone, then the upload path), or registry (install a package, re-scan entry points). Ownership is reference-counted per user, and shared artifacts are deleted at zero owners.
+**Install** is a job: an uploaded archive (`POST /api/v1/modules/install`) lands in `data/uploaded_modules/{id}/`, the manifest is validated, dependencies materialised, the frontend bundled, and the module mounted — a failure rolls back. Git-URL and registry installs are specified in the design docs but not implemented; discovery separately picks up installed packages that expose the `mate.modules` entry point. Ownership is reference-counted per user, and shared artifacts are deleted at zero owners.
 
 ## Isolation modes
 
@@ -181,7 +181,7 @@ In-process pub/sub, with a bounded queue per subscriber: when one fills, the old
 | Subprocess | `isolation: subprocess` | A long-lived worker on the module's own interpreter | A different Python version, or a native-library conflict. |
 | Foreign runtime | `runtime: { kind: jvm }` | A worker started from the module's own fat jar | Java methods. |
 
-In-process modules run on the platform's interpreter (currently 3.12) and are ABI-locked to it: `requires-python` is a *validation gate* there, and an interpreter selector for subprocess modules. Each module's `.venv` is private, with `inherit` naming the libraries the platform already ships (pandas, numpy, pm4py, duckdb) so they are not reinstalled per module.
+In-process modules run on the platform's interpreter (currently 3.12) and are ABI-locked to it: `requires-python` is a *validation gate* there, and an interpreter selector for subprocess modules. Each module's `.venv` is private; `inherit` names libraries the platform already ships (pandas, numpy, pm4py, duckdb) — an in-process module resolves them from the platform's interpreter, while a subprocess module installs them into its own environment, because no interpreter is shared across the process boundary.
 
 The **subprocess bridge** is a Unix socket with newline-delimited JSON: a 30-second handshake, `ctx.*` calls proxied back to the host, DataFrames handed over as Parquet, a three-second soft-cancel window followed by `SIGKILL`, and automatic respawn with exponential backoff (capped at 30 s, five consecutive attempts, ladder reset after 60 s of stable uptime). The **JVM runtime** speaks the same protocol, so the SDK surface (`eventLog()`, `cache()`, `bus()`, `progress()`, …) is equivalent.
 
@@ -208,7 +208,7 @@ Logs are structured, namespaced per module, and mirrored into a bounded in-memor
 
 # Security and privacy
 
-The invariants that protect a deployment, and the controls around data leaving it.
+The invariants that protect a deployment, and the controls on data leaving it.
 
 ## Tenant isolation
 
@@ -246,11 +246,11 @@ Raw event rows, distinct column values, OCEL object rows, and file downloads are
 
 ## Usage analytics
 
-Capture is optional and local, stored in the same OCEL-shaped schema the platform uses for process analysis, so "how do people use MATE" is itself a process-mining question. Client events (page views, clicks, web vitals, errors) and server events (every authenticated request, named by route template) are covered by a master switch plus granular toggles for form values, keyboard, and pointer movement. `USER_TRACKING_ONBOARDING` decides whether tracking starts on, off, or forced on with the opt-out hidden. Exports are NDJSON, OCEL 2.0 JSON, or OCEL 2.0 SQLite, and nothing leaves the host.
+Capture is optional and local, stored in the same OCEL-shaped schema the platform uses for process analysis, so the platform's own usage data can be analysed with the same methods. Client events (page views, clicks, web vitals, errors) and server events (every authenticated request, named by route template) are covered by a master switch plus granular toggles for form values, keyboard, and pointer movement. `USER_TRACKING_ONBOARDING` decides whether tracking starts on, off, or forced on with the opt-out hidden. Exports are NDJSON, OCEL 2.0 JSON, or OCEL 2.0 SQLite, and nothing leaves the host.
 
 Routes deliberately avoid ad-blocker trigger words: `/usage`, `/sync`, `/insights` instead of `/analytics`, `/events`, `/track`.
 
-## Fairness on a shared host
+## Resource limits on a shared host
 
 | Setting | Bounds |
 | --- | --- |
@@ -264,7 +264,7 @@ Routes deliberately avoid ad-blocker trigger words: `/usage`, `/sync`, `/insight
 
 - [ ] Rotate `AUTH_SECRET` and `KEYCLOAK_CLIENT_SECRET` before any non-local deployment.
 - [ ] Replace the seeded realm user's password; grant `admin` deliberately, never by default.
-- [ ] Keep `DEMO_MODE` off everywhere except a throwaway workshop host.
+- [ ] Keep `DEMO_MODE` off everywhere except a disposable workshop host.
 - [ ] Keep `MCP_ENABLED=false` unless you need it; prefer PATs over broad OAuth grants.
 - [ ] Set `MAX_OFFLOADS_PER_USER`, `DUCKDB_THREADS`, and container memory limits on a shared host.
 - [ ] Back up both `data/` and the metadata database, and verify a restore once.

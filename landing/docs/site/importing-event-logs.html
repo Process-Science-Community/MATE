@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -774,7 +830,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
         <a data-toc href="#formats">Formats</a>
-        <a data-toc href="#the-wizard">The wizard</a>
+        <a data-toc href="#the-mapping-wizard">The mapping wizard</a>
         <a data-toc href="#progress-and-repair">Progress and repair</a>
         <a data-toc href="#after-the-import">After the import</a>
     </div>
@@ -795,7 +851,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Using MATE</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="importing-event-logs.html" aria-current="page">Importing event logs</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#formats">Formats</a></li><li><a data-toc href="#the-wizard">The wizard</a></li><li><a data-toc href="#progress-and-repair">Progress and repair</a></li><li><a data-toc href="#after-the-import">After the import</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#formats">Formats</a></li><li><a data-toc href="#the-mapping-wizard">The mapping wizard</a></li><li><a data-toc href="#progress-and-repair">Progress and repair</a></li><li><a data-toc href="#after-the-import">After the import</a></li></ul></li>
         <li><a class="side-link" href="working-with-logs.html">Working with logs</a></li>
         <li><a class="side-link" href="exploring-a-process.html">Exploring a process</a></li>
         <li><a class="side-link" href="modules.html">Modules</a></li>
@@ -869,7 +925,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <h2 id="formats">Formats<a class="h-anchor" href="#formats" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Format</th><th>Extensions</th><th>Mapping step</th></tr></thead><tbody><tr><td>XES</td><td><code>.xes</code>, <code>.xes.gz</code></td><td>none — the file carries its own schema</td></tr><tr><td>CSV</td><td><code>.csv</code></td><td>required: case id, activity, timestamp</td></tr><tr><td>XML</td><td><code>.xml</code></td><td>required: the event element, then column roles</td></tr><tr><td>JSON event log</td><td><code>.json</code></td><td>required: the event path, then column roles</td></tr><tr><td>OCEL 2.0</td><td><code>.jsonocel</code>, <code>.xmlocel</code>, <code>.sqlite</code></td><td>none — object-centric structure is in the file</td></tr></tbody></table></div></div>
 <p>All formats accept <code>.gz</code>, <code>.bz2</code>, <code>.xz</code>, and <code>.zip</code> wrappers.</p>
-<h2 id="the-wizard">The wizard<a class="h-anchor" href="#the-wizard" aria-label="Link to this section">#</a></h2>
+<h2 id="the-mapping-wizard">The mapping wizard<a class="h-anchor" href="#the-mapping-wizard" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p><strong>Choose a file</strong> — drop it on the zone or pick it from disk.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p><strong>Upload</strong> — streams to a staging area with byte-level progress; nothing is parsed yet.</p></div></li>
@@ -877,15 +933,15 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p><strong>Map</strong> — confirm the roles and the format-specific extras.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p><strong>Import</strong> — parse, normalise, write Parquet, dispatch module precompute.</p></div></li>
   </ol>
-<p>Staged files live under <code>data/staging/{user}/{token}/</code> and are swept after two hours, so an abandoned wizard leaves nothing behind.</p>
+<p>Staged files live under <code>data/staging/{user}/{token}/</code> and are removed after two hours, so an abandoned wizard leaves nothing behind.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Role</th><th>Required</th><th>Unlocks</th></tr></thead><tbody><tr><td><code>case_id</code></td><td>yes</td><td>Cases, variants, everything case-scoped.</td></tr><tr><td><code>activity</code></td><td>yes</td><td>Activities, DFGs, models, complexity.</td></tr><tr><td><code>timestamp</code></td><td>yes</td><td>Ordering, time bounds, trends.</td></tr><tr><td><code>end_timestamp</code></td><td>no</td><td>Durations, waiting times, performance metrics.</td></tr><tr><td><code>resource</code></td><td>no</td><td>Actor analyses (<code>actor_performance</code> requires it).</td></tr><tr><td><code>cost</code></td><td>no</td><td>Cost aggregations where a module uses them.</td></tr></tbody></table></div></div>
-<p>Format extras appear where they apply: CSV delimiter, XML event element, JSON event path, and an explicit timestamp format when samples are ambiguous. Each row shows its confidence (<code>user</code>, <code>fuzzy</code>, <code>fallback</code>); <strong>AI assist</strong> re-proposes low-confidence rows when a provider is configured. Any edit re-opens the confirmation gate, and the import only starts when you press <strong>Confirm mapping</strong>.</p>
+<p>Format extras appear where they apply: CSV delimiter, XML event element, a JSON array key, and an optional timestamp format (offered for every mapping-based format, used when the sample is ambiguous). Each row carries a confidence chip — <code>user</code> → <em>Your choice</em>, <code>exact</code> → <em>Matched</em>, <code>fuzzy</code> → <em>Guessed</em>, <code>fallback</code> → <em>Inferred from data</em>. When a provider is configured the wizard re-proposes low-confidence rows automatically and marks them <strong>AI</strong>. Any edit re-opens the confirmation gate; <strong>Confirm mapping</strong> unlocks the import, and <strong>Start import</strong> runs it.</p>
 <aside class="callout callout-tip"><span class="callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V15h8v-.3A7 7 0 0 0 12 2Z"/></svg></span><div class="callout-body"><span class="label">Tip</span><p>A wrong timestamp format is the most common import mistake. If the probe preview shows dates but a module later reports empty time bounds, remap the roles in the log's settings tab.</p></div></aside>
 <h2 id="progress-and-repair">Progress and repair<a class="h-anchor" href="#progress-and-repair" aria-label="Link to this section">#</a></h2>
-<p>The checklist mirrors the real job: <em>Reading data</em>, <em>Processing events</em>, <em>Saving</em>, then one row per module (<code>Queued</code>, <code>Running</code>, <code>Waiting on &lt;module&gt;</code>, <code>Skipped</code>, <code>Done</code>).</p>
+<p>The checklist mirrors the real job: <em>Uploading file</em>, <em>Reading columns</em>, <em>Reading data</em>, <em>Processing events</em>, <em>Saving</em>, then a <em>Preparing modules</em> step with one row per module (<code>Queued</code>, <code>Running</code>, <code>Waiting on &lt;module&gt;</code>, <code>Skipped</code>, <code>Done</code>).</p>
 <p>Fixable problems are repaired rather than rejected — case-insensitive duplicate columns are merged, values are coerced to their column type, timestamps normalised — and the count of fixes is reported. A module that fails is marked and leaves the log importable.</p>
 <h2 id="after-the-import">After the import<a class="h-anchor" href="#after-the-import" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Action</th><th>Where</th><th>Effect</th></tr></thead><tbody><tr><td>Re-import</td><td>Row menu, or <em>Maintenance</em> in the log's settings</td><td>Rebuilds from the retained original upload.</td></tr><tr><td>Remap columns</td><td>Log settings → <em>Column roles</em></td><td>Forces new roles and re-runs the import.</td></tr><tr><td>Duplicate</td><td>Row menu</td><td>Clones the log row and directory — useful for comparing filtered views.</td></tr><tr><td>Rename</td><td>Inline in the list</td><td>Display name only; URLs keep the log id.</td></tr><tr><td>Delete</td><td>Row menu</td><td>Cancels its jobs, removes the data on disk and the S3 prefix.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Action</th><th>Where</th><th>Effect</th></tr></thead><tbody><tr><td>Re-run import</td><td>Row menu, or <em>Maintenance</em> in the log's settings</td><td>Rebuilds from the retained original upload.</td></tr><tr><td>Remap columns</td><td>Log settings → <em>Column roles</em></td><td>Forces new roles and re-runs the import.</td></tr><tr><td>Duplicate</td><td>Row menu</td><td>Clones the log row and directory — useful for comparing filtered views.</td></tr><tr><td>Rename</td><td>Row menu → <em>Rename</em> (dialog)</td><td>Display name only; URLs keep the log id.</td></tr><tr><td>Delete</td><td>Row menu</td><td>Cancels its jobs, removes the data on disk and the S3 prefix.</td></tr></tbody></table></div></div>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="your-first-analysis.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Your first analysis</b></a>
@@ -1237,6 +1293,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

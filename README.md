@@ -2,13 +2,16 @@
 
 A locally-hosted, modular process mining platform. Two services (`api` + `web`)
 plus a bundled Keycloak (`keycloak` + `keycloak-db`) for OIDC login,
-embedded application data stores (SQLite + DuckDB + Parquet), no broker, no cloud.
+on-disk data stores (Postgres metadata in the compose stack, SQLite in host dev
+and tests; DuckDB + Parquet for event logs), no broker, no cloud.
 Each user gets a fully isolated workspace – their event logs, jobs, AI keys,
 and module config never bleed across accounts.
 
 All documentation is indexed in [`docs/README.md`](./docs/README.md). For the
 full design rationale, read [`docs/INSTRUCTIONS.md`](./docs/INSTRUCTIONS.md). For
 the module authoring contract, read [`modules/README.md`](./modules/README.md).
+The user manual lives in [`landing/docs/`](./landing/docs/) — rebuild it with
+`make docs` and preview it at `http://localhost:8081/docs/site/introduction.html`.
 
 ## Quick start
 

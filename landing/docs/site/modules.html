@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,7 +829,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#the-library">The library</a>
+        <a data-toc href="#module-library">Module library</a>
         <a data-toc href="#availability">Availability</a>
         <a data-toc href="#bundled-modules">Bundled modules</a>
         <a data-toc href="#ownership">Ownership</a>
@@ -798,7 +854,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="working-with-logs.html">Working with logs</a></li>
         <li><a class="side-link" href="exploring-a-process.html">Exploring a process</a></li>
         <li><a class="side-link" href="modules.html" aria-current="page">Modules</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#the-library">The library</a></li><li><a data-toc href="#availability">Availability</a></li><li><a data-toc href="#bundled-modules">Bundled modules</a></li><li><a data-toc href="#ownership">Ownership</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#module-library">Module library</a></li><li><a data-toc href="#availability">Availability</a></li><li><a data-toc href="#bundled-modules">Bundled modules</a></li><li><a data-toc href="#ownership">Ownership</a></li></ul></li>
         <li><a class="side-link" href="jobs-and-the-interface.html">Jobs and the interface</a></li>
         <li><a class="side-link" href="dashboards.html">Dashboards</a></li>
         <li><a class="side-link" href="mate-ai.html">MATE AI</a></li>
@@ -866,19 +922,19 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <p class="doc-lead">Modules are the platform's capabilities. The <strong>Modules</strong> page manages which ones your account has.</p>
     </div>
     <div class="prose">
-<h2 id="the-library">The library<a class="h-anchor" href="#the-library" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Element</th><th>Detail</th></tr></thead><tbody><tr><td>Card</td><td>Name, version, category, description, citation count.</td></tr><tr><td>Enable switch</td><td>Turns the module on or off for your account; disabled modules disappear from grids and dashboards.</td></tr><tr><td>Configure</td><td>The settings form generated from the module's schema.</td></tr><tr><td>Menu</td><td><em>View manifest</em>, <em>Update</em>, <em>Uninstall</em>.</td></tr><tr><td>Import</td><td>Upload a <code>.zip</code>/<code>.tar.gz</code>, install from a git URL, or install from a registry package.</td></tr></tbody></table></div></div>
-<p>Installing runs as a job: unpack, validate the manifest, <code>uv sync</code>, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed. No restart is involved.</p>
-<p>The module detail page shows the rendered README, the parsed manifest, resolved dependencies, citations and artifacts, the configuration forms, and a live tail of that module's log lines.</p>
+<h2 id="module-library">Module library<a class="h-anchor" href="#module-library" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Element</th><th>Detail</th></tr></thead><tbody><tr><td>Row</td><td>Name, version, description, a <em>Configure</em> link, and the enable switch. Modules are grouped under category headings.</td></tr><tr><td>Enable switch</td><td>Turns the module on or off for your account; disabled modules disappear from grids and dashboards.</td></tr><tr><td>Configure</td><td>The settings form generated from the module's schema.</td></tr><tr><td>Import</td><td>Upload an archive — <code>.zip</code>, <code>.tar</code>, <code>.tar.gz</code>, or <code>.tgz</code>.</td></tr></tbody></table></div></div>
+<p>Installation runs as a job: unpack, validate the manifest, <code>uv sync</code>, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed, and no restart is needed.</p>
+<p>The module detail page shows an About popover (description, longer <em>about</em>, cited works, artifacts), the <em>Provides</em>/<em>Consumes</em> lists, the configuration forms, a live tail of that module's log lines, and the <em>Uninstall</em> action in its danger zone.</p>
 <h2 id="availability">Availability<a class="h-anchor" href="#availability" aria-label="Link to this section">#</a></h2>
 <p>A module is offered for a log only when all of these hold:</p>
 <ul><li>the log model matches (<code>case_centric</code> or <code>object_centric</code>),</li><li>every column in <code>required_columns</code> exists,</li><li><code>min_events</code> and <code>min_cases</code> are met,</li><li>every module in <code>requirements.modules</code> is installed for your account,</li><li>the module is enabled for your account.</li></ul>
 <p>A missing <code>optional_modules</code> entry does not block it; the card is marked <strong>Limited</strong> and the module is expected to degrade gracefully.</p>
 <h2 id="bundled-modules">Bundled modules<a class="h-anchor" href="#bundled-modules" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Id</th><th>Category</th><th>Needs</th><th>Produces</th></tr></thead><tbody><tr><td>Discovery</td><td><code>discovery</code></td><td>foundation</td><td><code>case_id</code>, <code>activity</code>, <code>timestamp</code>; ≥50 events, ≥2 cases</td><td>DFG, Petri nets, process tree, heuristics net, BPMN; datasets + 3 widgets</td></tr><tr><td>Performance</td><td><code>performance</code></td><td>foundation</td><td>case, activity, timestamp</td><td>Throughput, cycle and lead times, P90, bottleneck ranking; 3 widgets</td></tr><tr><td>OCEL discovery</td><td><code>ocel_discovery</code></td><td>foundation</td><td>object-centric log</td><td>OC-DFG, object-centric Petri net, per-type summaries; 4 widgets</td></tr><tr><td>Performance (JVM)</td><td><code>performance_java</code></td><td>foundation</td><td>case, activity, timestamp; a JRE</td><td>Timing metrics computed in Java; 3 datasets</td></tr><tr><td>Complexity</td><td><code>complexity</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>Entropy, Lempel-Ziv, affinity, structure, Pentland metrics; 2 widgets</td></tr><tr><td>Complexity v2</td><td><code>complexity_v2</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>A 28-metric suite plus a transition-probability matrix</td></tr><tr><td>Complexity over time</td><td><code>complexity_over_time</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>Complexity metrics per time slice</td></tr><tr><td>Complexity v2 over time</td><td><code>complexity_v2_over_time</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>The 28-metric suite per time slice</td></tr><tr><td>Conformance</td><td><code>conformance</code></td><td>advanced</td><td>a reference BPMN; ≥50 events</td><td>Fitness, precision, ranked deviations; 2 widgets</td></tr><tr><td>CV4CDD</td><td><code>cv4cdd</code></td><td>advanced</td><td>≥200 events, ≥20 cases, model upload</td><td>CNN-based concept-drift detections</td></tr><tr><td>Concept drift explainer</td><td><code>concept_drift_explainer</code></td><td>advanced</td><td><code>cv4cdd</code>; ≥200 events, ≥20 cases; OpenAI + Pinecone</td><td>Ranked, citation-backed explanations for each drift</td></tr><tr><td>Log evolution</td><td><code>log_evolution</code></td><td>advanced</td><td>case, activity, timestamp</td><td>Arrivals vs completions, WIP, activity mix, dotted chart; 4 widgets</td></tr><tr><td>Performance over time</td><td><code>performance_over_time</code></td><td>advanced</td><td>case, activity, timestamp</td><td>Performance KPIs per time slice</td></tr><tr><td>Actor performance</td><td><code>actor_performance</code></td><td>advanced</td><td><code>resource</code>; ≥100 events, ≥5 cases; Neo4j sidecar</td><td>Waiting-time decomposition per actor behaviour</td></tr><tr><td>Agent simulator</td><td><code>agentsimulator</code></td><td>advanced</td><td>case, activity, timestamp</td><td>Agent-based simulation plus a fidelity score; 3 widgets</td></tr><tr><td>PComp</td><td><code>pcomp</code></td><td>comparison</td><td>two logs</td><td>Two-sample hypothesis test on Earth Mover's Distance</td></tr><tr><td>Process comparison</td><td><code>process_comparison</code></td><td>comparison</td><td>two logs</td><td>Side-by-side DFG diff, variant differences, EMD similarity</td></tr></tbody></table></div></div>
-<p>Three deserve a note: <strong>Discovery</strong> can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as datasets other modules can render. <strong>Performance</strong> declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. <strong>Concept drift explainer</strong> is the reference for a module with an external dependency chain and an <code>ai_models</code> block that renders its own model pickers.</p>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Id</th><th>Category</th><th>Needs</th><th>Produces</th></tr></thead><tbody><tr><td>Discovery</td><td><code>discovery</code></td><td>foundation</td><td><code>case_id</code>, <code>activity</code>, <code>timestamp</code>; ≥50 events, ≥2 cases</td><td>DFG, Petri nets, process tree, heuristics net, BPMN; datasets + 3 widgets</td></tr><tr><td>Performance</td><td><code>performance</code></td><td>foundation</td><td>case, activity, timestamp</td><td>Throughput, cycle and lead times, P90, bottleneck ranking; 3 widgets</td></tr><tr><td>OCEL discovery</td><td><code>ocel_discovery</code></td><td>foundation</td><td>object-centric log</td><td>OC-DFG, object-centric Petri net, per-type summaries; 4 widgets</td></tr><tr><td>Performance (JVM)</td><td><code>performance_java</code></td><td>foundation</td><td>case, activity, timestamp; a JRE</td><td>Timing metrics computed in Java; 3 datasets</td></tr><tr><td>Complexity</td><td><code>complexity</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>Entropy, Lempel-Ziv, affinity, structure, Pentland metrics; 2 widgets</td></tr><tr><td>Complexity v2</td><td><code>complexity_v2</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>A 28-metric suite plus a transition-probability matrix</td></tr><tr><td>Complexity over time</td><td><code>complexity_over_time</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>Complexity metrics per time slice</td></tr><tr><td>Complexity v2 over time</td><td><code>complexity_v2_over_time</code></td><td>advanced</td><td>≥50 events, ≥2 cases</td><td>The 28-metric suite per time slice</td></tr><tr><td>Conformance</td><td><code>conformance</code></td><td>advanced</td><td>a reference BPMN; ≥50 events</td><td>Fitness, precision, ranked deviations; 2 widgets</td></tr><tr><td>CV4CDD</td><td><code>cv4cdd</code></td><td>advanced</td><td>≥200 events, ≥20 cases, model upload</td><td>CNN-based concept-drift detections</td></tr><tr><td>Concept drift explainer</td><td><code>concept_drift_explainer</code></td><td>advanced</td><td><code>cv4cdd</code>; ≥200 events, ≥20 cases; OpenAI + Pinecone</td><td>Ranked, citation-backed explanations for each drift</td></tr><tr><td>Log evolution</td><td><code>log_evolution</code></td><td>advanced</td><td>case, activity, timestamp</td><td>Arrivals vs completions, WIP, activity mix, dotted chart; 4 widgets</td></tr><tr><td>Performance over time</td><td><code>performance_over_time</code></td><td>advanced</td><td>case, activity, timestamp</td><td>Performance KPIs per time slice</td></tr><tr><td>Actor performance</td><td><code>actor_performance</code></td><td>advanced</td><td><code>resource</code>; ≥100 events, ≥5 cases; Neo4j sidecar</td><td>Waiting-time decomposition per actor behaviour</td></tr><tr><td>Agent simulator</td><td><code>agentsimulator</code></td><td>advanced</td><td>case, activity, timestamp, <code>resource</code>; ≥200 events, ≥20 cases</td><td>Agent-based simulation plus a fidelity score; 3 widgets</td></tr><tr><td>PComp</td><td><code>pcomp</code></td><td>comparison</td><td>two logs</td><td>Two-sample hypothesis test on Earth Mover's Distance</td></tr><tr><td>Process comparison</td><td><code>process_comparison</code></td><td>comparison</td><td>two logs</td><td>Side-by-side DFG diff, variant differences, EMD similarity</td></tr></tbody></table></div></div>
+<p>Three modules have notable behaviour: <strong>Discovery</strong> can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as datasets other modules can render. <strong>Performance</strong> declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. <strong>Concept drift explainer</strong> is the reference for a module with an external dependency chain and an <code>ai_models</code> block that renders its own model pickers.</p>
 <h2 id="ownership">Ownership<a class="h-anchor" href="#ownership" aria-label="Link to this section">#</a></h2>
-<p>Module ownership is per account and reference-counted: uninstalling removes <em>your</em> install, and shared artifacts (virtual environment, bundle, caches) are deleted when the last owner leaves. <strong>Restore defaults</strong> re-adds the modules you removed. Uploaded modules live in <code>data/uploaded_modules/</code>, never in the repository's <code>modules/</code> tree. Operators can withhold a module from everyone, or change what new accounts get, on <em>Admin → Modules</em>.</p>
+<p>Module ownership is per account and reference-counted: uninstalling removes <em>your</em> install, and shared artifacts (virtual environment, bundle, caches) are deleted when the last owner leaves. <strong>Restore defaults</strong> re-adds the modules you removed. Uploaded modules live in <code>data/uploaded_modules/</code>, never in the repository's <code>modules/</code> tree. Operators can withhold a module from new accounts, or change what new accounts get, on <em>Admin → Modules</em>; existing owners keep their install.</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="exploring-a-process.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Exploring a process</b></a>
@@ -1230,6 +1286,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

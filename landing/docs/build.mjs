@@ -13,10 +13,17 @@
  *
  *   - search-index.json   fetched on first Ctrl+K, so no index in the pages
  *
+ *   - llms.txt            machine-readable index of every chapter, for AI tools
+ *
  * Content components (see README.md for the authoring syntax): code cards with
  * a title strip and comment dimming, callouts with icon badges, :::steps rails,
  * :::cards grids, method chips for HTTP routes, [[chips]] for metadata, tables,
  * file trees, and key caps.
+ *
+ * Copying is global, never marked up: the docs script tags every inline code
+ * span (route paths, ids, flags) as a click-to-copy target and shows a floating
+ * "Copied" pill, while a code card keeps its own button in the header strip.
+ * Links and diagram nodes are exempt.
  *
  * There is no index.html: /docs/ enters at the first chapter. See
  * ../docs/index.html, the redirect stub for the bare /docs/ URL.
@@ -65,18 +72,123 @@ const slug = (s) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "chapter";
 
 /** Links are absolute (GitHub or external) or in-site chapter slugs; anything
- *  else is resolved relative to the published docs folder as a fallback. */
+ *  else is resolved relative to the published docs folder as a fallback.
+ *  A fragment (`chapter.html#section`) must not defeat the `.html` test, or the
+ *  link gains a `../` and 404s. */
 function linkHref(url) {
   if (/^(https?:|mailto:|#)/.test(url)) return url;
-  if (url.endsWith(".html")) return url; // intra-site
+  if (url.split("#")[0].endsWith(".html")) return url; // intra-site
   return "../" + url.replace(/^\.\//, ""); // repo/docs-relative
 }
 
 const plainText = (s) => s.replace(/\*\*|`/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
 
+/* ---------- JSON ---------- */
+
+/* One tokenizer for every JSON surface: strings (keys included), numbers,
+   literals, punctuation — and a bare `…`, the docs' mark for elided members.
+   `formatJson` re-indents, `highlightJson` colours; both tolerate the ellipsis,
+   so a shape sketch renders as JSON rather than as a minified line of text. */
+const JSON_TOKEN = /"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|…|[{}\[\],:]/g;
+
+const unesc = (s) =>
+  s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+
+const CLOSER = { "{": "}", "[": "]" };
+
+/** Pretty-print JSON-ish text with two-space indent, or null if it is not JSON. */
+function formatJson(text) {
+  const src = text.trim();
+  if (!/^[{[]/.test(src)) return null;
+  const tokens = src.match(JSON_TOKEN);
+  if (!tokens) return null;
+  /* Every character must belong to a token, or the text is not JSON and stays as
+     authored. Checked by walking the matches — a string may hold spaces, so the
+     source cannot simply be compared with whitespace stripped. */
+  const scan = new RegExp(JSON_TOKEN.source, "g");
+  let pos = 0;
+  for (let m; (m = scan.exec(src)); ) {
+    if (m.index !== pos && src.slice(pos, m.index).trim()) return null;
+    pos = m.index + m[0].length;
+  }
+  if (src.slice(pos).trim()) return null;
+  const pad = (n) => "  ".repeat(n);
+  let out = "";
+  let depth = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (CLOSER[tok]) {
+      const close = CLOSER[tok];
+      // `{…}`, `[…]`, `{}` and `[]` stay on one line — the sketch stays compact
+      const collapsed = tokens[i + 1] === "…" || tokens[i + 1] === close;
+      if (collapsed && tokens[i + 2] === close) {
+        out += tok + (tokens[i + 1] === "…" ? "…" : "") + close;
+        i += 2;
+        continue;
+      }
+      out += tok + "\n" + pad(++depth);
+      continue;
+    }
+    if (tok === "}" || tok === "]") {
+      out += "\n" + pad(--depth) + tok;
+      continue;
+    }
+    if (tok === ",") {
+      // an elided-members ellipsis trails the last field rather than owning a line
+      if (tokens[i + 1] === "…") {
+        out += ", …";
+        i++;
+        continue;
+      }
+      out += ",\n" + pad(depth);
+      continue;
+    }
+    if (tok === ":") {
+      // a whole value that collapsed keeps its key's line
+      const [a, b, c] = [tokens[i + 1], tokens[i + 2], tokens[i + 3]];
+      if (a && CLOSER[a] && (b === "…" || b === CLOSER[a]) && c === CLOSER[a]) {
+        out += ": " + a + (b === "…" ? "…" : "") + c;
+        i += 3;
+        continue;
+      }
+      out += ": ";
+      continue;
+    }
+    out += tok;
+  }
+  return out;
+}
+
+/** Colour the tokens of already-formatted JSON text. */
+function highlightJson(text) {
+  return text.replace(JSON_TOKEN, (tok, off, all) => {
+    if (tok[0] === '"') {
+      const after = all.slice(off + tok.length).replace(/^[ \t]*/, "");
+      const kind = after[0] === ":" ? "j-key" : "j-str";
+      return `<span class="${kind}">${esc(tok)}</span>`;
+    }
+    if (/^(true|false|null)$/.test(tok)) return `<span class="j-lit">${tok}</span>`;
+    if (/^[-\d]/.test(tok)) return `<span class="j-num">${tok}</span>`;
+    if (tok === "…") return `<span class="j-ell">…</span>`;
+    return `<span class="j-pun">${esc(tok)}</span>`;
+  });
+}
+
+/** A JSON code span (HTML-escaped source in) as a formatted, coloured block. */
+function jsonBlock(source) {
+  const formatted = formatJson(unesc(source));
+  if (!formatted || !formatted.includes("\n")) return null;
+  return `<pre class="jblock">${highlightJson(formatted)}</pre>`;
+}
+
 /* ---------- inline markdown ---------- */
 
-function inline(src) {
+function inline(src, opts = {}) {
   let s = esc(src);
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (_, c) => {
@@ -91,13 +203,26 @@ function inline(src) {
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
   // A code span that opens with an HTTP method becomes a chip plus the path
-  // ("`GET /event-logs`") — the REST chapter is a long table of them.
+  // ("`GET /event-logs`") — the REST chapter is a long table of them. A span
+  // naming several verbs ("`GET|PATCH|DELETE /event-logs/{id}`") gets one chip each.
   s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => {
     const c = codes[+i];
-    const m = c.match(/^(GET|POST|PUT|PATCH|DELETE) (\S.*)$/);
-    return m
-      ? `<span class="mchip m-${m[1].toLowerCase()}">${m[1]}</span><code>${m[2]}</code>`
-      : `<code>${c}</code>`;
+    const m = c.match(
+      /^((?:GET|POST|PUT|PATCH|DELETE)(?:\|(?:GET|POST|PUT|PATCH|DELETE))*)\s+(\S.*)$/
+    );
+    if (m) {
+      const chips = m[1]
+        .split("|")
+        .map((verb) => `<span class="mchip m-${verb.toLowerCase()}">${verb}</span>`)
+        .join("");
+      return `${chips}<code>${m[2]}</code>`;
+    }
+    // In a table, JSON renders as JSON: formatted, indented and coloured.
+    if (opts.block && c.length >= 44) {
+      const block = jsonBlock(c);
+      if (block) return block;
+    }
+    return `<code>${c}</code>`;
   });
   return s;
 }
@@ -154,6 +279,12 @@ function parseBlocks(lines) {
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) {
+      i++;
+      continue;
+    }
+    /* A stand-alone HTML comment is authoring scaffolding (a generated-region
+       marker, a note to the next editor) — it must never reach the page. */
+    if (/^<!--[\s\S]*-->$/.test(line.trim())) {
       i++;
       continue;
     }
@@ -325,9 +456,12 @@ function codeBody(b) {
 
 function renderCode(b) {
   const label = b.title || LANG_LABEL[b.lang] || (b.lang ? b.lang.toUpperCase() : "Code");
+  const isJson = b.lang === "json" || (!b.lang && /^[{[]/.test(b.code.trim()));
+  const formatted = isJson ? formatJson(b.code) : null;
+  const body = formatted ? highlightJson(formatted) : codeBody(b);
   return `<figure class="codeblock"${b.lang ? ` data-lang="${esc(b.lang)}"` : ""}>
   <figcaption class="cb-head"><span class="cb-title">${esc(label)}</span></figcaption>
-  <pre><code>${codeBody(b)}</code></pre>
+  <pre><code>${body}</code></pre>
 </figure>`;
 }
 
@@ -337,19 +471,53 @@ function renderListItems(items) {
     .join("");
 }
 
-function renderTable(rows) {
-  const cells = (r) =>
-    r
-      .replace(/^\|/, "")
-      .replace(/\|$/, "")
-      .split("|")
-      .map((c) => c.trim());
+/* Split a table row on the pipes that actually separate cells. A pipe inside a
+   code span (`` `GET|POST /folders` ``) belongs to the cell, and `\|` is a
+   literal pipe — without this, one such cell shifts every column after it. */
+function splitTableRow(row) {
+  const s = row.trim();
+  const out = [];
+  let buf = "";
+  let inCode = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "\\" && s[i + 1] === "|") {
+      buf += "|";
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      inCode = !inCode;
+      buf += ch;
+      continue;
+    }
+    if (ch === "|" && !inCode) {
+      if (i === 0) continue; // the row's leading pipe
+      out.push(buf);
+      buf = "";
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf.trim()) out.push(buf); // a trailing pipe leaves no cell behind it
+  return out.map((c) => c.trim());
+}
+
+function renderTable(rows, wide) {
+  const cells = (r) => splitTableRow(r);
   const head = cells(rows[0]);
   const body = rows.slice(1).filter((r) => !/^[\s|:-]+$/.test(r)).map(cells);
-  let html = `<div class="tbl"><div class="tbl-scroll"><table><thead><tr>`;
+  /* A wide table pins its column widths (`:::wide 9 23 34 34`) instead of letting
+     min-content push it into a horizontal scroll — the reader keeps the row in
+     view. Cells may then break mid-token, which is why only data tables use it. */
+  const cols = wide
+    ? `<colgroup>${wide.map((w) => `<col style="width:${w}%">`).join("")}</colgroup>`
+    : "";
+  let html = `<div class="tbl${wide ? " tbl-fixed" : ""}"><div class="tbl-scroll"><table>${cols}<thead><tr>`;
   html += head.map((c) => `<th>${inline(c)}</th>`).join("");
   html += `</tr></thead><tbody>`;
-  for (const r of body) html += `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`;
+  for (const r of body)
+    html += `<tr>${r.map((c) => `<td>${inline(c, { block: true })}</td>`).join("")}</tr>`;
   html += `</tbody></table></div></div>`;
   return html;
 }
@@ -522,13 +690,20 @@ function renderStack(raw) {
 function renderDirective(b, ids) {
   if (b.name === "steps") return renderSteps(b.blocks);
   if (b.name === "cards") return renderCardGridFromBlocks(b.blocks);
+  if (b.name === "wide") {
+    const widths = (b.arg || "")
+      .split(/[\s/,]+/)
+      .map(Number)
+      .filter((n) => n > 0);
+    return b.blocks.map((x) => renderBlock(x, ids, { wide: widths })).join("\n");
+  }
   if (b.name === "flow" || b.name === "stack")
     return diagramFigure(b.name, b.raw || [], b.arg);
   /* an unknown directive renders its contents rather than swallowing them */
   return b.blocks.map((x) => renderBlock(x, ids)).join("\n");
 }
 
-function renderBlock(b, ids) {
+function renderBlock(b, ids, opts = {}) {
   switch (b.t) {
     case "h2":
     case "h3":
@@ -539,7 +714,7 @@ function renderBlock(b, ids) {
     case "code":
       return renderCode(b);
     case "table":
-      return renderTable(b.rows);
+      return renderTable(b.rows, opts.wide);
     case "callout":
       return renderCallout(b.kind, b.text);
     case "ul":
@@ -1086,6 +1261,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -1099,6 +1281,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -1127,6 +1330,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1321,7 +1552,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -1664,6 +1895,103 @@ const DOCS_JS = `
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = ${JSON.stringify(ICON_COPY)};
+    var CHECK = ${JSON.stringify(ICON_CHECK)};
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 
@@ -2075,6 +2403,38 @@ function buildSearchIndex(chapters) {
   });
 }
 
+/** One-line summary of a chapter: its opening paragraph, capped at one line. */
+function chapterSummary(c) {
+  const first = c.blocks.find((b) => b.t === "p");
+  if (!first) return "";
+  const text = plainText(first.text).replace(/\s+/g, " ").trim();
+  return text.length > 220 ? text.slice(0, 217).trimEnd() + "…" : text;
+}
+
+/** llms.txt — the manual as a link list for AI tools (the llmstxt.org layout). */
+function buildLlmsTxt(chapters) {
+  const intro = chapters.find((c) => c.slug === "introduction");
+  const head = [
+    "# MATE Documentation",
+    "",
+    `> ${intro ? chapterSummary(intro) : "The MATE user manual."}`,
+    "",
+    "MATE is a self-hosted, modular process-mining platform. This file indexes the published manual: every chapter in reading order, grouped as in the site navigation. Links are relative to this file, which is served next to the chapter pages.",
+  ].join("\n");
+  const groups = [];
+  for (const c of chapters) {
+    let g = groups[groups.length - 1];
+    if (!g || g.name !== c.group) {
+      g = { name: c.group, items: [] };
+      groups.push(g);
+    }
+    const summary = chapterSummary(c);
+    g.items.push(`- [${c.title}](${c.slug}.html)${summary ? `: ${summary}` : ""}`);
+  }
+  const body = groups.map((g) => `## ${g.name}\n\n${g.items.join("\n")}`).join("\n\n");
+  return `${head}\n\n${body}\n`;
+}
+
 const md = readContent();
 const chapters = parseChapters(md);
 if (!chapters.length) throw new Error(`no chapters (# H1) found in ${SRC}`);
@@ -2090,13 +2450,13 @@ for (const c of chapters) {
   c.slug = s;
 }
 
-/* A generated chapter: the whole manual as grouped card grids. It sits in the
-   first group, right after the introduction, and has no source of its own. */
+/* Every page is rewritten from scratch: the output directory is wiped first. */
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
 writeFileSync(join(OUT, "search-index.json"), JSON.stringify(buildSearchIndex(chapters)));
-const written = ["search-index.json"];
+writeFileSync(join(OUT, "llms.txt"), buildLlmsTxt(chapters));
+const written = ["search-index.json", "llms.txt"];
 chapters.forEach((c, i) => {
   const file = `${c.slug}.html`;
   writeFileSync(

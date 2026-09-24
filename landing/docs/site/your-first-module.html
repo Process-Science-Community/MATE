@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your first module - MATE Docs</title>
-<meta name="description" content="A module is a folder: a manifest, a handler class, and optionally a frontend. Copy a bundled one, rename it, make it compute something.">
+<meta name="description" content="A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,12 +829,12 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#the-folder">The folder</a>
-        <a data-toc href="#fifteen-minutes-to-a-running-module">Fifteen minutes to a running module</a>
-        <a data-toc href="#a-minimal-module-that-does-real-work">A minimal module that does real work</a>
-        <a data-toc href="#what-the-platform-does-at-startup">What the platform does at startup</a>
-        <a data-toc href="#the-development-loop">The development loop</a>
-        <a data-toc href="#rules">Rules</a>
+        <a data-toc href="#module-folder">Module folder</a>
+        <a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a>
+        <a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a>
+        <a data-toc href="#startup-sequence">Startup sequence</a>
+        <a data-toc href="#development-loop">Development loop</a>
+        <a data-toc href="#constraints">Constraints</a>
     </div>
   </div>
 </details>
@@ -818,7 +874,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Module development</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="your-first-module.html" aria-current="page">Your first module</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#the-folder">The folder</a></li><li><a data-toc href="#fifteen-minutes-to-a-running-module">Fifteen minutes to a running module</a></li><li><a data-toc href="#a-minimal-module-that-does-real-work">A minimal module that does real work</a></li><li><a data-toc href="#what-the-platform-does-at-startup">What the platform does at startup</a></li><li><a data-toc href="#the-development-loop">The development loop</a></li><li><a data-toc href="#rules">Rules</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#module-folder">Module folder</a></li><li><a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a></li><li><a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a></li><li><a data-toc href="#startup-sequence">Startup sequence</a></li><li><a data-toc href="#development-loop">Development loop</a></li><li><a data-toc href="#constraints">Constraints</a></li></ul></li>
         <li><a class="side-link" href="the-manifest.html">The manifest</a></li>
         <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
         <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
@@ -865,10 +921,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Your first module</h1>
-      <p class="doc-lead">A module is a folder: a manifest, a handler class, and optionally a frontend. Copy a bundled one, rename it, make it compute something.</p>
+      <p class="doc-lead">A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute something.</p>
     </div>
     <div class="prose">
-<h2 id="the-folder">The folder<a class="h-anchor" href="#the-folder" aria-label="Link to this section">#</a></h2>
+<h2 id="module-folder">Module folder<a class="h-anchor" href="#module-folder" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="tree">
   <figcaption class="cb-head"><span class="cb-title">modules/my_module/</span></figcaption>
   <pre><code>modules/my_module/
@@ -883,7 +939,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <span class="t-glyph">└──</span> README.md               <span class="t-note"># rendered on the module detail page</span></code></pre>
 </figure>
 <p>Commit the manifest, <code>module.py</code>, tests, frontend sources, and <code>uv.lock</code>. Everything else is rebuilt.</p>
-<h2 id="fifteen-minutes-to-a-running-module">Fifteen minutes to a running module<a class="h-anchor" href="#fifteen-minutes-to-a-running-module" aria-label="Link to this section">#</a></h2>
+<h2 id="create-a-module-in-five-steps">Create a module in five steps<a class="h-anchor" href="#create-a-module-in-five-steps" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p>Copy a small, complete example — <code>modules/performance_over_time</code> has a panel and a widget.</p><figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
@@ -897,7 +953,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 </figure></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p>Import a log, open the module grid, click your module.</p></div></li>
   </ol>
-<h2 id="a-minimal-module-that-does-real-work">A minimal module that does real work<a class="h-anchor" href="#a-minimal-module-that-does-real-work" aria-label="Link to this section">#</a></h2>
+<h2 id="a-minimal-module-that-computes-a-result">A minimal module that computes a result<a class="h-anchor" href="#a-minimal-module-that-computes-a-result" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="python">
   <figcaption class="cb-head"><span class="cb-title">modules/my_module/module.py</span></figcaption>
   <pre><code>from mate.sdk import Module, ModuleContext, job, on_event, route
@@ -953,17 +1009,17 @@ dependencies:
     inherit: [pandas]</code></pre>
 </figure>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Piece</th><th>Effect</th></tr></thead><tbody><tr><td><code>id</code> in both files</td><td>The loader matches them; a mismatch fails the load with a clear error.</td></tr><tr><td><code>@route.get</code></td><td>Registered under <code>/api/v1/modules/my_module/top-activities</code>, with auth and OpenAPI types handled.</td></tr><tr><td><code>@job</code> under <code>@on_event</code></td><td>The precompute becomes a job: it counts towards the log's readiness and appears in the jobs UI.</td></tr><tr><td><code>ctx.cache</code></td><td>Results stored per <code>(log_id, module_id)</code>, surviving restarts.</td></tr><tr><td><code>requirements.event_log</code></td><td>The card is only offered on case-centric logs with those columns.</td></tr></tbody></table></div></div>
-<h2 id="what-the-platform-does-at-startup">What the platform does at startup<a class="h-anchor" href="#what-the-platform-does-at-startup" aria-label="Link to this section">#</a></h2>
+<h2 id="startup-sequence">Startup sequence<a class="h-anchor" href="#startup-sequence" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p><strong>Discovery</strong> — the folder is found by scanning <code>modules/*/manifest.yaml</code>, or from a <code>mate.modules</code> entry point.</p></div></li>
-    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p><strong>Validation</strong> — the manifest is parsed and the dependency graph built; cycles or missing hard dependencies stop the startup.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p><strong>Validation</strong> — the manifest is parsed and the dependency graph built; a cycle or a missing hard dependency logs a named error and drops that module plus its dependents, so one broken module never bricks the boot.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">3</span><div class="step-body"><p><strong>Materialisation</strong> — the dependency block is hashed; if it changed, <code>uv venv</code> + <code>uv pip install</code> runs in the folder and the frontend is bundled into <code>.dist/</code>.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p><strong>Import and instantiate</strong> — <code>module.py</code> is imported under a private namespace with the module's own <code>site-packages</code>; your class is constructed exactly once per process.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p><strong>Binding</strong> — routes mounted, event handlers subscribed, job handlers registered, capabilities added to the registry.</p></div></li>
   </ol>
-<h2 id="the-development-loop">The development loop<a class="h-anchor" href="#the-development-loop" aria-label="Link to this section">#</a></h2>
+<h2 id="development-loop">Development loop<a class="h-anchor" href="#development-loop" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>How</th></tr></thead><tbody><tr><td>Change a handler</td><td>Save; in <code>ENV=dev</code> the watchdog reloads the module in place.</td></tr><tr><td>Change requirements or dependencies</td><td>Save; gating re-evaluates, and a changed dependency block triggers <code>uv sync</code> for that module.</td></tr><tr><td>Change the frontend</td><td>The web dev server watches <code>modules/**</code> and rebuilds the bundle; hard-reload the page.</td></tr><tr><td>Debug a load failure</td><td>API log for the traceback, then the module detail page for its log tail.</td></tr></tbody></table></div></div>
-<h2 id="rules">Rules<a class="h-anchor" href="#rules" aria-label="Link to this section">#</a></h2>
+<h2 id="constraints">Constraints<a class="h-anchor" href="#constraints" aria-label="Link to this section">#</a></h2>
 <ul><li>Do not import from <code>apps/api/*</code> or <code>apps/web/*</code> — the SDK is the contract.</li><li>Do not construct log paths yourself; the ones from <code>ctx</code> are ownership-checked.</li><li>Do not keep state on <code>self</code>; the instance is shared and jobs run concurrently.</li><li>Do not call <code>asyncio.run</code> inside a handler.</li></ul>
     </div>
   <nav class="pager" aria-label="Pagination">
@@ -1316,6 +1372,103 @@ dependencies:
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

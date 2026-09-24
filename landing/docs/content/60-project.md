@@ -5,13 +5,13 @@
 # Contributing and development
 <!-- slug: contributing -->
 
-Four ways in: ship a module, report a bug, improve the docs, or work on the platform.
+Four contribution paths: ship a module, report a bug, improve this manual, or work on the platform.
 
-## Ways to contribute
+## Contribution paths
 
 | Path | Start with |
 | --- | --- |
-| **Ship a module** — the highest-leverage contribution | [Your first module](your-first-module.html), then the [author checklist](testing-and-publishing.html#author-checklist). Your citation travels with the manifest, so users always see whose method they are running. |
+| **Ship a module** — the highest-impact contribution | [Your first module](your-first-module.html), then the [author checklist](testing-and-publishing.html#author-checklist). Your citation travels with the manifest, so users always see whose method they are running. |
 | **Report a bug or request a feature** | [github.com/Process-Science-Community/MATE/issues](https://github.com/Process-Science-Community/MATE/issues). Attach the diagnostics blob from Settings → About, plus the steps and the expected result. A minimal reproduction beats a long description. |
 | **Improve this documentation** | Edit the markdown under `landing/docs/content/`, run `make docs`, open a pull request. The authoring syntax is documented in [`landing/docs/README.md`](https://github.com/Process-Science-Community/MATE/blob/main/landing/docs/README.md). |
 | **Work on the platform** | [How MATE works](architecture.html) for the mechanisms, then the setup below. |
@@ -33,23 +33,23 @@ make install       # uv sync --extra dev + pnpm install
 make dev           # alembic upgrade head, then uvicorn --reload and next dev
 ```
 
-`make dev` frees port `8000`, reaps stale processes, runs migrations, and starts both servers. A host API defaults to SQLite under `data/`.
+`make dev` runs a preflight that frees port `8000` and clears stale processes, applies migrations, then starts both servers. A host API defaults to SQLite under `data/`.
 
-## The loop
+## Development loop
 
 | Task | Command |
 | --- | --- |
-| Everything with reload | `make dev` (or `make dev-api`, `make dev-web`) |
-| In containers with reload | `make up-dev` |
+| Both servers with reload | `make dev` (or `make dev-api`, `make dev-web`) |
+| Both servers in containers with reload | `make up-dev` |
 | API tests | `make test` |
 | One test | `uv run --extra dev pytest apps/api/tests/test_x.py::test_y -v` |
-| A module's tests | `uv run pytest modules/<folder>/tests` |
-| Python types | `uv run pyright` (strict) |
-| Web types | `make typecheck` |
-| Format | `make fmt` |
+| One module's tests | `uv run pytest modules/<folder>/tests` |
+| Python type check | `uv run pyright` (strict) |
+| Web type check | `make typecheck` |
+| Format Python | `make fmt` |
 | Regenerate API types | `make codegen` (API on `:8000`) |
 | Rebuild this manual | `make docs` |
-| Reset state | `make clean` (irrevocable) |
+| Wipe local state | `make clean` (irrevocable) |
 
 ## Migrations
 
@@ -61,7 +61,7 @@ cd apps/api && uv run alembic revision -m "add watched folder retry counter"
 
 Never edit a migration that has been applied anywhere, keep DDL additive (add nullable columns, backfill, then tighten), and remember that rolling back code does not roll back the schema.
 
-## Testing philosophy
+## Testing approach
 
 | Layer | Approach |
 | --- | --- |
@@ -71,9 +71,9 @@ Never edit a migration that has been applied anywhere, keep DDL additive (add nu
 | AI and MCP | Tests that assert the data wall by attempting to read rows through an AI-scoped context. |
 | Storage | Quota, eviction, migration, and snapshot tests against a fake S3 layer. |
 
-Two habits worth copying: name tests as expectations (`test_returns_404_for_another_users_log`), and when you fix a bug, write the test that would have caught it first.
+Two testing conventions: name each test as an expectation (`test_returns_404_for_another_users_log`), and write the failing test before fixing a bug.
 
-## Conventions the codebase enforces
+## Enforced conventions
 
 | Convention | Why |
 | --- | --- |
@@ -106,10 +106,10 @@ The manual explains how to use and extend MATE; these explain why it is built th
 | [`modules/PROTOCOL.md`](https://github.com/Process-Science-Community/MATE/blob/main/modules/PROTOCOL.md) · [`modules/SIDECAR_SERVICES.md`](https://github.com/Process-Science-Community/MATE/blob/main/modules/SIDECAR_SERVICES.md) | The worker wire protocol, and the contract for modules with their own server. |
 | [`docs/README.md`](https://github.com/Process-Science-Community/MATE/blob/main/docs/README.md) | The index of every document in the repository. |
 
-Decisions that a reader would otherwise reverse-engineer belong in a document, not a chat thread: add the rationale there, cite it from the code that implements it, and update the manual in the same pull request.
+A decision that a reader would otherwise have to reverse-engineer belongs in a document: record the rationale there, cite it from the code that implements it, and update this manual in the same pull request.
 
-## Reserved designs
+## Specified but unimplemented
 
-Specified but deliberately unimplemented — knowing they are designed prevents accidental conflicts: Node and R runtimes for modules (the protocol needs no host change), multi-node deployments (the S3 layer is the groundwork, and the open seams are named in `S3_OFFLOAD.md`), and additional dataset shapes (the envelope is shape-tagged, so new shapes are additive).
+Documenting them prevents conflicting implementations: Node and R runtimes for modules (the protocol needs no host change), git-URL and registry module installs (today the only channel is an uploaded archive), multi-node deployments (the S3 layer is the groundwork, and the open seams are named in `S3_OFFLOAD.md`), and additional dataset shapes (the envelope is shape-tagged, so new shapes are additive).
 
-Out of scope on purpose: a multi-tenant SaaS, a plugin marketplace with ranking, anything that requires a managed cloud service, and replacing the analyst — modules produce results and explanations, the interpretation stays with people.
+Deliberately out of scope: a multi-tenant SaaS, a plugin marketplace with ranking, anything that requires a managed cloud service, and replacing the analyst — modules produce results and explanations; interpretation stays with people.

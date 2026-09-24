@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jobs and the interface - MATE Docs</title>
-<meta name="description" content="Every long operation is a job, and the interface surfaces them the same way everywhere.">
+<meta name="description" content="Every long operation is a job, and the interface reports them consistently.">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,10 +829,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#four-surfaces">Four surfaces</a>
-        <a data-toc href="#reading-a-job-row">Reading a job row</a>
-        <a data-toc href="#keyboard">Keyboard</a>
-        <a data-toc href="#conventions">Conventions</a>
+        <a data-toc href="#where-jobs-appear">Where jobs appear</a>
+        <a data-toc href="#job-row-fields">Job row fields</a>
+        <a data-toc href="#keyboard-shortcuts">Keyboard shortcuts</a>
+        <a data-toc href="#interface-conventions">Interface conventions</a>
     </div>
   </div>
 </details>
@@ -799,7 +855,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="exploring-a-process.html">Exploring a process</a></li>
         <li><a class="side-link" href="modules.html">Modules</a></li>
         <li><a class="side-link" href="jobs-and-the-interface.html" aria-current="page">Jobs and the interface</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#four-surfaces">Four surfaces</a></li><li><a data-toc href="#reading-a-job-row">Reading a job row</a></li><li><a data-toc href="#keyboard">Keyboard</a></li><li><a data-toc href="#conventions">Conventions</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#where-jobs-appear">Where jobs appear</a></li><li><a data-toc href="#job-row-fields">Job row fields</a></li><li><a data-toc href="#keyboard-shortcuts">Keyboard shortcuts</a></li><li><a data-toc href="#interface-conventions">Interface conventions</a></li></ul></li>
         <li><a class="side-link" href="dashboards.html">Dashboards</a></li>
         <li><a class="side-link" href="mate-ai.html">MATE AI</a></li>
         <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
@@ -863,17 +919,17 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Jobs and the interface</h1>
-      <p class="doc-lead">Every long operation is a job, and the interface surfaces them the same way everywhere.</p>
+      <p class="doc-lead">Every long operation is a job, and the interface reports them consistently.</p>
     </div>
     <div class="prose">
-<h2 id="four-surfaces">Four surfaces<a class="h-anchor" href="#four-surfaces" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Surface</th><th>Where</th><th>What it gives you</th></tr></thead><tbody><tr><td>Toasts</td><td>Bottom-right</td><td>One per lifecycle event; failures stay until dismissed and offer <em>Details</em>. Rapid sequences collapse.</td></tr><tr><td>Dock</td><td>Bottom-left pill</td><td>Active count and the top job's progress; hover expands the three most recent, with per-job cancel. Retires 30 s after the last job.</td></tr><tr><td>Drawer</td><td>The pill, or <kbd>j</kbd> <kbd>j</kbd></td><td>Every job: <em>All / Running / Queued / Finished</em>, filter by title or id, cancel all running, pause or resume the queue.</td></tr><tr><td>Plan checklist</td><td>Import groups and the wizard</td><td>The precompute plan: each module step as <em>waiting</em>, <em>running</em>, <em>skipped</em>, or <em>done</em>, with <em>Waiting on X</em> where an ordering edge was declared.</td></tr></tbody></table></div></div>
-<h2 id="reading-a-job-row">Reading a job row<a class="h-anchor" href="#reading-a-job-row" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Element</th><th>Meaning</th></tr></thead><tbody><tr><td>Status</td><td><code>queued</code>, <code>running</code>, <code>paused</code>, <code>completed</code>, <code>failed</code>, <code>cancelled</code>.</td></tr><tr><td>Progress</td><td>A percentage when the module reports fractions or counts; indeterminate otherwise.</td></tr><tr><td>Rate and ETA</td><td>From the last 20 progress samples, or the module's own <code>eta_seconds</code> hint.</td></tr><tr><td>Stall hint</td><td>After three minutes without a tick. A hint about the job, not an error.</td></tr><tr><td>Actions</td><td>Cancel, retry, copy id, and <em>Open</em> when the job has a target.</td></tr></tbody></table></div></div>
-<p>The queue runs <code>WORKER_CONCURRENCY</code> jobs in parallel (default <code>2</code>, changeable live by an admin). Queued jobs can be reordered by priority, the queue can be paused without interrupting running work, and a job past <code>JOB_EXECUTION_TIMEOUT_SECONDS</code> (default 1800) is force-stopped, offload children included.</p>
-<h2 id="keyboard">Keyboard<a class="h-anchor" href="#keyboard" aria-label="Link to this section">#</a></h2>
+<h2 id="where-jobs-appear">Where jobs appear<a class="h-anchor" href="#where-jobs-appear" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Surface</th><th>Where</th><th>What it gives you</th></tr></thead><tbody><tr><td>Toasts</td><td>Bottom-right</td><td>One per lifecycle event; failures stay until dismissed and offer <em>Details</em>. Rapid sequences collapse.</td></tr><tr><td>Dock</td><td>Bottom-left pill</td><td>Active count and the top job's progress; hover expands the three most recent, with per-job cancel. Disappears 30 s after the last job completes.</td></tr><tr><td>Drawer</td><td>The pill, or <kbd>j</kbd> <kbd>j</kbd></td><td>Every job: <em>All / Running / Queued / Finished</em>, filter by title or id, cancel all running, pause or resume the queue.</td></tr><tr><td>Plan checklist</td><td>Import groups and the wizard</td><td>The precompute plan: each module step as <em>waiting</em>, <em>running</em>, <em>skipped</em>, or <em>done</em>, with <em>Waiting on X</em> where an ordering edge was declared.</td></tr></tbody></table></div></div>
+<h2 id="job-row-fields">Job row fields<a class="h-anchor" href="#job-row-fields" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Element</th><th>Meaning</th></tr></thead><tbody><tr><td>Status</td><td><code>queued</code>, <code>running</code>, <code>paused</code>, <code>completed</code>, <code>failed</code>, <code>cancelled</code>.</td></tr><tr><td>Progress</td><td>A percentage when the module reports fractions or counts; indeterminate otherwise.</td></tr><tr><td>Rate and ETA</td><td>From the last 20 progress samples, or the module's own <code>eta_seconds</code> hint.</td></tr><tr><td>Stall hint</td><td>After three minutes without a tick. A hint about the job, not an error.</td></tr><tr><td>Actions</td><td><em>Cancel</em>; <em>Retry</em> when the job failed. The job id copies from the details dialog.</td></tr></tbody></table></div></div>
+<p>The queue runs <code>WORKER_CONCURRENCY</code> jobs in parallel (default <code>2</code>, changeable live by an admin). A job's declared priority is shown in its details but there is no manual reordering, the queue can be paused without interrupting running work, and a job past <code>JOB_EXECUTION_TIMEOUT_SECONDS</code> (default 1800) is force-stopped, offload children included.</p>
+<h2 id="keyboard-shortcuts">Keyboard shortcuts<a class="h-anchor" href="#keyboard-shortcuts" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Keys</th><th>Action</th></tr></thead><tbody><tr><td><kbd>j</kbd> <kbd>j</kbd></td><td>Open the jobs drawer (ignored while typing).</td></tr><tr><td><kbd>Enter</kbd> / <kbd>Space</kbd></td><td>Open the focused job's details.</td></tr><tr><td><kbd>Esc</kbd></td><td>Close a sheet, dialog, or tour step.</td></tr><tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Move through the product tour.</td></tr><tr><td><kbd>cmd</kbd>/<kbd>ctrl</kbd> + <kbd>A</kbd> · <kbd>D</kbd> · <kbd>Delete</kbd></td><td>Select all, duplicate, remove cards (dashboard edit mode).</td></tr><tr><td>Arrows (+ <kbd>shift</kbd>)</td><td>Nudge the selected cards.</td></tr></tbody></table></div></div>
-<h2 id="conventions">Conventions<a class="h-anchor" href="#conventions" aria-label="Link to this section">#</a></h2>
+<h2 id="interface-conventions">Interface conventions<a class="h-anchor" href="#interface-conventions" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Convention</th><th>Meaning</th></tr></thead><tbody><tr><td>Colour</td><td>Only semantic: good, warning, serious, critical — always with an icon or label, never colour alone.</td></tr><tr><td>Loading</td><td>Skeletons above the fold; a canvas keeps its last result instead of unmounting.</td></tr><tr><td>Empty and error states</td><td>Every list has a designed empty state with the action that fills it, and a designed error state.</td></tr><tr><td>Motion</td><td><code>prefers-reduced-motion</code> disables animation across the app.</td></tr></tbody></table></div></div>
     </div>
   <nav class="pager" aria-label="Pagination">
@@ -1226,6 +1282,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

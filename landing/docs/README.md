@@ -13,7 +13,7 @@ python3 -m http.server -d landing 8081   # preview → http://localhost:8081/doc
 | --- | --- |
 | `content/NN-*.md` | The source: six numbered files, one per sidebar group, concatenated in filename order. |
 | `build.mjs` | The generator: parses the markdown, renders the components below, writes `site/`. |
-| `site/` | Generated output — one page per chapter plus `search-index.json`. Never edit by hand. |
+| `site/` | Generated output — one page per chapter, plus `search-index.json` (Ctrl+K search) and `llms.txt` (the chapter list with a one-line summary each, for AI tools). Never edit by hand. |
 | `index.html` | Redirect stub for the bare `/docs/` URL. The entry chapter is `site/introduction.html`. |
 
 ## Groups and chapters
@@ -30,7 +30,7 @@ python3 -m http.server -d landing 8081   # preview → http://localhost:8081/doc
 
 ## Editorial rules
 
-The manual is a working reference, not a tour. Keep it that way:
+The manual is a working reference. Keep it that way:
 
 - One idea per section, one worked example per topic. Delete the second example unless it teaches something the first cannot.
 - Prefer a table or a code block over prose. If a paragraph repeats what the code says, cut the paragraph.
@@ -83,6 +83,11 @@ make up
   - `web` · everything else
 :::
 
+:::wide 20 40 40
+| A | wide table | pins its column widths |
+| --- | --- | --- |
+:::
+
 | Tables | Work |
 | --- | --- |
 | `GET /event-logs` | A code span starting with an HTTP method renders as a method chip. |
@@ -91,6 +96,22 @@ make up
 ````
 
 Code cards key their header and comment styling off the fence tag: `bash` reads *Terminal*, `tree` renders a file tree with dimmed connectors and trailing notes, and whole-line `#` or `//` comments dim out. Anything else falls back to the raw tag.
+
+### JSON
+
+JSON is rendered as JSON, never as a minified line. The builder formats (two-space indent) and colours it — `j-key`, `j-str`, `j-num`, `j-lit`, `j-pun` — in three places:
+
+| Where | Rule |
+| --- | --- |
+| ```` ```json ```` fence | Always. A fence with no language whose body starts with `{` or `[` is treated as JSON too. |
+| Table cell | A code span of 44 characters or more that is pure JSON becomes a formatted block in the cell; shorter spans (`{"force":false}`) stay inline. |
+| Prose | Never — a table cell is the smallest unit that can hold a block without breaking the sentence. |
+
+The formatter is deliberately tolerant: it re-indents a *sketch* as well as real payloads. `…` stands for omitted members or array items, so `{"a":1,…}` renders as `{ "a": 1, … }` — the ellipsis trails the last field, and `{…}` / `[…]` stay on one line. Anything that is not pure JSON (`200 OK`, a query string, a snippet with comments) is left exactly as authored.
+
+A formatted block is a copy target like every other code literal: click anywhere in it, or its corner button, to copy the JSON exactly as shown (`cursor: copy`, the border turns green and the button becomes a check). A click made while text is selected is left alone, so a reader can still select by hand.
+
+Every inline code span is a copy target, globally: the cursor becomes the copy cursor, a click puts the span's text on the clipboard, and a small "Copied" pill confirms it (the span also flashes green). This is wired once in `build.mjs`, so a route path, an id or a flag is copyable without any marker in the source. Two spans are exempt: one inside a link still navigates, and diagram nodes stay labels. Block code copies through the button in its header strip, never by clicking the block — selecting a line there has to keep working.
 
 ### Diagrams
 
@@ -106,8 +127,21 @@ A node is `Label`, `` `code` `` or `Label · muted note`, so units and paths bel
 ### Links
 
 - Repository files: absolute GitHub URLs (`https://github.com/Process-Science-Community/MATE/blob/main/…`).
-- Other chapters: `chapter-slug.html`, optionally with `#section-id`.
-- `documentation-map.html` is generated and lists every chapter as a card grid per group.
+- Other chapters: `chapter-slug.html`, optionally with `#section-id`. A link to a *repo* path (no `.html`) is rewritten as `../<path>`, which is how the landing page reaches these files.
+- There is no generated index page: the rail is the index, and the pager at the foot of each chapter links to its neighbours.
+
+### Generated sections
+
+One region of the manual is machine-written: the REST chapter's **Endpoint groups** table sits between `<!-- generated: endpoint-table -->` and `<!-- /generated -->`, and is regenerated from the API's own OpenAPI schema:
+
+```bash title="Terminal"
+uv run python landing/docs/gen-endpoints.py   # from the repo root
+make docs                                    # then rebuild the site
+```
+
+Run it after changing a route signature, a request model or a response status — the script re-derives every row (group, endpoint, an abridged request and response example, one HTTP method per row) so the table cannot drift from the code. `/openapi.json` stays authoritative for the full schema: the cells are a shape sketch, where `…` marks elided fields or further array items. The table is wrapped in `:::wide` because four columns of JSON would otherwise push the card into a horizontal scroll on every row.
+
+`llms.txt` is written on every build as well: the manual as a title, a summary, and one line per chapter with a one-line digest, grouped as in the navigation. Both files live in `site/` and are never edited by hand.
 
 ## Conventions
 

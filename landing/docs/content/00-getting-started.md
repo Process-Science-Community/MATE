@@ -6,7 +6,7 @@
 
 MATE is a self-hosted platform for process mining: it turns event logs into process models, performance figures, conformance results, and drift reports, and it treats every analysis as an installable module.
 
-## Who it is for
+## Audience
 
 | Role | What MATE gives you |
 | --- | --- |
@@ -14,9 +14,9 @@ MATE is a self-hosted platform for process mining: it turns event logs into proc
 | **Researcher** | A runtime for your method: scheduling, progress, caching, isolation, a settings UI, dashboard cards, and citations that travel with the code. |
 | **Operator** | One compose stack to deploy, back up, and monitor. |
 
-## How it works
+## How a log becomes a result
 
-:::stack title="One log, from upload to result" caption="An import normalises the file once. Every module precomputes off that cached result, and the interface reads the cache - never the raw upload."
+:::stack title="One log, from upload to result" caption="An import normalises the file once. Every module precomputes from that cached result, and the interface reads the cache — never the raw upload."
 - `file` · XES, CSV, XML, or OCEL 2.0
 - `import job` · parse, normalise, write Parquet
 - `Parquet log` · the event table plus cached case aggregates
@@ -34,9 +34,9 @@ Three properties shape everything else in this manual:
 - **Modular.** The bundled analyses use the same SDK, loader, and gating rules as modules you install later. There are no privileged hooks.
 - **Typed end to end.** Pydantic defines the API, one OpenAPI schema generates the web app's types, and module authors program against Protocols.
 
-## Where to start
+## Reading paths
 
-| If you want to… | Read |
+| Goal | Read |
 | --- | --- |
 | Run MATE | [Install and start](install-and-start.html) |
 | See it work once | [Your first analysis](your-first-analysis.html) |
@@ -46,9 +46,9 @@ Three properties shape everything else in this manual:
 | Run a deployment | [Deployment](deployment.html) · [Troubleshooting](troubleshooting.html) |
 | Work on the platform itself | [How MATE works](architecture.html) · [Contributing](contributing.html) |
 
-## Vocabulary
+## Glossary
 
-Process mining has its own words, and MATE adds a few.
+Process mining has its own vocabulary; MATE adds a few terms.
 
 | Term | Meaning |
 | --- | --- |
@@ -94,7 +94,7 @@ Python, Node, `uv`, and `pnpm` are only needed for host development ([Contributi
    cd mate
    ```
 
-2. Create the environment file, then rotate its two secrets before anyone else can reach the stack.
+2. Create the environment file, then rotate its two secrets before the stack is reachable by anyone else.
 
    ```bash title="Terminal"
    cp .env.example .env
@@ -143,14 +143,14 @@ make up                       # start again, reusing module environments
 docker compose logs -f api    # follow the API log (also: web, keycloak)
 ```
 
-`make clean` wipes event logs, module results, the metadata database, and the Keycloak volume. It cannot be undone.
+`make clean` wipes event logs, module results, the metadata database, and the Keycloak volume. This cannot be undone.
 
 > [!NOTE]
 > For a workshop without Keycloak, `DEMO_MODE=true` signs everyone in as a fixed local user. Never enable it on a shared deployment — the MCP server refuses the demo token by design.
 
 # Your first analysis
 
-One log, end to end: import it, watch the machinery, open a module, leave with a dashboard.
+One log from import to dashboard: import it, monitor the jobs, open a module, and build a board.
 
 ## 1. Import a log
 
@@ -170,7 +170,7 @@ One log, end to end: import it, watch the machinery, open a module, leave with a
 | `end_timestamp` | no | Durations, waiting times, most performance metrics. |
 | `resource` | no | Actor analyses; `actor_performance` requires it. |
 
-Each row shows how the proposal was made (`user`, `fuzzy`, `fallback`); low-confidence guesses are flagged and **AI assist** can re-propose them. XES and OCEL files carry their own schema and skip this step.
+Each row shows how the proposal was made — `user` → *Your choice*, `exact` → *Matched*, `fuzzy` → *Guessed*, `fallback` → *Inferred from data* — and low-confidence guesses are flagged. When a provider is configured, the wizard re-proposes those rows automatically and marks them **AI**. XES and OCEL files carry their own schema and skip this step.
 
 ## 2. Watch the jobs
 
@@ -189,11 +189,11 @@ Click the row. The process page opens on the module grid, grouped by category.
 
 | Card state | Meaning |
 | --- | --- |
-| Available | Everything the module needs is present. |
-| Requirements not met | Log model, a required column, or a minimum count does not match; the hint names it. |
-| Hard dependency missing | A module it needs is not installed for your account. |
-| Limited | An optional dependency is missing; it runs with less context. |
-| Disabled · Failed | Your own switch, or its precompute failed — open it to read the error. |
+| Available | Everything the module needs is present — shown without a badge. |
+| Limited | An optional module dependency is missing; the module runs with less context. |
+| Unavailable | The log model, a required column, a minimum count, or a hard dependency does not match; the tooltip names the reason. |
+| Disabled | Turned off for your account. |
+| Running | Its precompute job is running right now. |
 
 ## 4. Read a module
 
@@ -210,14 +210,14 @@ Open **Discovery** for the process as a directly-follows graph (and Petri net, p
 
 ## 6. Ask the assistant
 
-The MATE AI panel attaches context from where you are — current process, open module, current page — and answers with links that navigate the app. If no provider is configured it says so and links to *Settings → AI*.
+The MATE AI panel attaches context from the current view — process, open module, page — and answers with links that navigate the app. If no provider is configured it says so and links to *Settings → AI*.
 
 > [!NOTE]
 > The assistant reads aggregates and cached module outputs only. Raw event rows never enter a prompt, which is what lets it sit next to confidential data.
 
-## What just happened
+## Recap
 
-| You did | Behind the scenes |
+| Action | What the platform did |
 | --- | --- |
 | Dropped a file | Staged, probed, parsed, normalised, written as Parquet under `data/users/{uid}/event_logs/{log_id}/`. |
 | Confirmed a mapping | Column roles stored on the log; a `log.imported` event dispatched. |

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>REST API - MATE Docs</title>
-<meta name="description" content="Everything the app can do is available over HTTP. This chapter is the contract; the exhaustive endpoint list is the schema itself.">
+<meta name="description" content="Everything the app can do is available over HTTP. This chapter is the contract: the endpoint index below is complete, and /openapi.json owns the…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -863,15 +919,866 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">REST API</h1>
-      <p class="doc-lead">Everything the app can do is available over HTTP. This chapter is the contract; the exhaustive endpoint list is the schema itself.</p>
+      <p class="doc-lead">Everything the app can do is available over HTTP. This chapter is the contract: the endpoint index below is complete, and <code>/openapi.json</code> owns the request and response shapes.</p>
     </div>
     <div class="prose">
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Aspect</th><th>Detail</th></tr></thead><tbody><tr><td>Base path</td><td><code>/api/v1</code></td></tr><tr><td>Auth</td><td><code>Authorization: Bearer &lt;access token&gt;</code> — session JWT or personal access token</td></tr><tr><td>Schema</td><td><code>/openapi.json</code>, browsable at <code>/docs</code> (Swagger) and <code>/redoc</code></td></tr><tr><td>Health</td><td><span class="mchip m-get">GET</span><code>/health</code>, outside the version prefix</td></tr><tr><td>Content</td><td>JSON, except multipart uploads and stream responses</td></tr></tbody></table></div></div>
 <h2 id="conventions">Conventions<a class="h-anchor" href="#conventions" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Convention</th><th>Behaviour</th></tr></thead><tbody><tr><td>Long operations</td><td>Answer immediately with <code>{ &quot;job_id&quot;: … }</code>; poll <span class="mchip m-get">GET</span><code>/jobs/{id}</code> or stream <span class="mchip m-get">GET</span><code>/jobs/{id}/stream</code>.</td></tr><tr><td>Streaming</td><td><code>text/event-stream</code> for job progress, platform events, and AI chat.</td></tr><tr><td>Errors</td><td>JSON with a <code>detail</code> string.</td></tr><tr><td>Ownership</td><td>Another user's resource is indistinguishable from a missing one (<code>404</code>).</td></tr><tr><td>Idempotency</td><td><code>GET</code>, <code>PUT</code>, <code>DELETE</code> are safe to retry; <code>POST</code> creates.</td></tr><tr><td>Pagination</td><td><code>limit</code>/<code>offset</code> on list endpoints, <code>cursor</code> where offered (pass it back verbatim).</td></tr><tr><td>Soft deletes</td><td>Deleting a log, folder, watched folder, or team marks it deleted and removes the data.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Convention</th><th>Behaviour</th></tr></thead><tbody><tr><td>Long operations</td><td>Answer immediately with <code>{ &quot;job_id&quot;: … }</code>; poll <span class="mchip m-get">GET</span><code>/jobs/{id}</code> or stream <span class="mchip m-get">GET</span><code>/jobs/{id}/stream</code>.</td></tr><tr><td>Streaming</td><td><code>text/event-stream</code> for job progress, platform events, and AI chat.</td></tr><tr><td>Errors</td><td>JSON with a <code>detail</code> field — a string for HTTP errors, an array of objects for <code>422</code> validation failures.</td></tr><tr><td>Ownership</td><td>Another user's resource is indistinguishable from a missing one (<code>404</code>).</td></tr><tr><td>Idempotency</td><td><code>GET</code>, <code>PUT</code>, <code>DELETE</code> are safe to retry; <code>POST</code> creates.</td></tr><tr><td>Pagination</td><td><code>limit</code>/<code>offset</code> on the row-level list endpoints (events, variants, activities, edits, OCEL views, admin listings); top-level collections return full lists and <span class="mchip m-get">GET</span><code>/jobs</code> takes <code>limit</code> only. Cursor pagination is MCP-only.</td></tr><tr><td>Soft deletes</td><td>Deleting a log, folder, or watched folder marks it deleted and removes the data; deleting a team is a hard delete that cascades to its memberships.</td></tr></tbody></table></div></div>
 <h2 id="endpoint-groups">Endpoint groups<a class="h-anchor" href="#endpoint-groups" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Group</th><th>Representative endpoints</th></tr></thead><tbody><tr><td>Import</td><td><span class="mchip m-post">POST</span><code>/event-logs/stage</code> (upload + probe) · <span class="mchip m-post">POST</span><code>/event-logs</code> (create from the staged token) · <span class="mchip m-post">POST</span><code>/event-logs/from-url</code></td></tr><tr><td>Logs</td><td><span class="mchip m-get">GET</span><code>/event-logs</code> · `GET</td><td>PATCH</td><td>DELETE /event-logs/{id}<code> · </code>POST /event-logs/{id}/reimport<code> · </code>/remap<code> · </code>/duplicate`</td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{id}/events</code> · <code>/variants</code> · <code>/variants/{variant_id}</code> · <code>/activities</code> · <code>/data-quality</code> · <span class="mchip m-put">PUT</span><code>/event-logs/{id}/active-filter</code> · <span class="mchip m-patch">PATCH</span><code>/event-logs/{id}/events/{row_index}</code></td></tr><tr><td>OCEL</td><td><span class="mchip m-get">GET</span><code>/event-logs/{id}/ocel/overview</code> · <code>/object-types</code> · <code>/objects</code> · <code>/events</code> · <code>/relationships</code></td></tr><tr><td>Organisation</td><td>`GET</td><td>POST /folders<code> · </code>PATCH</td><td>DELETE /folders/{id}<code> · </code>POST /folders/reorder<code> · </code>GET</td><td>POST /watched-folders<code> · </code>POST /watched-folders/{id}/scan`</td></tr><tr><td>Jobs</td><td><span class="mchip m-get">GET</span><code>/jobs</code> · <span class="mchip m-get">GET</span><code>/jobs/{id}</code> · <span class="mchip m-post">POST</span><code>/jobs/{id}/cancel</code> · <code>/retry</code> · <span class="mchip m-post">POST</span><code>/jobs/queue/pause</code> · <code>/resume</code> · <span class="mchip m-get">GET</span><code>/jobs/{id}/stream</code></td></tr><tr><td>Events</td><td><span class="mchip m-get">GET</span><code>/events?topic=…</code> — the platform SSE stream</td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules</code> · <span class="mchip m-get">GET</span><code>/modules/{id}/manifest</code> · <code>/config-schema</code> · `GET</td><td>PUT /modules/{id}/config<code> · </code>GET /modules/cards<code> · </code>POST /modules/install<code> · </code>/install/git<code> · </code>/install/registry<code> · </code>POST /modules/restore-defaults<code> · </code>DELETE /modules/{id}`</td></tr><tr><td>Datasets</td><td><span class="mchip m-get">GET</span><code>/datasets/catalog</code> · <span class="mchip m-get">GET</span><code>/datasets/{module}/{dataset}</code> · <span class="mchip m-post">POST</span><code>/datasets/{module}/{dataset}/transform</code></td></tr><tr><td>Dashboards</td><td>`GET</td><td>POST /dashboards<code> · </code>GET</td><td>PATCH</td><td>DELETE /dashboards/{id}<code> · </code>GET /dashboards/templates<code> · </code>GET /dashboards/{id}/export<code> · </code>POST /dashboards/import<code> · </code>GET</td><td>POST /dashboards/{id}/shares`</td></tr><tr><td>Sharing</td><td><span class="mchip m-get">GET</span><code>/sharing/shared-with-me</code> · <span class="mchip m-get">GET</span><code>/sharing/targets</code></td></tr><tr><td>AI</td><td>`GET</td><td>PUT /ai/config<code> · </code>POST /ai/models/{provider}<code> · </code>GET /ai/pricing<code> · </code>POST /ai/chat<code> · </code>POST /ai/route<code> · </code>POST /ai/guidance/…`</td></tr><tr><td>Account</td><td>`GET</td><td>POST /api-tokens<code> · </code>DELETE /api-tokens/{id}<code> · </code>GET</td><td>PUT /api-tokens/consent<code> · </code>GET</td><td>PUT /preferences/{key}<code> · </code>GET</td><td>PUT /onboarding<code> · </code>GET</td><td>PUT /usage/config<code> · </code>GET /usage/summary<code> · </code>GET /usage/export`</td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/storage</code> · <code>/diagnostics</code> · `GET</td><td>PUT /system/jobs<code> · </code>GET /system/resources<code> · </code>GET</td><td>PUT /system/mcp<code> · </code>GET /system/mcp-metrics`</td></tr><tr><td>Admin</td><td><code>/admin/export/…</code> (metadata and behaviour export) · <code>/admin/users</code> · <code>/admin/teams</code> · <code>/admin/jobs</code> · <code>/admin/modules</code> · <code>/admin/controls</code> · <code>/admin/insights/…</code></td></tr></tbody></table></div></div>
-<p>Admin routes are gated by <code>require_admin</code> server-side, and a personal access token can never carry the <code>admin</code> scope.</p>
+<p>Every route the API serves, one endpoint per row. Paths are relative to <code>/api/v1</code>. The <code>Request</code> and <code>Response</code> cells show the shape of a call — a query string as it would be sent, and a formatted JSON body under its status code. A <code>…</code> marks elided fields, further array items, or a nested object left unexpanded; <code>/openapi.json</code> stays authoritative for the complete schema.</p>
+<p>The table is generated from that schema: after changing a route, a request model or a response status, run <code>uv run python landing/docs/gen-endpoints.py</code> and rebuild.</p>
+<div class="tbl tbl-fixed"><div class="tbl-scroll"><table><colgroup><col style="width:12%"><col style="width:22%"><col style="width:33%"><col style="width:33%"></colgroup><thead><tr><th>Group</th><th>Endpoint</th><th>Request</th><th>Response</th></tr></thead><tbody><tr><td>Import</td><td><span class="mchip m-post">POST</span><code>/event-logs/stage</code></td><td><code>{&quot;file&quot;:&quot;…&quot;}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;staging_token&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_format&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;log_model&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;case_centric&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;needs_mapping&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Import</td><td><span class="mchip m-post">POST</span><code>/event-logs</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;file&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;staging_token&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;csv_mapping&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>202</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Import</td><td><span class="mchip m-post">POST</span><code>/event-logs/from-url</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://example.com/log.xes&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;csv_mapping&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>202</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Import</td><td><span class="mchip m-post">POST</span><code>/event-logs/probe-xml</code></td><td><code>{&quot;file&quot;:&quot;…&quot;}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;format_hint&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;generic&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_element&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;events_sampled&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;fields&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Import</td><td><span class="mchip m-post">POST</span><code>/event-logs/probe-json</code></td><td><code>{&quot;file&quot;:&quot;…&quot;}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;format_hint&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;generic&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_path&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;events_sampled&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;fields&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Logs</td><td><span class="mchip m-get">GET</span><code>/event-logs</code></td><td><code>?q=…&amp;status=ready</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;importing&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;source_format&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Logs</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;importing&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_format&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Logs</td><td><span class="mchip m-patch">PATCH</span><code>/event-logs/{log_id}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;column_overrides&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;importing&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_format&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Logs</td><td><span class="mchip m-delete">DELETE</span><code>/event-logs/{log_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Log data</td><td><span class="mchip m-put">PUT</span><code>/event-logs/{log_id}/active-filter</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;filter&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;op&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;value&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;active_filter&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;op&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;value&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;modules_retriggered&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/activities</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;activity&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/activities/cases</code></td><td><code>?limit=100&amp;offset=0&amp;name=nightly import</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;case_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;offset&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;limit&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/activities/detail</code></td><td><code>?name=nightly import</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;activity&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_pct&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;case_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;case_pct&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/columns/{field}/values</code></td><td><code>?limit=500&amp;q=…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;values&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;value&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total_distinct&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;truncated&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/data-quality</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;total_events&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;column&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;label&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/duplicate</code></td><td>—</td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;importing&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_format&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/edits</code></td><td><code>?limit=50&amp;offset=0</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;row_index&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/events</code></td><td><code>?limit=50&amp;offset=0&amp;q=…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;offset&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;limit&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;header&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/events/bulk-fill</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;row_indices&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-num">25</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;value&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;updated&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;header&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;events_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;cases_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-patch">PATCH</span><code>/event-logs/{log_id}/events/{row_index}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;value&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;row&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;row_index&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;new_row_index&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;header&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/reimport</code></td><td>—</td><td><code>202</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/remap</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;case_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;activity&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;timestamp&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;2026-01-01T00:00:00Z&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>202</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/time-bounds</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;field&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;min_ts&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;max_ts&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/variants</code></td><td><code>?limit=50&amp;offset=0</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;rank&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;variant_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;activities&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+        <span class="j-str">&quot;…&quot;</span>
+      <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/variants/{variant_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rank&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;variant_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;activities&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;case_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;case_pct&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/variants/{variant_id}/cases</code></td><td><code>?limit=100&amp;offset=0</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;case_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;offset&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;limit&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>OCEL</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/ocel/events</code></td><td><code>?limit=100&amp;offset=0&amp;q=…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;offset&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;limit&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>OCEL</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/ocel/object-types</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;type&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>OCEL</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/ocel/objects</code></td><td><code>?limit=100&amp;offset=0&amp;q=…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;offset&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;limit&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>OCEL</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/ocel/overview</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;events_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;objects_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;object_types_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;relations_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>OCEL</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/ocel/relationships</code></td><td><code>?limit=100&amp;offset=0</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;offset&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;limit&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-get">GET</span><code>/folders</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;parent_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;position&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-post">POST</span><code>/folders</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;parent_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;parent_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;position&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-post">POST</span><code>/folders/reorder</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;items&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;kind&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;folder&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td><td><code>204</code> —</td></tr><tr><td>Organisation</td><td><span class="mchip m-patch">PATCH</span><code>/folders/{folder_id}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;parent_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;position&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;parent_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;position&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-delete">DELETE</span><code>/folders/{folder_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Organisation</td><td><span class="mchip m-get">GET</span><code>/watched-folders</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;source_path&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;manual&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-post">POST</span><code>/watched-folders</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_path&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;manual&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;interval_seconds&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_path&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;manual&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-get">GET</span><code>/watched-folders/{watch_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_path&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;manual&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-patch">PATCH</span><code>/watched-folders/{watch_id}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;manual&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;interval_seconds&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;active&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;source_path&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;manual&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Organisation</td><td><span class="mchip m-delete">DELETE</span><code>/watched-folders/{watch_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Organisation</td><td><span class="mchip m-post">POST</span><code>/watched-folders/{watch_id}/scan</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;found&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;imported&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;skipped&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;failed&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Jobs</td><td><span class="mchip m-get">GET</span><code>/jobs</code></td><td><code>?limit=100&amp;status=ready</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;type&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;title&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;subtitle&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Jobs</td><td><span class="mchip m-post">POST</span><code>/jobs/cancel-all</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Jobs</td><td><span class="mchip m-post">POST</span><code>/jobs/queue/pause</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Jobs</td><td><span class="mchip m-post">POST</span><code>/jobs/queue/resume</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Jobs</td><td><span class="mchip m-get">GET</span><code>/jobs/{job_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;type&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;title&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;subtitle&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Jobs</td><td><span class="mchip m-post">POST</span><code>/jobs/{job_id}/cancel</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Jobs</td><td><span class="mchip m-post">POST</span><code>/jobs/{job_id}/retry</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Jobs</td><td><span class="mchip m-get">GET</span><code>/jobs/{job_id}/stream</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Events</td><td><span class="mchip m-get">GET</span><code>/events</code></td><td><code>?topic=[&quot;job.progress&quot;]</code></td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-post">POST</span><code>/modules/install</code></td><td><code>{&quot;file&quot;:&quot;…&quot;}</code></td><td><code>202</code> <code>{&quot;job_id&quot;:&quot;018f2c9a…&quot;}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-post">POST</span><code>/modules/restore-defaults</code></td><td>—</td><td><code>200</code> <code>{&quot;restored&quot;:[&quot;…&quot;]}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/cards</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;module_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;module_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;widget_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/readme</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-delete">DELETE</span><code>/modules/{module_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/assets/{asset_path}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/config</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;config&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;controlled_by_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;controlled_cards&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-put">PUT</span><code>/modules/{module_id}/config</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;config&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;controlled_by_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;controlled_cards&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;config&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;controlled_by_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;controlled_cards&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/config-schema</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/layout</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <code>{&quot;layout&quot;:null}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-put">PUT</span><code>/modules/{module_id}/layout</code></td><td><code>?log_id=018f2c9a…</code> · <code>{&quot;layout&quot;:null}</code></td><td><code>200</code> <code>{&quot;layout&quot;:null}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/manifest</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Datasets</td><td><span class="mchip m-get">GET</span><code>/datasets/catalog</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;module_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;module_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;dataset_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Datasets</td><td><span class="mchip m-get">GET</span><code>/datasets/{module_id}/{dataset_id}</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;shape&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;table&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;schema&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+      <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+    <span class="j-pun">]</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;data&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+      <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+    <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;meta&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Datasets</td><td><span class="mchip m-post">POST</span><code>/datasets/{module_id}/{dataset_id}/transform</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;transforms&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;shape&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;table&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;schema&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+      <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+    <span class="j-pun">]</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;data&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+      <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+    <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;meta&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-post">POST</span><code>/dashboards/import</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;log_model&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;case_centric&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;items&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-get">GET</span><code>/dashboards</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-post">POST</span><code>/dashboards</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-get">GET</span><code>/dashboards/templates</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-get">GET</span><code>/dashboards/{dashboard_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-patch">PATCH</span><code>/dashboards/{dashboard_id}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;items&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-delete">DELETE</span><code>/dashboards/{dashboard_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Dashboards</td><td><span class="mchip m-get">GET</span><code>/dashboards/{dashboard_id}/export</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;kind&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-num">1</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-get">GET</span><code>/dashboards/{dashboard_id}/shares</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;dashboard_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;kind&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;user&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;target_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-post">POST</span><code>/dashboards/{dashboard_id}/shares</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;target_user_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;target_team_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;dashboard_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;kind&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;user&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;target_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Dashboards</td><td><span class="mchip m-delete">DELETE</span><code>/dashboards/{dashboard_id}/shares/{share_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Sharing</td><td><span class="mchip m-get">GET</span><code>/sharing/shared-with-me</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Sharing</td><td><span class="mchip m-get">GET</span><code>/sharing/targets</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;kind&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;user&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;label&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;sublabel&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/chat</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;messages&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;role&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;user&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;content&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;context&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;nav_hint&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <code>null</code></td></tr><tr><td>AI</td><td><span class="mchip m-get">GET</span><code>/ai/config</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;system_prompt&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;anthropic_base_url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://api.openai.com/v1&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-put">PUT</span><code>/ai/config</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;system_prompt&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;anthropic&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;api_key&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;openai&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;unigpt&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;custom&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;system_prompt&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;anthropic_base_url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://api.openai.com/v1&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/guidance/import/column-mapping</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;headers&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;sample_rows&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">[</span>
+      <span class="j-str">&quot;…&quot;</span>
+    <span class="j-pun">]</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <code>{&quot;suggestions&quot;:null}</code></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/guidance/import/quality/{log_id}</code></td><td><code>{&quot;force&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;cached&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;output_hash&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;generated_at&quot;</span><span class="j-pun">:</span> <span class="j-num">1767225600</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;model&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;gpt-4o-mini&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/guidance/module/{module_id}</code></td><td><code>?log_id=018f2c9a…</code> · <code>{&quot;force&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;cached&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;output_hash&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;generated_at&quot;</span><span class="j-pun">:</span> <span class="j-num">1767225600</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;model&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;gpt-4o-mini&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-delete">DELETE</span><code>/ai/guidance/module/{module_id}</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <code>null</code></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/guidance/module/{module_id}/stream</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <code>null</code></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/guidance/process/{log_id}</code></td><td><code>{&quot;force&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;cached&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;output_hash&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;generated_at&quot;</span><span class="j-pun">:</span> <span class="j-num">1767225600</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;model&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;gpt-4o-mini&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/models/{provider}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;models&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;display_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;created&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>AI</td><td><span class="mchip m-get">GET</span><code>/ai/pricing</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>AI</td><td><span class="mchip m-post">POST</span><code>/ai/route</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;message&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;context&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;intent&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;chat&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;confidence&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;targets&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;actions&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/api-tokens</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;token_prefix&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;scopes&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+      <span class="j-str">&quot;…&quot;</span>
+    <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-post">POST</span><code>/api-tokens</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;scopes&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;expires_in_days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;token_prefix&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;scopes&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/api-tokens/consent</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;required&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;consented&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-put">PUT</span><code>/api-tokens/consent</code></td><td><code>{&quot;consented&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;required&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;consented&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/api-tokens/mcp-info</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://example.com/log.xes&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;require_consent&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-delete">DELETE</span><code>/api-tokens/{token_id}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/onboarding</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;completed&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;experience_level&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;beginner&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;tour_completed&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-put">PUT</span><code>/onboarding</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;completed&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;experience_level&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;beginner&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;tour_completed&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;completed&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;experience_level&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;beginner&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;tour_completed&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/preferences/{key}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Account</td><td><span class="mchip m-put">PUT</span><code>/preferences/{key}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/usage/config</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;retention_days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;capture_clicks&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;capture_perf&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-put">PUT</span><code>/usage/config</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;retention_days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;capture_clicks&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;capture_perf&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;retention_days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;capture_clicks&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;capture_perf&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/usage/export</code></td><td><code>?format=ndjson</code></td><td><code>200</code> <code>null</code></td></tr><tr><td>Account</td><td><span class="mchip m-get">GET</span><code>/usage/summary</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total_events&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;total_sessions&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;sessions_last_30d&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Account</td><td><span class="mchip m-post">POST</span><code>/usage/sync</code></td><td>—</td><td><code>202</code> <code>null</code></td></tr><tr><td>Account</td><td><span class="mchip m-delete">DELETE</span><code>/usage/sync</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;deleted_events&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;deleted_sessions&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;new_anon_user_id_seed&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/diagnostics</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;platform_version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;python&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;is_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;system&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;versions&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/jobs</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;worker_concurrency&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;min&quot;</span><span class="j-pun">:</span> <span class="j-num">1</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;max&quot;</span><span class="j-pun">:</span> <span class="j-num">8</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;is_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-put">PUT</span><code>/system/jobs</code></td><td><code>{&quot;worker_concurrency&quot;:25}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;worker_concurrency&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;min&quot;</span><span class="j-pun">:</span> <span class="j-num">1</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;max&quot;</span><span class="j-pun">:</span> <span class="j-num">8</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;is_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/mcp</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;boot_enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mint_policy&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;boot_read_only&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-put">PUT</span><code>/system/mcp</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mint_policy&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;all_users&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;read_only&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;boot_enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;mint_policy&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;boot_read_only&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/mcp-metrics</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/resources</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;cpu&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;current_pct&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;max_pct&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;cores_logical&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;memory&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>System</td><td><span class="mchip m-get">GET</span><code>/system/storage</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/api-tokens</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;user_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;user_email&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ada@example.com&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/api-tokens/{token_id}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/controls/ai/config</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;system_prompt&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;anthropic_base_url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://api.openai.com/v1&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/controls/ai/config</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;system_prompt&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;anthropic&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;api_key&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;openai&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;unigpt&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;custom&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;system_prompt&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;anthropic_base_url&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;https://api.openai.com/v1&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/controls/ai/models/{provider}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;models&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;display_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;created&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/controls/items</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;items&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;scope&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;setting&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;key&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;label&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/controls/items/{scope}/{key}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;control_mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;user&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;admin_value&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;scope&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;setting&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;key&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;label&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;description&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/dashboard-shares</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;dashboard_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;dashboard_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;owner_label&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/dashboard-shares/{share_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export-info</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;is_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;user_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;db_size_bytes&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/event-log.xes</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/events-ocel2</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/events.csv</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/events.ndjson</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/facets</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;users&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;email&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ada@example.com&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;event_types&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-str">&quot;…&quot;</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/metadata-db</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/export/preview</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;matched_events&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;matched_sessions&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;distinct_users&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/event-logs</code></td><td><code>?limit=50&amp;offset=0&amp;q=…&amp;status=ready</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;items&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/event-logs/{log_id}/download</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/jobs</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;runtime&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;concurrency&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;live_workers&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;queue_depth&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/overview</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;kpis&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
+    <span class="j-key">&quot;user_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;log_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;events_ingested&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/storage</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;backend_mode&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;s3_used_bytes&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;s3_object_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;s3_quota_bytes&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/usage</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;installs_by_module&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;label&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;modules&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/insights/users</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;days&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;user_count&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;active_users_in_range&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;onboarding_completed&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/jobs</code></td><td><code>?limit=100&amp;offset=0&amp;q=…&amp;status=ready</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;total&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;items&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;type&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;summary&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/jobs/cancel-all</code></td><td><code>{&quot;user_id&quot;:&quot;018f2c9a…&quot;}</code></td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/jobs/queue/pause</code></td><td><code>{&quot;user_id&quot;:&quot;018f2c9a…&quot;}</code></td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/jobs/queue/resume</code></td><td><code>{&quot;user_id&quot;:&quot;018f2c9a…&quot;}</code></td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/jobs/{job_id}/cancel</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/jobs/{job_id}/kill</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/jobs/{job_id}/logs</code></td><td><code>?limit=500</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;lines&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
+    <span class="j-pun">{</span>
+      <span class="j-key">&quot;ts&quot;</span><span class="j-pun">:</span> <span class="j-num">0.5</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;level&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+      <span class="j-key">&quot;event&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-pun">}</span>
+  <span class="j-pun">]</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;truncated&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/jobs/{job_id}/retry</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/modules</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/modules/{module_id}/default</code></td><td><code>{&quot;is_default&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/modules/{module_id}/installs</code></td><td><code>{&quot;user_id&quot;:&quot;018f2c9a…&quot;}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/modules/{module_id}/installs/{user_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/modules/{module_id}/withhold</code></td><td><code>{&quot;withheld&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/teams</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;member_count&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/teams</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;member_count&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-patch">PATCH</span><code>/admin/teams/{team_id}</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span>
+<span class="j-pun">}</span></pre></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;member_count&quot;</span><span class="j-pun">:</span> <span class="j-num">0</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/teams/{team_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/teams/{team_id}/members</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;user_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;role&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;email&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ada@example.com&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-post">POST</span><code>/admin/teams/{team_id}/members</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;user_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;role&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;owner&quot;</span>
+<span class="j-pun">}</span></pre></td><td><code>201</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;user_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;role&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;email&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ada@example.com&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;preferred_username&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/teams/{team_id}/members/{user_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/users</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;email&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ada@example.com&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;preferred_username&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-get">GET</span><code>/admin/users/{user_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;email&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ada@example.com&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;preferred_username&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/users/{user_id}</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;deleted&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;jobs_cancelled&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;modules_torn_down&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;keycloak_deleted&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Meta</td><td><span class="mchip m-get">GET</span><code>/health</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;ready&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr></tbody></table></div></div>
+<p>Admin routes are gated by <code>require_admin</code> server-side, and a personal access token can never carry the <code>admin</code> scope. A module's own <code>@route</code> handlers are mounted at <code>/api/v1/modules/{module_id}/*</code> by the loader, so they appear in <code>/openapi.json</code> rather than here.</p>
 <h2 id="type-generation">Type generation<a class="h-anchor" href="#type-generation" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
@@ -913,13 +1820,13 @@ assert job[&quot;status&quot;] == &quot;completed&quot;, job.get(&quot;error&quo
 while client.get(f&quot;/event-logs/{log_id}&quot;).json()[&quot;status&quot;] != &quot;ready&quot;:
     time.sleep(2)
 
-<span class="t-note"># 3. read a dataset a module publishes</span>
+<span class="t-note"># 3. read a dataset a module publishes — rows live under `data` in the envelope</span>
 rows = client.get(
-    &quot;/datasets/performance/slowest-activities&quot;, params={&quot;log_id&quot;: log_id, &quot;top_n&quot;: 5}
-).json()[&quot;rows&quot;]
+    &quot;/datasets/performance_java/activity-performance&quot;, params={&quot;log_id&quot;: log_id}
+).json()[&quot;data&quot;][&quot;rows&quot;]
 print(rows)</code></pre>
 </figure>
-<p>Rules that keep such a script honest: retry transport errors and 5xx, never 4xx; poll rather than hammer; treat <code>processing</code> as &quot;module results do not exist yet&quot;; and remember that importing the same file twice creates two logs — de-duplicate on your side.</p>
+<p>Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; treat <code>processing</code> as &quot;module results do not exist yet&quot;; the dataset endpoint takes only <code>log_id</code> (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="testing-and-publishing.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Testing and publishing</b></a>
@@ -1271,6 +2178,103 @@ print(rows)</code></pre>
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

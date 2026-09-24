@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Working with logs - MATE Docs</title>
-<meta name="description" content="Filtering, editing, and organising logs — the parts of the workflow that happen after the first import.">
+<meta name="description" content="Filtering, editing, and organising logs after the first import.">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -865,7 +921,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Working with logs</h1>
-      <p class="doc-lead">Filtering, editing, and organising logs — the parts of the workflow that happen after the first import.</p>
+      <p class="doc-lead">Filtering, editing, and organising logs after the first import.</p>
     </div>
     <div class="prose">
 <h2 id="filtering">Filtering<a class="h-anchor" href="#filtering" aria-label="Link to this section">#</a></h2>
@@ -875,19 +931,19 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <aside class="callout callout-tip"><span class="callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V15h8v-.3A7 7 0 0 0 12 2Z"/></svg></span><div class="callout-body"><span class="label">Tip</span><p>To compare two periods, duplicate the log, commit a different time range on each copy, and use a comparison module (<code>process_comparison</code>, <code>pcomp</code>) or a dashboard with cards from both.</p></div></aside>
 <h2 id="editing">Editing<a class="h-anchor" href="#editing" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Action</th><th>How</th><th>Effect</th></tr></thead><tbody><tr><td>Edit a cell</td><td>Events tab → <em>Edit mode</em> → click a cell (<kbd>Enter</kbd> commits, <kbd>Esc</kbd> cancels)</td><td>Rewrites the value in <code>events.parquet</code> and appends to the edit history.</td></tr><tr><td>Bulk fill</td><td>Select rows → <em>Bulk fill</em></td><td>One value across many rows.</td></tr><tr><td>Rename an activity</td><td>Activities tab → <em>Display name</em></td><td>Changes the label across the app without touching the data.</td></tr><tr><td>Rename a column</td><td>Log settings → <em>Source &amp; schema</em></td><td>Sets a display label for a column.</td></tr></tbody></table></div></div>
-<p>Every change is recorded in the log's <strong>Edit history</strong>. Re-importing from the original discards edits — the source file is the only truth.</p>
+<p>Every change is recorded in the log's <strong>Edit history</strong>. Re-running the import from the original discards edits — the source file is the only truth.</p>
 <h2 id="data-quality">Data quality<a class="h-anchor" href="#data-quality" aria-label="Link to this section">#</a></h2>
-<p>The quality view reports per-column completeness, and the events table can be restricted to rows with missing values. Both answer one question: <em>can the module I want run on this log?</em> The module card already names any unmet requirement:</p>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Reason</th><th>Fix</th></tr></thead><tbody><tr><td>Missing required column</td><td>Remap the column roles.</td></tr><tr><td>Below <code>min_events</code> / <code>min_cases</code></td><td>Nothing to fix — the module needs more data.</td></tr><tr><td>Optional role missing</td><td>Nothing; the module runs with less context.</td></tr><tr><td>Log model mismatch</td><td>Use a module that declares your log's model.</td></tr></tbody></table></div></div>
+<p>The quality view reports per-column completeness, and the events table can be restricted to rows with missing values. Both answer one question: whether a module can run on this log. The module card already names any unmet requirement:</p>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Reason</th><th>Fix</th></tr></thead><tbody><tr><td>Missing required column</td><td>Remap the column roles.</td></tr><tr><td>Below <code>min_events</code> / <code>min_cases</code></td><td>Nothing to fix — the module needs more data.</td></tr><tr><td>Log model mismatch</td><td>Use a module that declares your log's model.</td></tr><tr><td>Optional module missing</td><td>Nothing; the card is marked <strong>Limited</strong> and the module runs with less context.</td></tr></tbody></table></div></div>
 <h2 id="folders">Folders<a class="h-anchor" href="#folders" aria-label="Link to this section">#</a></h2>
-<p>Folders nest freely; moving one refuses to move it into its own descendant. Deleting a folder cascades to its subfolders and logs, after a confirmation that names the count. The tree supports drag-and-drop reordering and a <em>Move to folder</em> row action.</p>
+<p>Folders nest freely; moving one refuses to move it into its own descendant. Deleting a folder cascades to its subfolders and logs, after a confirmation that names the count. The tree supports drag-and-drop reordering and a <em>Move to</em> row action.</p>
 <p>The list reads <code>?q=</code> and <code>?status=</code> from the URL, so a filtered view is a shareable link.</p>
 <h2 id="watched-folders">Watched folders<a class="h-anchor" href="#watched-folders" aria-label="Link to this section">#</a></h2>
 <p>A watched folder turns a directory — or an S3 prefix — into an import source.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead><tbody><tr><td>Trigger</td><td>A poller compares the source against its ledger every 30 s (60 s in <code>continuous</code> mode).</td></tr><tr><td>Modes</td><td><code>manual</code> (scan on demand), <code>interval</code> (every N seconds), <code>continuous</code>.</td></tr><tr><td>Deduplication</td><td><code>watched_folder_files</code> records size plus mtime (local) or ETag (S3), so each file imports once.</td></tr><tr><td>Source files</td><td>Never moved, renamed, or deleted.</td></tr><tr><td>Mapping</td><td>A per-format default mapping is required — there is no wizard for an unattended file.</td></tr></tbody></table></div></div>
 <p>The card per folder shows mode, interval, last scan, and a status badge (<code>active</code>, <code>paused</code>, <code>error</code>), with scan, pause/resume, and delete actions. For a local path, the directory must exist <strong>inside the API container</strong> — bind-mount it.</p>
 <h2 id="log-settings">Log settings<a class="h-anchor" href="#log-settings" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Section</th><th>Holds</th></tr></thead><tbody><tr><td>General</td><td>Display name and description.</td></tr><tr><td>Column roles</td><td>Required and optional roles with confidence hints; remap re-runs the import.</td></tr><tr><td>Data quality</td><td>Completeness per column.</td></tr><tr><td>Source &amp; schema</td><td>Original filename, format, import time, time bounds, per-column labels.</td></tr><tr><td>Edit history</td><td>Every cell edit with its timestamp.</td></tr><tr><td>Maintenance</td><td>Re-import, delete.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Section</th><th>Holds</th></tr></thead><tbody><tr><td>General</td><td>Display name and description.</td></tr><tr><td>Column roles</td><td>Required and optional roles with confidence hints; remap re-runs the import.</td></tr><tr><td>Data quality</td><td>Completeness per column.</td></tr><tr><td>Source &amp; schema</td><td>Original filename, format, import time, time bounds, per-column labels.</td></tr><tr><td>Edit history</td><td>Every cell edit with its timestamp.</td></tr><tr><td>Maintenance</td><td>Re-run import, delete.</td></tr></tbody></table></div></div>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="importing-event-logs.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Importing event logs</b></a>
@@ -1239,6 +1295,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

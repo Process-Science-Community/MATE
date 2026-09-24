@@ -4,9 +4,9 @@
 
 # Your first module
 
-A module is a folder: a manifest, a handler class, and optionally a frontend. Copy a bundled one, rename it, make it compute something.
+A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute something.
 
-## The folder
+## Module folder
 
 ```tree title="modules/my_module/"
 modules/my_module/
@@ -23,7 +23,7 @@ modules/my_module/
 
 Commit the manifest, `module.py`, tests, frontend sources, and `uv.lock`. Everything else is rebuilt.
 
-## Fifteen minutes to a running module
+## Create a module in five steps
 
 :::steps
 1. Copy a small, complete example — `modules/performance_over_time` has a panel and a widget.
@@ -43,7 +43,7 @@ Commit the manifest, `module.py`, tests, frontend sources, and `uv.lock`. Everyt
 5. Import a log, open the module grid, click your module.
 :::
 
-## A minimal module that does real work
+## A minimal module that computes a result
 
 ```python title="modules/my_module/module.py"
 from mate.sdk import Module, ModuleContext, job, on_event, route
@@ -107,17 +107,17 @@ dependencies:
 | `ctx.cache` | Results stored per `(log_id, module_id)`, surviving restarts. |
 | `requirements.event_log` | The card is only offered on case-centric logs with those columns. |
 
-## What the platform does at startup
+## Startup sequence
 
 :::steps
 1. **Discovery** — the folder is found by scanning `modules/*/manifest.yaml`, or from a `mate.modules` entry point.
-2. **Validation** — the manifest is parsed and the dependency graph built; cycles or missing hard dependencies stop the startup.
+2. **Validation** — the manifest is parsed and the dependency graph built; a cycle or a missing hard dependency logs a named error and drops that module plus its dependents, so one broken module never bricks the boot.
 3. **Materialisation** — the dependency block is hashed; if it changed, `uv venv` + `uv pip install` runs in the folder and the frontend is bundled into `.dist/`.
 4. **Import and instantiate** — `module.py` is imported under a private namespace with the module's own `site-packages`; your class is constructed exactly once per process.
 5. **Binding** — routes mounted, event handlers subscribed, job handlers registered, capabilities added to the registry.
 :::
 
-## The development loop
+## Development loop
 
 | Task | How |
 | --- | --- |
@@ -126,7 +126,7 @@ dependencies:
 | Change the frontend | The web dev server watches `modules/**` and rebuilds the bundle; hard-reload the page. |
 | Debug a load failure | API log for the traceback, then the module detail page for its log tail. |
 
-## Rules
+## Constraints
 
 - Do not import from `apps/api/*` or `apps/web/*` — the SDK is the contract.
 - Do not construct log paths yourself; the ones from `ctx` are ownership-checked.
@@ -217,19 +217,19 @@ config_schema:                      # renders the per-user settings form
 | `category` | Where the card sits in the grid: `foundation`, `attribute`, `external_input`, `advanced`, `comparison`, `other`. |
 | `about` | Longer plain-language text for the info box; falls back to `description`. |
 | `requirements.event_log` | The availability gate: log model, columns, minimum events and cases. |
-| `requirements.modules` / `optional_modules` | Hard and soft module dependencies. Cycles abort the startup. |
-| `provides` / `consumes` | The contract you publish and rely on; validated at boot. |
+| `requirements.modules` / `optional_modules` | Hard and soft module dependencies. A cycle or a missing hard dependency drops the affected modules and logs an error; the rest boot. |
+| `provides` / `consumes` | The contract you publish and rely on; a boot-time check logs an unmatched job-backed subscription (`modules.precompute_subscription_unprovided`). Availability and the precompute closure are derived from it. |
 | `default_enabled` | Whether new accounts get the module enabled. |
 | `isConfidentialSafe` | Set `true` only when the log never leaves the host. |
 | `source` / `artifacts` | Citations and links, at most 20 each. |
 | `config_schema` | JSON-Schema-flavoured; the platform renders the form. |
 | `ai_models` / `model_store` | Opt into generated AI-model selectors or a model-file upload card. |
 
-## Rules that bite
+## Validation rules
 
 - A package cannot be in both `packages` and `inherit`.
-- Declaring `author`, `authors`, `paper_url`, or `papers` is a hard error — credit belongs in `source[].fullCitation`, in IEEE style with the DOI omitted (the DOI goes in `url`).
-- A foreign `runtime` must not declare `dependencies.python`, and its `jar` must be folder-relative.
+- Declaring `author`, `author_url`, `authors`, `paper_url`, or `papers` is a hard error — credit belongs in `source[].fullCitation`, in IEEE style with the DOI omitted (the DOI goes in `url`).
+- A foreign `runtime` must not declare `packages`, `inherit`, or `requires-python`, and may not force `isolation: in_process`; its `jar` must be folder-relative.
 - `log_model` is the single switch between the two log worlds: `case_centric` reads `ctx.event_log`, `object_centric` reads `ctx.object_log`, and a module never appears on the wrong kind of log.
 
 ```bash title="Terminal"
@@ -241,7 +241,7 @@ uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/my_
 
 `module.py` holds one `Module` subclass with three kinds of handler, all receiving an injected `ModuleContext`.
 
-## The three handler kinds
+## Handler kinds
 
 | Decorator | Registers | Notes |
 | --- | --- | --- |
@@ -259,7 +259,7 @@ uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/my_
 
 Handlers may be `async def` or plain `def`; sync handlers are wrapped so they cannot block the event loop (routes ride FastAPI's thread pool, event and job handlers run through `asyncio.to_thread`).
 
-## The context
+## Module context
 
 Every member is a Protocol — depend on the contract, not an implementation.
 
@@ -299,7 +299,7 @@ async def on_config_changed(self, ctx: ModuleContext) -> dict:
 
 # Logs, jobs and results
 
-How to read the log, how long work is declared, and where results live.
+Reading the log, declaring long-running work, and storing results.
 
 ## Reading the log
 
@@ -371,9 +371,9 @@ Invalidate on the events that change the answer: a configuration write, a re-imp
 
 # Module communication
 
-Modules never import each other. They talk over two declared mechanisms, and they order themselves through one reserved topic.
+Modules never import each other. They communicate through two declared mechanisms and order themselves through one reserved topic.
 
-## Declare first
+## Declaring the interface
 
 ```yaml title="manifest.yaml"
 provides: [my_module.metrics, my_module.analysis.completed]
@@ -383,7 +383,7 @@ optional_modules:
     reason: Uses cycle times when performance is installed.
 ```
 
-The platform validates these at startup, uses them to compute availability, and builds the precompute closure from them.
+The platform checks these at startup, uses them to compute availability, and builds the precompute closure from them.
 
 ## Event bus — fire-and-forget
 
@@ -438,7 +438,7 @@ async def overlay(self, ctx: ModuleContext, payload: dict) -> None:
 
 Frontends are TypeScript regardless of the backend language. The platform bundles them with esbuild into `.dist/` at startup; the Next.js build never sees your sources, and a panel may only import the packages listed in `apps/web/lib/runtime-externals.json`.
 
-## The panel
+## Panels
 
 ```tsx title="modules/my_module/panel/index.tsx"
 import type { ModulePanelProps } from "@mate/module-sdk-ts";
@@ -521,7 +521,7 @@ export default function Bottlenecks({ logId, config, onDrill }: WidgetProps) {
 }
 ```
 
-`onDrill` is `undefined` when a panel embeds the widget, so always call it optionally. Colour rules: one series means one colour, never shade a bar by its own length, fold a long tail into "Other", gridlines are solid hairlines, and never build a dual-axis chart.
+`onDrill` is `undefined` when a panel embeds the widget, so always call it optionally. Colour rules: one series means one colour; never shade a bar by its own length; fold a long tail into "Other"; use solid hairline gridlines; never build a dual-axis chart.
 
 ## Canvases
 
@@ -563,7 +563,7 @@ async def ranking(self, ctx: ModuleContext, top_n: int = 10) -> dict:
 
 # Dependencies, isolation and runtimes
 
-Where your code runs, and which libraries it can see.
+Where a module's code runs, and which libraries it can import.
 
 ## Declaring dependencies
 
@@ -590,7 +590,7 @@ Each environment is hashed: unchanged dependencies are skipped on boot, and for 
 > [!NOTE]
 > In-process modules are ABI-locked to the platform's interpreter (currently 3.12). Never pin an upper bound to dodge an ABI mismatch — use `subprocess` when you genuinely need another interpreter.
 
-## Choosing a mode
+## Choosing an isolation mode
 
 | Situation | Mode |
 | --- | --- |
@@ -622,9 +622,9 @@ The context offers `eventLog()` (with `duckdbFetch` running host-side and `mater
 
 # Testing and publishing
 
-Module tests are ordinary pytest. The SDK ships no test double on purpose: the context is defined by Protocols, so you fake exactly what a handler touches.
+Module tests are ordinary pytest. The SDK deliberately ships no test double: the context is defined by Protocols, so a test fakes exactly what a handler touches.
 
-## A unit test
+## Unit tests
 
 ```python title="modules/my_module/tests/test_ranking.py"
 import asyncio
@@ -694,17 +694,16 @@ uv run pyright                                   # strict types
 - run: uv run pytest modules/my_module/tests
 ```
 
-Manifest validation first is deliberate: it is the cheapest check and the most common failure.
+Validating the manifest first is deliberate: it is the cheapest check and the most common failure.
 
-## Distribution
+## Distribution channels
 
 | Channel | Input | Best for |
 | --- | --- | --- |
-| Upload | A `.zip`/`.tar.gz` of the folder | Private modules, one-off installs, air-gapped hosts. |
-| Git URL | `{ url, ref? }` | Modules under active development. |
-| Registry | `{ source: "pypi", id, version? }` | Published modules; nothing lands in `modules/`. |
+| Upload | A `.zip`, `.tar`, `.tar.gz`, or `.tgz` of the folder | Private modules, one-off installs, air-gapped hosts. |
+| Installed package | A package exposing the `mate.modules` entry point | Modules shipped through your own infrastructure — discovery picks it up at boot; the UI has no registry browser. |
 
-All three run as jobs and roll back cleanly on failure. Package an archive with the manifest, `module.py`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`).
+Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`).
 
 ## Versioning
 
@@ -723,4 +722,4 @@ Bump `version:` whenever results change, not only when code changes. A results-a
 - [ ] `.venv/`, `.dist/`, `node_modules/` are gitignored; `uv.lock` is committed.
 - [ ] The README states what the module computes and any external dependency.
 
-Symptoms and fixes for everything that still goes wrong are in [Troubleshooting](troubleshooting.html).
+The symptoms and fixes for the failures that remain are in [Troubleshooting](troubleshooting.html).

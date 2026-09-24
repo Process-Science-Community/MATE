@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,10 +829,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#who-it-is-for">Who it is for</a>
-        <a data-toc href="#how-it-works">How it works</a>
-        <a data-toc href="#where-to-start">Where to start</a>
-        <a data-toc href="#vocabulary">Vocabulary</a>
+        <a data-toc href="#audience">Audience</a>
+        <a data-toc href="#how-a-log-becomes-a-result">How a log becomes a result</a>
+        <a data-toc href="#reading-paths">Reading paths</a>
+        <a data-toc href="#glossary">Glossary</a>
     </div>
   </div>
 </details>
@@ -787,7 +843,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Getting started</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="introduction.html" aria-current="page">Introduction</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#who-it-is-for">Who it is for</a></li><li><a data-toc href="#how-it-works">How it works</a></li><li><a data-toc href="#where-to-start">Where to start</a></li><li><a data-toc href="#vocabulary">Vocabulary</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#audience">Audience</a></li><li><a data-toc href="#how-a-log-becomes-a-result">How a log becomes a result</a></li><li><a data-toc href="#reading-paths">Reading paths</a></li><li><a data-toc href="#glossary">Glossary</a></li></ul></li>
         <li><a class="side-link" href="install-and-start.html">Install and start</a></li>
         <li><a class="side-link" href="your-first-analysis.html">Your first analysis</a></li>
       </ul>
@@ -866,9 +922,9 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <p class="doc-lead">MATE is a self-hosted platform for process mining: it turns event logs into process models, performance figures, conformance results, and drift reports, and it treats every analysis as an installable module.</p>
     </div>
     <div class="prose">
-<h2 id="who-it-is-for">Who it is for<a class="h-anchor" href="#who-it-is-for" aria-label="Link to this section">#</a></h2>
+<h2 id="audience">Audience<a class="h-anchor" href="#audience" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Role</th><th>What MATE gives you</th></tr></thead><tbody><tr><td><strong>Analyst</strong></td><td>A guided path from an uploaded log to charts, models, and dashboards — no code.</td></tr><tr><td><strong>Researcher</strong></td><td>A runtime for your method: scheduling, progress, caching, isolation, a settings UI, dashboard cards, and citations that travel with the code.</td></tr><tr><td><strong>Operator</strong></td><td>One compose stack to deploy, back up, and monitor.</td></tr></tbody></table></div></div>
-<h2 id="how-it-works">How it works<a class="h-anchor" href="#how-it-works" aria-label="Link to this section">#</a></h2>
+<h2 id="how-a-log-becomes-a-result">How a log becomes a result<a class="h-anchor" href="#how-a-log-becomes-a-result" aria-label="Link to this section">#</a></h2>
 <figure class="diagram diagram-stack">
   <div class="dg-canvas">
     <div class="dg-layer"><span class="dg-node"><span class="dg-label"><code>file</code></span><span class="dg-note">XES, CSV, XML, or OCEL 2.0</span></span></div>
@@ -883,14 +939,14 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <div class="dg-connector" aria-hidden="true"></div>
     <div class="dg-layer"><span class="dg-node"><span class="dg-label"><code>dashboards</code></span><span class="dg-note">cards from any module, on one canvas</span></span></div>
   </div>
-  <figcaption class="dg-cap"><b>One log, from upload to result.</b> An import normalises the file once. Every module precomputes off that cached result, and the interface reads the cache - never the raw upload.</figcaption>
+  <figcaption class="dg-cap"><b>One log, from upload to result.</b> An import normalises the file once. Every module precomputes from that cached result, and the interface reads the cache — never the raw upload.</figcaption>
 </figure>
 <p>Three properties shape everything else in this manual:</p>
 <ul><li><strong>Local-first.</strong> Logs, results, and metadata stay on your host. Nothing is sent anywhere unless you configure an external service on purpose.</li><li><strong>Modular.</strong> The bundled analyses use the same SDK, loader, and gating rules as modules you install later. There are no privileged hooks.</li><li><strong>Typed end to end.</strong> Pydantic defines the API, one OpenAPI schema generates the web app's types, and module authors program against Protocols.</li></ul>
-<h2 id="where-to-start">Where to start<a class="h-anchor" href="#where-to-start" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>If you want to…</th><th>Read</th></tr></thead><tbody><tr><td>Run MATE</td><td><a href="install-and-start.html">Install and start</a></td></tr><tr><td>See it work once</td><td><a href="your-first-analysis.html">Your first analysis</a></td></tr><tr><td>Import and explore real logs</td><td><a href="importing-event-logs.html">Using MATE</a></td></tr><tr><td>Build a module</td><td><a href="your-first-module.html">Your first module</a></td></tr><tr><td>Call MATE from a script or an agent</td><td><a href="rest-api.html">REST API</a> · <a href="mcp-server.html">MCP server</a></td></tr><tr><td>Run a deployment</td><td><a href="deployment.html">Deployment</a> · <a href="troubleshooting.html">Troubleshooting</a></td></tr><tr><td>Work on the platform itself</td><td><a href="architecture.html">How MATE works</a> · <a href="contributing.html">Contributing</a></td></tr></tbody></table></div></div>
-<h2 id="vocabulary">Vocabulary<a class="h-anchor" href="#vocabulary" aria-label="Link to this section">#</a></h2>
-<p>Process mining has its own words, and MATE adds a few.</p>
+<h2 id="reading-paths">Reading paths<a class="h-anchor" href="#reading-paths" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Goal</th><th>Read</th></tr></thead><tbody><tr><td>Run MATE</td><td><a href="install-and-start.html">Install and start</a></td></tr><tr><td>See it work once</td><td><a href="your-first-analysis.html">Your first analysis</a></td></tr><tr><td>Import and explore real logs</td><td><a href="importing-event-logs.html">Using MATE</a></td></tr><tr><td>Build a module</td><td><a href="your-first-module.html">Your first module</a></td></tr><tr><td>Call MATE from a script or an agent</td><td><a href="rest-api.html">REST API</a> · <a href="mcp-server.html">MCP server</a></td></tr><tr><td>Run a deployment</td><td><a href="deployment.html">Deployment</a> · <a href="troubleshooting.html">Troubleshooting</a></td></tr><tr><td>Work on the platform itself</td><td><a href="architecture.html">How MATE works</a> · <a href="contributing.html">Contributing</a></td></tr></tbody></table></div></div>
+<h2 id="glossary">Glossary<a class="h-anchor" href="#glossary" aria-label="Link to this section">#</a></h2>
+<p>Process mining has its own vocabulary; MATE adds a few terms.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Event log</strong></td><td>A table of events: what happened, when, and in which case.</td></tr><tr><td><strong>Case</strong></td><td>A process instance (an order, a claim) identified by a case id; its events form a trace.</td></tr><tr><td><strong>Activity</strong></td><td>The label of what happened — <code>Registered</code>, <code>Approved</code>.</td></tr><tr><td><strong>Variant</strong></td><td>The sequence of activities a case followed. Cases that took the same path share one.</td></tr><tr><td><strong>Directly-follows graph (DFG)</strong></td><td>Activities as nodes, observed successions as edges.</td></tr><tr><td><strong>Petri net · process tree · BPMN</strong></td><td>Model notations. Discovery produces them; conformance replays a log against one.</td></tr><tr><td><strong>Conformance</strong></td><td>Fitness (was every trace replayable), precision, and the deviations found.</td></tr><tr><td><strong>Concept drift</strong></td><td>A change in the process over time: a new branch, a vanishing activity, shifted timing.</td></tr><tr><td><strong>OCEL</strong></td><td>Object-centric event log: events relate to many objects of different types, so there is no single case notion.</td></tr><tr><td><strong>Module</strong></td><td>The unit of extension: a folder with a manifest, a handler class, and optionally a frontend.</td></tr><tr><td><strong>Manifest</strong></td><td><code>manifest.yaml</code> — identity, log requirements, dependencies, capabilities, frontend, citations.</td></tr><tr><td><strong>Precompute</strong></td><td>Work a module runs automatically after an import, so its page opens with results ready.</td></tr><tr><td><strong>Capability</strong></td><td>A named request/response function one module publishes for another.</td></tr><tr><td><strong>Event bus</strong></td><td>In-process pub/sub; modules emit and subscribe to declared topics.</td></tr><tr><td><strong>Job</strong></td><td>A persisted, observable long operation: import, precompute, install, re-import.</td></tr><tr><td><strong>Dataset</strong></td><td>A typed data output (<code>table</code>, <code>graph</code>, <code>kpi</code>, <code>tree</code>, <code>blob</code>) the platform renders itself.</td></tr><tr><td><strong>Widget</strong></td><td>A dashboard card a module ships as a React component.</td></tr><tr><td><strong>Guidance</strong></td><td>Cached, module-scoped AI explanation, generated on demand.</td></tr><tr><td><strong>Data wall</strong></td><td>The rule that raw event rows never reach an AI model — MATE AI or MCP.</td></tr></tbody></table></div></div>
     </div>
   <nav class="pager" aria-label="Pagination">
@@ -1243,6 +1299,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Configuration - MATE Docs</title>
-<meta name="description" content="Every knob a running platform reads. The canonical list with inline commentary is .env.example.">
+<meta name="description" content="Every knob a running platform reads. The deployment variables — URLs, identity, storage, MCP, tracking — are documented with inline commentary in…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -863,17 +919,17 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Configuration</h1>
-      <p class="doc-lead">Every knob a running platform reads. The canonical list with inline commentary is <a href="https://github.com/Process-Science-Community/MATE/blob/main/.env.example"><code>.env.example</code></a>.</p>
+      <p class="doc-lead">Every knob a running platform reads. The deployment variables — URLs, identity, storage, MCP, tracking — are documented with inline commentary in <a href="https://github.com/Process-Science-Community/MATE/blob/main/.env.example"><code>.env.example</code></a>; the job and compute knobs below are read from the environment and default as shown.</p>
     </div>
     <div class="prose">
 <h2 id="urls-and-identity">URLs and identity<a class="h-anchor" href="#urls-and-identity" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead><tbody><tr><td><code>NEXT_PUBLIC_API_URL</code></td><td><code>http://localhost:8000</code></td><td>The API URL the <em>browser</em> uses; inlined at build time, so a change needs a rebuild.</td></tr><tr><td><code>AUTH_URL</code></td><td><code>http://localhost:3000</code></td><td>The web origin Auth.js believes in; decides secure-cookie behaviour.</td></tr><tr><td><code>AUTH_SECRET</code></td><td>–</td><td>Encrypts the session cookie. <code>openssl rand -base64 32</code>.</td></tr><tr><td><code>CORS_ORIGINS</code></td><td><code>[&quot;http://localhost:3000&quot;]</code></td><td>Extend when the web origin changes.</td></tr><tr><td><code>KEYCLOAK_ISSUER</code></td><td>dev realm URL</td><td>The <code>iss</code> claim the API validates.</td></tr><tr><td><code>KEYCLOAK_JWKS_URL</code></td><td>internal DNS</td><td>Where signing keys are fetched.</td></tr><tr><td><code>KEYCLOAK_AUDIENCE</code></td><td><code>flows-funds-api</code></td><td>Expected audience on access tokens.</td></tr><tr><td><code>KEYCLOAK_CLIENT_ID</code> / <code>_SECRET</code></td><td>seeded dev values</td><td>Must match the realm; rotate before any shared deployment.</td></tr><tr><td><code>KEYCLOAK_ADMIN</code> / <code>_PASSWORD</code></td><td><code>admin</code> / <code>admin</code></td><td>The Keycloak console login.</td></tr><tr><td><code>KEYCLOAK_IDP_HINT</code></td><td>empty</td><td>Jump straight to a brokered identity provider.</td></tr><tr><td><code>SESSION_STORE_DIR</code></td><td>unset</td><td>Server-side sessions; sidesteps the 4 KB cookie limit.</td></tr><tr><td><code>DEMO_MODE</code> / <code>DEMO_ADMIN</code></td><td><code>false</code></td><td>Local-only login bypass. Never on a shared deployment.</td></tr></tbody></table></div></div>
 <h2 id="storage">Storage<a class="h-anchor" href="#storage" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead><tbody><tr><td><code>STORAGE_MODE</code></td><td><code>local</code></td><td><code>local</code>, or <code>s3</code> for a bucket-authoritative deployment.</td></tr><tr><td><code>STORAGE_S3_ENDPOINT</code></td><td>–</td><td>Endpoint URL with scheme; empty means AWS S3 proper.</td></tr><tr><td><code>STORAGE_S3_BUCKET</code> / <code>_REGION</code></td><td>–</td><td>Region is required by AWS; R2 wants <code>auto</code>.</td></tr><tr><td><code>STORAGE_S3_ACCESS_KEY</code> / <code>_SECRET_KEY</code></td><td>–</td><td>Credentials.</td></tr><tr><td><code>STORAGE_S3_PATH_STYLE</code></td><td><code>true</code></td><td>Needed by MinIO and Ceph; set <code>false</code> on AWS.</td></tr><tr><td><code>STORAGE_S3_USE_SSL</code> / <code>_VERIFY</code></td><td><code>true</code> / system CAs</td><td>TLS toggle; <code>false</code> or a CA-bundle path for an internal CA.</td></tr><tr><td><code>STORAGE_S3_PREFIX</code></td><td>–</td><td>Key prefix, so deployments can share a bucket.</td></tr><tr><td><code>STORAGE_S3_QUOTA_BYTES</code></td><td><code>0</code></td><td>Ceiling for the prefix; imports answer <code>507</code> once reached.</td></tr><tr><td><code>LOCAL_CACHE_MAX_BYTES</code></td><td><code>0</code></td><td>Cache budget for the eviction reaper; <code>0</code> never evicts.</td></tr><tr><td><code>CACHE_EVICT_DRY_RUN</code></td><td><code>true</code></td><td>Log candidates without deleting — soak first.</td></tr><tr><td><code>JOB_RETENTION_DAYS</code></td><td><code>0</code></td><td>Prune terminal jobs after N days.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead><tbody><tr><td><code>STORAGE_MODE</code></td><td><code>local</code></td><td><code>local</code>, or <code>s3</code> for a bucket-authoritative deployment.</td></tr><tr><td><code>STORAGE_S3_ENDPOINT</code></td><td>–</td><td>Endpoint URL with scheme; empty means AWS S3 proper.</td></tr><tr><td><code>STORAGE_S3_BUCKET</code> / <code>_REGION</code></td><td>–</td><td>Region is required by AWS; R2 wants <code>auto</code>.</td></tr><tr><td><code>STORAGE_S3_ACCESS_KEY</code> / <code>_SECRET_KEY</code></td><td>–</td><td>Credentials.</td></tr><tr><td><code>STORAGE_S3_PATH_STYLE</code></td><td><code>true</code></td><td>Needed by MinIO and Ceph; set <code>false</code> on AWS.</td></tr><tr><td><code>STORAGE_S3_USE_SSL</code> / <code>_VERIFY</code></td><td><code>true</code> / system CAs</td><td>TLS toggle; <code>false</code> or a CA-bundle path for an internal CA.</td></tr><tr><td><code>STORAGE_S3_PREFIX</code></td><td>–</td><td>Key prefix, so deployments can share a bucket.</td></tr><tr><td><code>STORAGE_S3_QUOTA_BYTES</code></td><td><code>0</code></td><td>Ceiling for the prefix; imports answer <code>507</code> once reached.</td></tr><tr><td><code>LOCAL_CACHE_MAX_BYTES</code></td><td><code>0</code></td><td>Cache budget for the eviction reaper; <code>0</code> never evicts.</td></tr><tr><td><code>CACHE_EVICT_DRY_RUN</code></td><td><code>true</code></td><td>Log candidates without deleting — run in dry-run mode first.</td></tr><tr><td><code>JOB_RETENTION_DAYS</code></td><td><code>0</code></td><td>Prune terminal jobs after N days.</td></tr></tbody></table></div></div>
 <h2 id="jobs-and-compute">Jobs and compute<a class="h-anchor" href="#jobs-and-compute" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead><tbody><tr><td><code>WORKER_CONCURRENCY</code></td><td><code>2</code></td><td>Parallel job slots (1–8); also changeable live by an admin.</td></tr><tr><td><code>JOB_EXECUTION_TIMEOUT_SECONDS</code></td><td><code>1800</code></td><td>Wall-clock backstop per job; <code>0</code> disables.</td></tr><tr><td><code>MODULE_PROCESS_POOL_SIZE</code></td><td><code>min(cores, 8)</code></td><td>Size of the CPU offload pool.</td></tr><tr><td><code>MAX_OFFLOADS_PER_USER</code></td><td><code>0</code> (= pool size)</td><td>Per-user share of that pool; set it on shared hosts.</td></tr><tr><td><code>DUCKDB_THREADS</code> / <code>DUCKDB_MEMORY_LIMIT</code></td><td><code>0</code> / unset</td><td>Per-query caps.</td></tr><tr><td><code>EVENT_LOG_CACHE_ENTRIES</code></td><td><code>3</code></td><td>Materialised DataFrame cache for repeated reads.</td></tr><tr><td><code>ENV</code></td><td><code>prod</code></td><td><code>dev</code> enables the module hot-reload watchdog.</td></tr><tr><td><code>LOG_LEVEL</code></td><td><code>info</code></td><td><code>debug</code>, <code>info</code>, <code>warning</code>, <code>error</code>.</td></tr></tbody></table></div></div>
 <h2 id="mcp-and-tracking">MCP and tracking<a class="h-anchor" href="#mcp-and-tracking" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead><tbody><tr><td><code>MCP_ENABLED</code></td><td><code>false</code></td><td>Mounts the MCP server at <code>/mcp</code>; read at boot.</td></tr><tr><td><code>API_BASE_URL</code></td><td>unset</td><td>Public origin for OAuth discovery.</td></tr><tr><td><code>MCP_TOOLSETS</code></td><td>empty</td><td>Empty means all except <code>admin</code>; <code>all</code> includes it.</td></tr><tr><td><code>MCP_READ_ONLY</code></td><td><code>false</code></td><td>Unregisters write tools at boot.</td></tr><tr><td><code>MCP_REQUIRE_EGRESS_CONSENT</code></td><td><code>true</code></td><td>Each user opts in before tools return their data.</td></tr><tr><td><code>MCP_OAUTH_CLIENT_ID</code></td><td>unset</td><td>Pre-registered public client; empty means PAT-only.</td></tr><tr><td><code>MCP_RATE_LIMIT_PER_MINUTE</code> / <code>_BURST</code></td><td><code>120</code> / <code>40</code></td><td>Per-user request budget.</td></tr><tr><td><code>MCP_WRITE_RATE_LIMIT_PER_MINUTE</code> / <code>_BURST</code></td><td><code>30</code> / <code>10</code></td><td>Tighter bucket for mutating tools.</td></tr><tr><td><code>MCP_TOOL_TIMEOUT_SECONDS</code></td><td><code>30</code></td><td>Per-call timeout.</td></tr><tr><td><code>USER_TRACKING_ONBOARDING</code></td><td><code>force</code></td><td><code>force</code>, <code>on</code>, or <code>off</code> — see <a href="../security-and-privacy.html#usage-analytics">Security and privacy</a>.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead><tbody><tr><td><code>MCP_ENABLED</code></td><td><code>false</code></td><td>Mounts the MCP server at <code>/mcp</code>; read at boot.</td></tr><tr><td><code>API_BASE_URL</code></td><td>unset</td><td>Public origin for OAuth discovery.</td></tr><tr><td><code>MCP_TOOLSETS</code></td><td>empty</td><td>Empty means all except <code>admin</code>; <code>all</code> includes it.</td></tr><tr><td><code>MCP_READ_ONLY</code></td><td><code>false</code></td><td>Unregisters write tools at boot.</td></tr><tr><td><code>MCP_REQUIRE_EGRESS_CONSENT</code></td><td><code>true</code></td><td>Each user opts in before tools return their data.</td></tr><tr><td><code>MCP_OAUTH_CLIENT_ID</code></td><td>unset</td><td>Pre-registered public client; empty means PAT-only.</td></tr><tr><td><code>MCP_RATE_LIMIT_PER_MINUTE</code> / <code>_BURST</code></td><td><code>120</code> / <code>40</code></td><td>Per-user request budget.</td></tr><tr><td><code>MCP_WRITE_RATE_LIMIT_PER_MINUTE</code> / <code>_BURST</code></td><td><code>30</code> / <code>10</code></td><td>Tighter bucket for mutating tools.</td></tr><tr><td><code>MCP_TOOL_TIMEOUT_SECONDS</code></td><td><code>30</code></td><td>Per-call timeout.</td></tr><tr><td><code>USER_TRACKING_ONBOARDING</code></td><td><code>force</code></td><td><code>force</code>, <code>on</code>, or <code>off</code> — see <a href="security-and-privacy.html#usage-analytics">Security and privacy</a>.</td></tr></tbody></table></div></div>
 <aside class="callout callout-note"><span class="callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></span><div class="callout-body"><span class="label">Note</span><p>Environment changes need a container <strong>recreate</strong> (<code>docker compose up -d</code>), not a restart: <code>restart</code> keeps the old environment.</p></div></aside>
     </div>
   <nav class="pager" aria-label="Pagination">
@@ -1226,6 +1282,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

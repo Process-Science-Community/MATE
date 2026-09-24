@@ -4,9 +4,9 @@
 
 # Deployment
 
-Two supported shapes: a local stack on one machine, and a production deployment behind a proxy with TLS. Both are the same compose file plus an overlay.
+Two deployments are supported: a local stack on one machine, and a production deployment behind a proxy with TLS. Both use the same compose file plus an overlay.
 
-## Modes
+## Deployment modes
 
 | Command | Compose files | Use |
 | --- | --- | --- |
@@ -33,9 +33,9 @@ The production overlay adds a Caddy container as the only published port, resets
 
 Compression excludes `text/event-stream` on purpose, so streaming responses are never buffered. Security headers (HSTS, `nosniff`, referrer policy) and a report-only CSP are set on the web app.
 
-## Runbook
+## Production runbook
 
-Each step rules out one layer, so a problem is found where it happens.
+Each step rules out one layer, so a failure surfaces where it occurs.
 
 :::steps
 1. **Smoke-test the pipe** from outside the VM: `curl -sSI https://mate.example.org/health | head -1`. If this fails, nothing else will work.
@@ -56,7 +56,7 @@ Each step rules out one layer, so a problem is found where it happens.
 6. **Verify in order**: `/health` answers · `/login` renders · sign-in works · a small import completes · Discovery opens · a dashboard loads · MATE AI answers (if configured) · `python -m mate.api.storage.migration check` passes (if S3).
 :::
 
-Optional pieces: the CV4CDD model files (uploaded on the module's settings page), the Neo4j sidecar (compose profile `graph`), and S3 storage.
+Optional components: the CV4CDD model files (uploaded on the module's settings page), the Neo4j sidecar (compose profile `graph`), and S3 storage.
 
 ## Identity setup
 
@@ -70,9 +70,9 @@ The realm JSON imports **only into an empty Keycloak database**; everything afte
 | Admin REST client (user deletion) | `./infra/keycloak/configure-admin-client.sh` |
 | MCP OAuth client | `./infra/keycloak/configure-mcp-client.sh` |
 
-Deleting a user from *Admin → Users* purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. It is intentionally irreversible.
+Deleting a user from *Admin → Users* purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. This is intentionally irreversible.
 
-## Updates
+## Updating a deployment
 
 ```bash title="From a laptop inside the VPN"
 make deploy      # pushes the branch, resets the server clone, rebuilds, health-checks
@@ -100,7 +100,7 @@ Rolling back the code does not roll back migrations. If the release included a d
 
 # Configuration
 
-Every knob a running platform reads. The canonical list with inline commentary is [`.env.example`](https://github.com/Process-Science-Community/MATE/blob/main/.env.example).
+Every knob a running platform reads. The deployment variables — URLs, identity, storage, MCP, tracking — are documented with inline commentary in [`.env.example`](https://github.com/Process-Science-Community/MATE/blob/main/.env.example); the job and compute knobs below are read from the environment and default as shown.
 
 ## URLs and identity
 
@@ -132,7 +132,7 @@ Every knob a running platform reads. The canonical list with inline commentary i
 | `STORAGE_S3_PREFIX` | – | Key prefix, so deployments can share a bucket. |
 | `STORAGE_S3_QUOTA_BYTES` | `0` | Ceiling for the prefix; imports answer `507` once reached. |
 | `LOCAL_CACHE_MAX_BYTES` | `0` | Cache budget for the eviction reaper; `0` never evicts. |
-| `CACHE_EVICT_DRY_RUN` | `true` | Log candidates without deleting — soak first. |
+| `CACHE_EVICT_DRY_RUN` | `true` | Log candidates without deleting — run in dry-run mode first. |
 | `JOB_RETENTION_DAYS` | `0` | Prune terminal jobs after N days. |
 
 ## Jobs and compute
@@ -169,9 +169,9 @@ Every knob a running platform reads. The canonical list with inline commentary i
 # Backup, storage and limits
 <!-- slug: backup-and-storage -->
 
-Two things hold state — the metadata database and the filesystem (or the bucket) — plus the Keycloak volume.
+Three stores hold state: the metadata database, the filesystem (or the bucket), and the Keycloak volume.
 
-## What to back up
+## Backup scope
 
 | Asset | Where | Why it matters |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ cp .env mate-env-$(date +%F).bak        # encrypt this
 
 In S3 mode the bucket already holds the authoritative event data; the platform also writes an hourly metadata snapshot to `_system/metadata.dump` (or `metadata.db` on SQLite deployments) and archives uploaded module sources to `_system/modules/`.
 
-## Restoring
+## Restoring a backup
 
 :::steps
 1. **Stop the stack** so nothing writes during the restore: `docker compose down`.
@@ -207,7 +207,7 @@ In S3 mode the bucket already holds the authoritative event data; the platform a
 5. **Start the stack**, then verify: sign in, open a process, run one module, check the storage gauge.
 :::
 
-`db_backup restore` refuses to write into a database that already has tables — deliberately, because restoring over a live schema produces a half-broken platform that is harder to diagnose than an empty one. From S3, the same command restores on a fresh VM *before* the first boot, after which logs hydrate on demand as users open them.
+`db_backup restore` refuses to write into a database that already has tables — deliberately, because restoring over a live schema produces an inconsistent platform that is harder to diagnose than an empty one. From S3, the same command restores on a fresh VM *before* the first boot, after which logs hydrate on demand as users open them.
 
 ## S3 mode
 
@@ -223,13 +223,13 @@ In S3 mode the bucket already holds the authoritative event data; the platform a
 docker compose exec api python -m mate.api.storage.migration check     # probe + usage report
 docker compose exec api python -m mate.api.storage.migration to_s3     # copy-only, re-runnable
 
-# 2. set LOCAL_CACHE_MAX_BYTES, soak with CACHE_EVICT_DRY_RUN=true, then enable deletes
+# 2. set LOCAL_CACHE_MAX_BYTES, run with CACHE_EVICT_DRY_RUN=true, then enable deletes
 # to go back: run `to_local` while the mode still says s3, then flip the mode
 ```
 
 Both migration directions are copy-only: they never delete the source.
 
-## Fairness on a shared host
+## Resource limits on a shared host
 
 By default the platform behaves as if it owned the machine. On a shared VM, bound it:
 
@@ -245,7 +245,7 @@ Capacity rules of thumb: RAM = 2 GB baseline + the largest expected module worki
 
 # Troubleshooting
 
-Symptoms in the order people hit them, with the cause that usually explains them.
+Symptoms by area, with the cause that most often explains them.
 
 ## Sign-in and identity
 
@@ -265,7 +265,7 @@ Symptoms in the order people hit them, with the cause that usually explains them
 | Modules report unavailable after a successful import | Column roles are wrong — remap them in the log settings. |
 | Time bounds empty, trends flat | The timestamp column was misidentified or misparsed. |
 | One giant case in a CSV | The case id column was mapped to a near-constant column. |
-| Staged upload vanished | Staging is swept after two hours — re-upload. |
+| Staged upload vanished | Staging is cleared after two hours — re-upload. |
 | First import on a fresh host takes very long | Module environments are being materialised; later imports are fast. |
 
 ## Jobs and modules
@@ -313,7 +313,7 @@ Symptoms in the order people hit them, with the cause that usually explains them
 | API restarts under load | Memory pressure from a module — isolate it, or bound its allocations. |
 | Everyone waits for one user's jobs | The offload pool is saturated — set `MAX_OFFLOADS_PER_USER`. |
 
-## When you cannot tell
+## Diagnosing an unknown failure
 
 :::steps
 1. Reproduce with a synthetic log of 200 cases — most module bugs show up immediately.

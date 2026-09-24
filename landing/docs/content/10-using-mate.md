@@ -1,4 +1,4 @@
-<!-- Using MATE — the app, screen by screen, without the tour. -->
+<!-- Using MATE — the application, screen by screen. -->
 
 <!-- group: Using MATE -->
 
@@ -18,7 +18,7 @@ The wizard accepts five format families, probes them server-side, and writes not
 
 All formats accept `.gz`, `.bz2`, `.xz`, and `.zip` wrappers.
 
-## The wizard
+## The mapping wizard
 
 :::steps
 1. **Choose a file** — drop it on the zone or pick it from disk.
@@ -28,7 +28,7 @@ All formats accept `.gz`, `.bz2`, `.xz`, and `.zip` wrappers.
 5. **Import** — parse, normalise, write Parquet, dispatch module precompute.
 :::
 
-Staged files live under `data/staging/{user}/{token}/` and are swept after two hours, so an abandoned wizard leaves nothing behind.
+Staged files live under `data/staging/{user}/{token}/` and are removed after two hours, so an abandoned wizard leaves nothing behind.
 
 | Role | Required | Unlocks |
 | --- | --- | --- |
@@ -39,14 +39,14 @@ Staged files live under `data/staging/{user}/{token}/` and are swept after two h
 | `resource` | no | Actor analyses (`actor_performance` requires it). |
 | `cost` | no | Cost aggregations where a module uses them. |
 
-Format extras appear where they apply: CSV delimiter, XML event element, JSON event path, and an explicit timestamp format when samples are ambiguous. Each row shows its confidence (`user`, `fuzzy`, `fallback`); **AI assist** re-proposes low-confidence rows when a provider is configured. Any edit re-opens the confirmation gate, and the import only starts when you press **Confirm mapping**.
+Format extras appear where they apply: CSV delimiter, XML event element, a JSON array key, and an optional timestamp format (offered for every mapping-based format, used when the sample is ambiguous). Each row carries a confidence chip — `user` → *Your choice*, `exact` → *Matched*, `fuzzy` → *Guessed*, `fallback` → *Inferred from data*. When a provider is configured the wizard re-proposes low-confidence rows automatically and marks them **AI**. Any edit re-opens the confirmation gate; **Confirm mapping** unlocks the import, and **Start import** runs it.
 
 > [!TIP]
 > A wrong timestamp format is the most common import mistake. If the probe preview shows dates but a module later reports empty time bounds, remap the roles in the log's settings tab.
 
 ## Progress and repair
 
-The checklist mirrors the real job: *Reading data*, *Processing events*, *Saving*, then one row per module (`Queued`, `Running`, `Waiting on <module>`, `Skipped`, `Done`).
+The checklist mirrors the real job: *Uploading file*, *Reading columns*, *Reading data*, *Processing events*, *Saving*, then a *Preparing modules* step with one row per module (`Queued`, `Running`, `Waiting on <module>`, `Skipped`, `Done`).
 
 Fixable problems are repaired rather than rejected — case-insensitive duplicate columns are merged, values are coerced to their column type, timestamps normalised — and the count of fixes is reported. A module that fails is marked and leaves the log importable.
 
@@ -54,15 +54,15 @@ Fixable problems are repaired rather than rejected — case-insensitive duplicat
 
 | Action | Where | Effect |
 | --- | --- | --- |
-| Re-import | Row menu, or *Maintenance* in the log's settings | Rebuilds from the retained original upload. |
+| Re-run import | Row menu, or *Maintenance* in the log's settings | Rebuilds from the retained original upload. |
 | Remap columns | Log settings → *Column roles* | Forces new roles and re-runs the import. |
 | Duplicate | Row menu | Clones the log row and directory — useful for comparing filtered views. |
-| Rename | Inline in the list | Display name only; URLs keep the log id. |
+| Rename | Row menu → *Rename* (dialog) | Display name only; URLs keep the log id. |
 | Delete | Row menu | Cancels its jobs, removes the data on disk and the S3 prefix. |
 
 # Working with logs
 
-Filtering, editing, and organising logs — the parts of the workflow that happen after the first import.
+Filtering, editing, and organising logs after the first import.
 
 ## Filtering
 
@@ -88,22 +88,22 @@ A committed filter is part of the analysis: a bottleneck ranking after excluding
 | Rename an activity | Activities tab → *Display name* | Changes the label across the app without touching the data. |
 | Rename a column | Log settings → *Source & schema* | Sets a display label for a column. |
 
-Every change is recorded in the log's **Edit history**. Re-importing from the original discards edits — the source file is the only truth.
+Every change is recorded in the log's **Edit history**. Re-running the import from the original discards edits — the source file is the only truth.
 
 ## Data quality
 
-The quality view reports per-column completeness, and the events table can be restricted to rows with missing values. Both answer one question: *can the module I want run on this log?* The module card already names any unmet requirement:
+The quality view reports per-column completeness, and the events table can be restricted to rows with missing values. Both answer one question: whether a module can run on this log. The module card already names any unmet requirement:
 
 | Reason | Fix |
 | --- | --- |
 | Missing required column | Remap the column roles. |
 | Below `min_events` / `min_cases` | Nothing to fix — the module needs more data. |
-| Optional role missing | Nothing; the module runs with less context. |
 | Log model mismatch | Use a module that declares your log's model. |
+| Optional module missing | Nothing; the card is marked **Limited** and the module runs with less context. |
 
 ## Folders
 
-Folders nest freely; moving one refuses to move it into its own descendant. Deleting a folder cascades to its subfolders and logs, after a confirmation that names the count. The tree supports drag-and-drop reordering and a *Move to folder* row action.
+Folders nest freely; moving one refuses to move it into its own descendant. Deleting a folder cascades to its subfolders and logs, after a confirmation that names the count. The tree supports drag-and-drop reordering and a *Move to* row action.
 
 The list reads `?q=` and `?status=` from the URL, so a filtered view is a shareable link.
 
@@ -130,15 +130,15 @@ The card per folder shows mode, interval, last scan, and a status badge (`active
 | Data quality | Completeness per column. |
 | Source & schema | Original filename, format, import time, time bounds, per-column labels. |
 | Edit history | Every cell edit with its timestamp. |
-| Maintenance | Re-import, delete. |
+| Maintenance | Re-run import, delete. |
 
 # Exploring a process
 
-The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, one variant, one activity — is a link.
+The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, a variant, an activity — is a shareable link.
 
-## The frame
+## Process page layout
 
-The header carries the name, format, model, and a stat strip (cases, events, variants, date range, import time). Tabs stay disabled until the log is `ready`. Banners appear for a mapping that needs review, an import in progress, and a failure.
+The breadcrumb carries the name and the Overview tab opens with the stat strip (format, cases, events, variants, date range, import time); OCEL logs are also badged object-centric. The data tabs — Events, Variants, Activities (or Objects/Events/Relationships on an OCEL log) — stay disabled until the log is `ready`; Overview and Settings are always available. Banners appear for a mapping that needs review, an import in progress, and a failure.
 
 | Tab | Contents |
 | --- | --- |
@@ -150,14 +150,14 @@ The header carries the name, format, model, and a stat strip (cases, events, var
 
 OCEL logs swap the middle tabs for **Objects**, **Events**, and **Relationships**, driven by the log's own Parquet schema.
 
-## The events tab
+## Events tab
 
 | Control | Behaviour |
 | --- | --- |
 | Cross-column search | Debounced 300 ms. |
 | Missing-values switch | Shows only rows with empty cells. |
-| Column filters | Operators per column type: string (`contains`, `equals`, `is null`, `is not null`), numeric and datetime (`equals`, `gte`, `lte`), enum and boolean (`equals`). |
-| Apply / Clear | Commits the filter to the log (re-running modules) or clears it. |
+| Column filters | Operators per column type — string: `contains`, `equals`, `is_null`, `is_not_null`; numeric, duration, and datetime: `equals`, `gte`, `lte`, `is_null`, `is_not_null`; enum and boolean: `equals`, `is_null`, `is_not_null`. |
+| Apply / Restore | Commits the filter to the log (re-running modules), or restores the unfiltered view. |
 | Case chip | Arriving with `?case_id=` restricts the table to that case. |
 | Paging | 25, 50, 100, or 200 rows. |
 
@@ -167,25 +167,24 @@ The variants tab filters by activity and minimum case count, sorts by cases, dur
 
 ## Cross-module navigation
 
-Wherever a module renders an activity or a variant, the label links into the matching view, carrying the standard drill parameters (`activity`, `case`, `variant`, `from`/`to`, `view`, `metric`). That is what makes a chart a starting point rather than an endpoint.
+Wherever a module renders an activity or a variant, the label links into the matching view, carrying the standard drill parameters (`activity`, `case`, `variant`, `object_type`, `ts_from`/`ts_to`, `view`, `metric`; `from`/`to` name the two ends of a graph edge). That is what makes a chart a starting point rather than an endpoint.
 
 # Modules
 
 Modules are the platform's capabilities. The **Modules** page manages which ones your account has.
 
-## The library
+## Module library
 
 | Element | Detail |
 | --- | --- |
-| Card | Name, version, category, description, citation count. |
+| Row | Name, version, description, a *Configure* link, and the enable switch. Modules are grouped under category headings. |
 | Enable switch | Turns the module on or off for your account; disabled modules disappear from grids and dashboards. |
 | Configure | The settings form generated from the module's schema. |
-| Menu | *View manifest*, *Update*, *Uninstall*. |
-| Import | Upload a `.zip`/`.tar.gz`, install from a git URL, or install from a registry package. |
+| Import | Upload an archive — `.zip`, `.tar`, `.tar.gz`, or `.tgz`. |
 
-Installing runs as a job: unpack, validate the manifest, `uv sync`, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed. No restart is involved.
+Installation runs as a job: unpack, validate the manifest, `uv sync`, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed, and no restart is needed.
 
-The module detail page shows the rendered README, the parsed manifest, resolved dependencies, citations and artifacts, the configuration forms, and a live tail of that module's log lines.
+The module detail page shows an About popover (description, longer *about*, cited works, artifacts), the *Provides*/*Consumes* lists, the configuration forms, a live tail of that module's log lines, and the *Uninstall* action in its danger zone.
 
 ## Availability
 
@@ -217,30 +216,30 @@ A missing `optional_modules` entry does not block it; the card is marked **Limit
 | Log evolution | `log_evolution` | advanced | case, activity, timestamp | Arrivals vs completions, WIP, activity mix, dotted chart; 4 widgets |
 | Performance over time | `performance_over_time` | advanced | case, activity, timestamp | Performance KPIs per time slice |
 | Actor performance | `actor_performance` | advanced | `resource`; ≥100 events, ≥5 cases; Neo4j sidecar | Waiting-time decomposition per actor behaviour |
-| Agent simulator | `agentsimulator` | advanced | case, activity, timestamp | Agent-based simulation plus a fidelity score; 3 widgets |
+| Agent simulator | `agentsimulator` | advanced | case, activity, timestamp, `resource`; ≥200 events, ≥20 cases | Agent-based simulation plus a fidelity score; 3 widgets |
 | PComp | `pcomp` | comparison | two logs | Two-sample hypothesis test on Earth Mover's Distance |
 | Process comparison | `process_comparison` | comparison | two logs | Side-by-side DFG diff, variant differences, EMD similarity |
 
-Three deserve a note: **Discovery** can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as datasets other modules can render. **Performance** declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. **Concept drift explainer** is the reference for a module with an external dependency chain and an `ai_models` block that renders its own model pickers.
+Three modules have notable behaviour: **Discovery** can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as datasets other modules can render. **Performance** declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. **Concept drift explainer** is the reference for a module with an external dependency chain and an `ai_models` block that renders its own model pickers.
 
 ## Ownership
 
-Module ownership is per account and reference-counted: uninstalling removes *your* install, and shared artifacts (virtual environment, bundle, caches) are deleted when the last owner leaves. **Restore defaults** re-adds the modules you removed. Uploaded modules live in `data/uploaded_modules/`, never in the repository's `modules/` tree. Operators can withhold a module from everyone, or change what new accounts get, on *Admin → Modules*.
+Module ownership is per account and reference-counted: uninstalling removes *your* install, and shared artifacts (virtual environment, bundle, caches) are deleted when the last owner leaves. **Restore defaults** re-adds the modules you removed. Uploaded modules live in `data/uploaded_modules/`, never in the repository's `modules/` tree. Operators can withhold a module from new accounts, or change what new accounts get, on *Admin → Modules*; existing owners keep their install.
 
 # Jobs and the interface
 
-Every long operation is a job, and the interface surfaces them the same way everywhere.
+Every long operation is a job, and the interface reports them consistently.
 
-## Four surfaces
+## Where jobs appear
 
 | Surface | Where | What it gives you |
 | --- | --- | --- |
 | Toasts | Bottom-right | One per lifecycle event; failures stay until dismissed and offer *Details*. Rapid sequences collapse. |
-| Dock | Bottom-left pill | Active count and the top job's progress; hover expands the three most recent, with per-job cancel. Retires 30 s after the last job. |
+| Dock | Bottom-left pill | Active count and the top job's progress; hover expands the three most recent, with per-job cancel. Disappears 30 s after the last job completes. |
 | Drawer | The pill, or <kbd>j</kbd> <kbd>j</kbd> | Every job: *All / Running / Queued / Finished*, filter by title or id, cancel all running, pause or resume the queue. |
 | Plan checklist | Import groups and the wizard | The precompute plan: each module step as *waiting*, *running*, *skipped*, or *done*, with *Waiting on X* where an ordering edge was declared. |
 
-## Reading a job row
+## Job row fields
 
 | Element | Meaning |
 | --- | --- |
@@ -248,11 +247,11 @@ Every long operation is a job, and the interface surfaces them the same way ever
 | Progress | A percentage when the module reports fractions or counts; indeterminate otherwise. |
 | Rate and ETA | From the last 20 progress samples, or the module's own `eta_seconds` hint. |
 | Stall hint | After three minutes without a tick. A hint about the job, not an error. |
-| Actions | Cancel, retry, copy id, and *Open* when the job has a target. |
+| Actions | *Cancel*; *Retry* when the job failed. The job id copies from the details dialog. |
 
-The queue runs `WORKER_CONCURRENCY` jobs in parallel (default `2`, changeable live by an admin). Queued jobs can be reordered by priority, the queue can be paused without interrupting running work, and a job past `JOB_EXECUTION_TIMEOUT_SECONDS` (default 1800) is force-stopped, offload children included.
+The queue runs `WORKER_CONCURRENCY` jobs in parallel (default `2`, changeable live by an admin). A job's declared priority is shown in its details but there is no manual reordering, the queue can be paused without interrupting running work, and a job past `JOB_EXECUTION_TIMEOUT_SECONDS` (default 1800) is force-stopped, offload children included.
 
-## Keyboard
+## Keyboard shortcuts
 
 | Keys | Action |
 | --- | --- |
@@ -263,7 +262,7 @@ The queue runs `WORKER_CONCURRENCY` jobs in parallel (default `2`, changeable li
 | <kbd>cmd</kbd>/<kbd>ctrl</kbd> + <kbd>A</kbd> · <kbd>D</kbd> · <kbd>Delete</kbd> | Select all, duplicate, remove cards (dashboard edit mode). |
 | Arrows (+ <kbd>shift</kbd>) | Nudge the selected cards. |
 
-## Conventions
+## Interface conventions
 
 | Convention | Meaning |
 | --- | --- |
@@ -295,7 +294,7 @@ A dashboard is a canvas of cards from any module, scoped by one filter bar and s
 
 Card filtering is deliberately not per card: filtering belongs to the board or to the card's own declared options. Sizes are enforced in two units — grid units keep the layout tidy, and the card's declared pixel floors keep it readable.
 
-## Cards
+## Card types
 
 | Kind | Source | When to use it |
 | --- | --- | --- |
@@ -310,19 +309,19 @@ Card filtering is deliberately not per card: filtering belongs to the board or t
 | Revoke | Owner | Immediate. |
 | Join a team | Admin-managed | Teams are the sharing unit; without one, the dialog says so. |
 
-A shared board opens read-only — no palette, no inspector — but readers can still apply their own filters without changing what the owner saved. **Export** writes a portable JSON snapshot with placements and settings but no ids, so it can be imported into another account or installation.
+A shared board opens read-only — no palette, no inspector — but readers can still apply their own filters without changing what the owner saved. **Export** writes a portable JSON snapshot with placements, layout keys, and settings but no dashboard or database ids, so it can be imported into another account or installation.
 
 # MATE AI
 
-The assistant lives in a right-hand panel: context-aware, restricted by a data wall, and configured by you.
+The assistant runs in a right-hand panel: context-aware, restricted by a data wall, and configured per account.
 
 | Element | Behaviour |
 | --- | --- |
-| Context | Attached automatically from the URL: current page, log, and the modules in view. |
+| Context | Attached automatically from the URL: current page, log, and the module open on the page. |
 | Starters | Suggested questions that change with context; the strip hides itself once you have asked there. |
 | Answers | Streamed over Server-Sent Events, with navigation chips that deep-link into the app. |
 | Guidance cards | Per-module and per-process explanations you can generate, refresh, or regenerate; cached with the module's results. |
-| No provider | The panel says so and links to *Settings → AI*; input stays disabled. |
+| No provider | The panel says so and links to *Settings → AI*; the starter chips are disabled. |
 
 ## Providers
 
@@ -340,7 +339,7 @@ The form takes a key (masked afterwards; leaving it blank keeps the stored key),
 > [!WARNING]
 > Neither MATE AI nor the MCP server can read raw event rows. The restriction is structural: the context built for an AI request has its event-log accessors replaced by objects that raise on any access. What reaches a model is aggregates, cached module outputs, and metadata the page already shows.
 
-Two switches decide how much context is used, both off by default: *process list in prompts* (which logs exist and their headline figures) and *access process data* (activity and variant aggregates, capped at 40 activities and the top 15 variants; skipped for OCEL logs).
+One switch decides how much context is used, off by default: *access process data* enables both the process list (which logs exist and their headline figures) and activity and variant aggregates, capped at 40 activities and the top 15 variants and skipped for OCEL logs.
 
 # Settings and admin
 
@@ -358,7 +357,7 @@ Settings are per user and stored server-side, so they follow the account across 
 
 ## Onboarding
 
-A first login walks through a welcome step (experience level), the privacy choice (omitted when tracking is forced), an embedded import form, then a seven-step product tour. Completion is per-user server state, resettable from *About*.
+The first login walks through a welcome step (experience level), the privacy choice (omitted when tracking is forced), an embedded import form, and then a seven-step product tour. Completion is per-user server state, resettable from *About*.
 
 ## Admin
 
@@ -366,14 +365,14 @@ The `admin` realm role unlocks an **Admin** section. Every page is gated server-
 
 | Page | Use it for |
 | --- | --- |
-| Overview | Platform analytics: new users, logs by status and format, top users, job throughput, sessions, top pages, activity by hour. |
+| Overview | Platform analytics: new users, logs by status and format, top users, jobs by status and failures, sessions, top pages, activity by hour. |
 | Users | Search, per-user ownership detail, account deletion (Mate data plus the Keycloak identity). |
 | Teams | Create, rename, delete teams; manage members. |
 | Jobs | The whole queue: pause/resume, cancel, retry, force-kill a process tree, live per-job log tail. |
 | Modules | Per-user installs, defaults, withholding a module platform-wide. |
 | Controls | Platform-wide module configuration, the shared AI configuration, per-module model pins, worker-pool sizing. |
-| Logs | Every log with owner, status, format, and a download of the original upload. |
+| Event logs | Every log with owner, status, format, and a download of the original upload. |
 | System | Live CPU and memory, load by source, running jobs. |
-| Export | The metadata export with preview. It spans all users — treat the file as sensitive. |
+| Data export | The metadata snapshot (download only — it spans all users, so treat it as sensitive) plus a filterable behaviour export with a live preview. |
 
 Anything an administrator sets at platform level wins over a user's own setting; users see a read-only banner naming who controls it.

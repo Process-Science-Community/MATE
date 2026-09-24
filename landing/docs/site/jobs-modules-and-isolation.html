@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jobs, modules and isolation - MATE Docs</title>
-<meta name="description" content="The three mechanisms a module author and an operator both need to understand.">
+<meta name="description" content="The job queue, the event bus, and the module system, for module authors and operators.">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -865,7 +921,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Jobs, modules and isolation</h1>
-      <p class="doc-lead">The three mechanisms a module author and an operator both need to understand.</p>
+      <p class="doc-lead">The job queue, the event bus, and the module system, for module authors and operators.</p>
     </div>
     <div class="prose">
 <h2 id="the-job-model">The job model<a class="h-anchor" href="#the-job-model" aria-label="Link to this section">#</a></h2>
@@ -881,16 +937,16 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Aspect</th><th>Behaviour</th></tr></thead><tbody><tr><td>Persistence</td><td>The job row and its payload survive restarts; a boot-time pass reconciles logs left mid-import.</td></tr><tr><td>Progress</td><td>A fraction or a count pair, persisted every 1000 events, plus a stage label.</td></tr><tr><td>Timeouts</td><td><code>JOB_EXECUTION_TIMEOUT_SECONDS</code> (default 1800) force-stops a job and its offload children.</td></tr><tr><td>Retry</td><td>The stored payload replays the same work.</td></tr></tbody></table></div></div>
 <p>The queue is an in-process asyncio queue sized by <code>WORKER_CONCURRENCY</code> (default <code>2</code>, admin-changeable live). Heavy CPU work moves to a process pool through <code>ctx.run_in_process(...)</code>, bounded by <code>MODULE_PROCESS_POOL_SIZE</code> and, per user, by <code>MAX_OFFLOADS_PER_USER</code>.</p>
 <h2 id="the-event-bus">The event bus<a class="h-anchor" href="#the-event-bus" aria-label="Link to this section">#</a></h2>
-<p>In-process pub/sub, with a bounded queue per subscriber: when one fills, the oldest entry is dropped — a progress tick is expendable, a terminal event is not.</p>
+<p>In-process pub/sub, with a bounded queue per subscriber: when one fills, the oldest entry is dropped — acceptable for a progress tick, not for a terminal event.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Topic</th><th>Emitted when</th></tr></thead><tbody><tr><td><code>job.queued</code> · <code>job.started</code> · <code>job.progress</code> · <code>job.completed</code> · <code>job.failed</code> · <code>job.cancelled</code></td><td>Job lifecycle</td></tr><tr><td><code>job.plan</code> · <code>job.snapshot</code> · <code>job.queue.paused</code> · <code>job.queue.resumed</code></td><td>Plan published, client resync, queue control</td></tr><tr><td><code>log.imported</code> · <code>ocel.imported</code> · <code>log.ready</code></td><td>Import normalised · precompute settled</td></tr><tr><td><code>&lt;module_id&gt;.completed</code></td><td>A module's precompute succeeded</td></tr><tr><td><code>module.log.*</code> · <code>module.installed</code></td><td>Module log line · install finished</td></tr></tbody></table></div></div>
 <p><span class="mchip m-get">GET</span><code>/api/v1/events?topic=…</code> is the platform stream, <span class="mchip m-get">GET</span><code>/api/v1/jobs/{id}/stream</code> the per-job one; both are SSE with a Bearer header, and the client reconnects with backoff.</p>
 <h2 id="the-module-system">The module system<a class="h-anchor" href="#the-module-system" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Stage</th><th>Behaviour</th></tr></thead><tbody><tr><td>Discovery</td><td>Scans <code>modules/*/manifest.yaml</code> one level deep, plus installed packages exposing the <code>mate.modules</code> entry point.</td></tr><tr><td>Validation</td><td>Parses manifests and builds the dependency graph; a cycle or a missing hard dependency aborts startup with a named error.</td></tr><tr><td>Materialisation</td><td>Creates or reuses <code>modules/&lt;folder&gt;/.venv</code> (hashed dependency block) and bundles the frontend into <code>.dist/</code>.</td></tr><tr><td>Mount</td><td>Routes under <code>/api/v1/modules/{id}/*</code>, event handlers on the bus, job handlers on the queue, capabilities in the registry.</td></tr><tr><td>Gating</td><td>Per log: log model, required columns, <code>min_events</code>/<code>min_cases</code>, required modules, and the user's enable switch.</td></tr><tr><td>Hot reload</td><td>Dev only: changed files reload in place; a changed dependency block triggers <code>uv sync</code> for that module.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Stage</th><th>Behaviour</th></tr></thead><tbody><tr><td>Discovery</td><td>Scans <code>modules/*/manifest.yaml</code> one level deep, plus installed packages exposing the <code>mate.modules</code> entry point.</td></tr><tr><td>Validation</td><td>Parses manifests and builds the dependency graph; a cycle or a missing hard dependency logs a named error (<code>modules.discovery.dependency_cycle</code>, <code>…requirement_missing</code>) and drops that module plus everything depending on it — the rest still boots.</td></tr><tr><td>Materialisation</td><td>Creates or reuses <code>modules/&lt;folder&gt;/.venv</code> (hashed dependency block) and bundles the frontend into <code>.dist/</code>.</td></tr><tr><td>Mount</td><td>Routes under <code>/api/v1/modules/{id}/*</code>, event handlers on the bus, job handlers on the queue, capabilities in the registry.</td></tr><tr><td>Gating</td><td>Per log: log model, required columns, <code>min_events</code>/<code>min_cases</code>, required modules, and the user's enable switch.</td></tr><tr><td>Hot reload</td><td>Dev only: changed files reload in place; a changed dependency block triggers <code>uv sync</code> for that module.</td></tr></tbody></table></div></div>
 <p><strong>Precompute</strong> is declared by stacking <code>@on_event(&quot;log.imported&quot;)</code> and <code>@job</code> on one handler. The closure — those handlers plus everything chained off <code>&lt;module_id&gt;.completed</code> — is frozen onto the log at import time. A module's precompute that succeeds publishes <code>&lt;module_id&gt;.completed</code>; if an upstream job fails or is cancelled, its dependents are <strong>skipped</strong>, so a log always reaches <code>ready</code> instead of hanging in <code>processing</code>. Skipped steps appear in the import's plan; no job row is created for them.</p>
-<p><strong>Install paths</strong> are all jobs: upload (<code>data/uploaded_modules/{id}/</code>), git URL (shallow clone, then the upload path), or registry (install a package, re-scan entry points). Ownership is reference-counted per user, and shared artifacts are deleted at zero owners.</p>
+<p><strong>Install</strong> is a job: an uploaded archive (<span class="mchip m-post">POST</span><code>/api/v1/modules/install</code>) lands in <code>data/uploaded_modules/{id}/</code>, the manifest is validated, dependencies materialised, the frontend bundled, and the module mounted — a failure rolls back. Git-URL and registry installs are specified in the design docs but not implemented; discovery separately picks up installed packages that expose the <code>mate.modules</code> entry point. Ownership is reference-counted per user, and shared artifacts are deleted at zero owners.</p>
 <h2 id="isolation-modes">Isolation modes<a class="h-anchor" href="#isolation-modes" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Mode</th><th>Declared by</th><th>Runs in</th><th>Use it when</th></tr></thead><tbody><tr><td>In-process, thread</td><td><code>isolation: in_process</code>, <code>execution: thread</code> (default)</td><td>The API process, thread pool</td><td>Almost everything.</td></tr><tr><td>In-process, killable worker</td><td><code>execution: worker</code></td><td>A throwaway child of the API</td><td>Long native calls that ignore cooperative cancellation.</td></tr><tr><td>Subprocess</td><td><code>isolation: subprocess</code></td><td>A long-lived worker on the module's own interpreter</td><td>A different Python version, or a native-library conflict.</td></tr><tr><td>Foreign runtime</td><td><code>runtime: { kind: jvm }</code></td><td>A worker started from the module's own fat jar</td><td>Java methods.</td></tr></tbody></table></div></div>
-<p>In-process modules run on the platform's interpreter (currently 3.12) and are ABI-locked to it: <code>requires-python</code> is a <em>validation gate</em> there, and an interpreter selector for subprocess modules. Each module's <code>.venv</code> is private, with <code>inherit</code> naming the libraries the platform already ships (pandas, numpy, pm4py, duckdb) so they are not reinstalled per module.</p>
+<p>In-process modules run on the platform's interpreter (currently 3.12) and are ABI-locked to it: <code>requires-python</code> is a <em>validation gate</em> there, and an interpreter selector for subprocess modules. Each module's <code>.venv</code> is private; <code>inherit</code> names libraries the platform already ships (pandas, numpy, pm4py, duckdb) — an in-process module resolves them from the platform's interpreter, while a subprocess module installs them into its own environment, because no interpreter is shared across the process boundary.</p>
 <p>The <strong>subprocess bridge</strong> is a Unix socket with newline-delimited JSON: a 30-second handshake, <code>ctx.*</code> calls proxied back to the host, DataFrames handed over as Parquet, a three-second soft-cancel window followed by <code>SIGKILL</code>, and automatic respawn with exponential backoff (capped at 30 s, five consecutive attempts, ladder reset after 60 s of stable uptime). The <strong>JVM runtime</strong> speaks the same protocol, so the SDK surface (<code>eventLog()</code>, <code>cache()</code>, <code>bus()</code>, <code>progress()</code>, …) is equivalent.</p>
 <p><strong>Sidecars</strong> are optional compose profiles the operator starts; the module only connects to a configured address, probes health, wipes its scratch space before and after a run, and keeps results in <code>ctx.cache</code>.</p>
 <h2 id="mate-ai-internals">MATE AI internals<a class="h-anchor" href="#mate-ai-internals" aria-label="Link to this section">#</a></h2>
@@ -1250,6 +1306,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

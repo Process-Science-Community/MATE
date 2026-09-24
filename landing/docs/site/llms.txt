@@ -1,0 +1,55 @@
+# MATE Documentation
+
+> MATE is a self-hosted platform for process mining: it turns event logs into process models, performance figures, conformance results, and drift reports, and it treats every analysis as an installable module.
+
+MATE is a self-hosted, modular process-mining platform. This file indexes the published manual: every chapter in reading order, grouped as in the site navigation. Links are relative to this file, which is served next to the chapter pages.
+
+## Getting started
+
+- [Introduction](introduction.html): MATE is a self-hosted platform for process mining: it turns event logs into process models, performance figures, conformance results, and drift reports, and it treats every analysis as an installable module.
+- [Install and start](install-and-start.html): From a clean host to a logged-in workspace. The whole stack is one compose file.
+- [Your first analysis](your-first-analysis.html): One log from import to dashboard: import it, monitor the jobs, open a module, and build a board.
+
+## Using MATE
+
+- [Importing event logs](importing-event-logs.html): The wizard accepts five format families, probes them server-side, and writes nothing until you confirm the interpretation.
+- [Working with logs](working-with-logs.html): Filtering, editing, and organising logs after the first import.
+- [Exploring a process](exploring-a-process.html): The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, a variant, an activity — is a shareable link.
+- [Modules](modules.html): Modules are the platform's capabilities. The Modules page manages which ones your account has.
+- [Jobs and the interface](jobs-and-the-interface.html): Every long operation is a job, and the interface reports them consistently.
+- [Dashboards](dashboards.html): A dashboard is a canvas of cards from any module, scoped by one filter bar and shareable read-only.
+- [MATE AI](mate-ai.html): The assistant runs in a right-hand panel: context-aware, restricted by a data wall, and configured per account.
+- [Settings and admin](settings-and-admin.html): Settings are per user and stored server-side, so they follow the account across browsers. The Profile page holds the account itself.
+
+## Platform
+
+- [Architecture and data](architecture.html): Services, state locations, and the path from an uploaded file to a queryable log.
+- [Jobs, modules and isolation](jobs-modules-and-isolation.html): The job queue, the event bus, and the module system, for module authors and operators.
+- [Security and privacy](security-and-privacy.html): The invariants that protect a deployment, and the controls on data leaving it.
+
+## Module development
+
+- [Your first module](your-first-module.html): A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute something.
+- [The manifest](the-manifest.html): manifest.yaml is the registration, the contract, and the documentation of a module. The SDK validates it locally; the loader validates it again at startup.
+- [Handlers and the context](handlers-and-the-context.html): module.py holds one Module subclass with three kinds of handler, all receiving an injected ModuleContext.
+- [Logs, jobs and results](logs-jobs-and-results.html): Reading the log, declaring long-running work, and storing results.
+- [Module communication](module-communication.html): Modules never import each other. They communicate through two declared mechanisms and order themselves through one reserved topic.
+- [Frontend: panels, widgets and datasets](frontend-panels-widgets-and-datasets.html): Frontends are TypeScript regardless of the backend language. The platform bundles them with esbuild into .dist/ at startup; the Next.js build never sees your sources, and a panel may only import the packages listed in…
+- [Dependencies, isolation and runtimes](dependencies-isolation-and-runtimes.html): Where a module's code runs, and which libraries it can import.
+- [Testing and publishing](testing-and-publishing.html): Module tests are ordinary pytest. The SDK deliberately ships no test double: the context is defined by Protocols, so a test fakes exactly what a handler touches.
+
+## Interfaces
+
+- [REST API](rest-api.html): Everything the app can do is available over HTTP. This chapter is the contract: the endpoint index below is complete, and /openapi.json owns the request and response shapes.
+- [MCP server](mcp-server.html): The Model Context Protocol interface gives external AI clients scoped access to the same platform. It is opt-in, and its limits are enforced structurally rather than by prompt instructions.
+
+## Operate
+
+- [Deployment](deployment.html): Two deployments are supported: a local stack on one machine, and a production deployment behind a proxy with TLS. Both use the same compose file plus an overlay.
+- [Configuration](configuration.html): Every knob a running platform reads. The deployment variables — URLs, identity, storage, MCP, tracking — are documented with inline commentary in .env.example; the job and compute knobs below are read from the environ…
+- [Backup, storage and limits](backup-and-storage.html): Three stores hold state: the metadata database, the filesystem (or the bucket), and the Keycloak volume.
+- [Troubleshooting](troubleshooting.html): Symptoms by area, with the cause that most often explains them.
+
+## Project
+
+- [Contributing and development](contributing.html): Four contribution paths: ship a module, report a bug, improve this manual, or work on the platform.

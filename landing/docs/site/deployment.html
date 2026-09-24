@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Deployment - MATE Docs</title>
-<meta name="description" content="Two supported shapes: a local stack on one machine, and a production deployment behind a proxy with TLS. Both are the same compose file plus an…">
+<meta name="description" content="Two deployments are supported: a local stack on one machine, and a production deployment behind a proxy with TLS. Both use the same compose file…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,10 +829,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#modes">Modes</a>
-        <a data-toc href="#runbook">Runbook</a>
+        <a data-toc href="#deployment-modes">Deployment modes</a>
+        <a data-toc href="#production-runbook">Production runbook</a>
         <a data-toc href="#identity-setup">Identity setup</a>
-        <a data-toc href="#updates">Updates</a>
+        <a data-toc href="#updating-a-deployment">Updating a deployment</a>
     </div>
   </div>
 </details>
@@ -836,7 +892,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Operate</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="deployment.html" aria-current="page">Deployment</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#modes">Modes</a></li><li><a data-toc href="#runbook">Runbook</a></li><li><a data-toc href="#identity-setup">Identity setup</a></li><li><a data-toc href="#updates">Updates</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#deployment-modes">Deployment modes</a></li><li><a data-toc href="#production-runbook">Production runbook</a></li><li><a data-toc href="#identity-setup">Identity setup</a></li><li><a data-toc href="#updating-a-deployment">Updating a deployment</a></li></ul></li>
         <li><a class="side-link" href="configuration.html">Configuration</a></li>
         <li><a class="side-link" href="backup-and-storage.html">Backup, storage and limits</a></li>
         <li><a class="side-link" href="troubleshooting.html">Troubleshooting</a></li>
@@ -863,10 +919,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Deployment</h1>
-      <p class="doc-lead">Two supported shapes: a local stack on one machine, and a production deployment behind a proxy with TLS. Both are the same compose file plus an overlay.</p>
+      <p class="doc-lead">Two deployments are supported: a local stack on one machine, and a production deployment behind a proxy with TLS. Both use the same compose file plus an overlay.</p>
     </div>
     <div class="prose">
-<h2 id="modes">Modes<a class="h-anchor" href="#modes" aria-label="Link to this section">#</a></h2>
+<h2 id="deployment-modes">Deployment modes<a class="h-anchor" href="#deployment-modes" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Command</th><th>Compose files</th><th>Use</th></tr></thead><tbody><tr><td><code>make up</code></td><td><code>docker-compose.yml</code></td><td>Local preview, workshops, single-user installations.</td></tr><tr><td><code>make up-dev</code></td><td><code>+ compose.dev.yml</code></td><td>Development with hot reload inside containers.</td></tr><tr><td><code>make dev</code></td><td>none</td><td>Host dev servers, fastest reload.</td></tr><tr><td>Production</td><td><code>+ docker-compose.prod.yml</code></td><td>A VM behind an edge proxy, with TLS and resource caps.</td></tr></tbody></table></div></div>
 <p>The production overlay adds a Caddy container as the only published port, resets the app ports to unpublished, points every URL at the public origin, serves the landing page from <code>./landing</code>, enables server-side sessions, applies memory limits per service, and caps container logs (<code>10m</code> × 3 files). A one-shot <code>keycloak-config</code> service applies realm hardening on every deploy.</p>
 <figure class="diagram diagram-stack">
@@ -884,8 +940,8 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <figcaption class="dg-cap"><b>Production topology.</b> One public port. Caddy terminates TLS and routes by path; only the API owns state.</figcaption>
 </figure>
 <p>Compression excludes <code>text/event-stream</code> on purpose, so streaming responses are never buffered. Security headers (HSTS, <code>nosniff</code>, referrer policy) and a report-only CSP are set on the web app.</p>
-<h2 id="runbook">Runbook<a class="h-anchor" href="#runbook" aria-label="Link to this section">#</a></h2>
-<p>Each step rules out one layer, so a problem is found where it happens.</p>
+<h2 id="production-runbook">Production runbook<a class="h-anchor" href="#production-runbook" aria-label="Link to this section">#</a></h2>
+<p>Each step rules out one layer, so a failure surfaces where it occurs.</p>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p><strong>Smoke-test the pipe</strong> from outside the VM: <code>curl -sSI https://mate.example.org/health | head -1</code>. If this fails, nothing else will work.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p><strong>Clone on the VM</strong> into a stable directory: <code>git clone … ~/mate</code>.</p></div></li>
@@ -898,12 +954,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api</cod
 </figure></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">6</span><div class="step-body"><p><strong>Verify in order</strong>: <code>/health</code> answers · <code>/login</code> renders · sign-in works · a small import completes · Discovery opens · a dashboard loads · MATE AI answers (if configured) · <code>python -m mate.api.storage.migration check</code> passes (if S3).</p></div></li>
   </ol>
-<p>Optional pieces: the CV4CDD model files (uploaded on the module's settings page), the Neo4j sidecar (compose profile <code>graph</code>), and S3 storage.</p>
+<p>Optional components: the CV4CDD model files (uploaded on the module's settings page), the Neo4j sidecar (compose profile <code>graph</code>), and S3 storage.</p>
 <h2 id="identity-setup">Identity setup<a class="h-anchor" href="#identity-setup" aria-label="Link to this section">#</a></h2>
 <p>The realm JSON imports <strong>only into an empty Keycloak database</strong>; everything after that is a console change.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>How</th></tr></thead><tbody><tr><td>Create accounts</td><td>Keycloak console → Users → Add user, then set a temporary password. The platform creates its own <code>users</code> row on first contact.</td></tr><tr><td>Grant admin</td><td>Realm roles → <code>admin</code> → Assign role. The seeded account deliberately has no admin role.</td></tr><tr><td>Broker an institutional IdP</td><td><code>./infra/keycloak/configure-university-idp.sh</code>, then set <code>KEYCLOAK_IDP_HINT</code> so users skip Keycloak's form. Keep the local form as break-glass.</td></tr><tr><td>Admin REST client (user deletion)</td><td><code>./infra/keycloak/configure-admin-client.sh</code></td></tr><tr><td>MCP OAuth client</td><td><code>./infra/keycloak/configure-mcp-client.sh</code></td></tr></tbody></table></div></div>
-<p>Deleting a user from <em>Admin → Users</em> purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. It is intentionally irreversible.</p>
-<h2 id="updates">Updates<a class="h-anchor" href="#updates" aria-label="Link to this section">#</a></h2>
+<p>Deleting a user from <em>Admin → Users</em> purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. This is intentionally irreversible.</p>
+<h2 id="updating-a-deployment">Updating a deployment<a class="h-anchor" href="#updating-a-deployment" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">From a laptop inside the VPN</span></figcaption>
   <pre><code>make deploy      # pushes the branch, resets the server clone, rebuilds, health-checks</code></pre>
@@ -1268,6 +1324,103 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build</c
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Exploring a process - MATE Docs</title>
-<meta name="description" content="The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, one variant, one activity — is a link.">
+<meta name="description" content="The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, a variant, an activity — is a…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,8 +829,8 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#the-frame">The frame</a>
-        <a data-toc href="#the-events-tab">The events tab</a>
+        <a data-toc href="#process-page-layout">Process page layout</a>
+        <a data-toc href="#events-tab">Events tab</a>
         <a data-toc href="#variants-and-activities">Variants and activities</a>
         <a data-toc href="#cross-module-navigation">Cross-module navigation</a>
     </div>
@@ -797,7 +853,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="importing-event-logs.html">Importing event logs</a></li>
         <li><a class="side-link" href="working-with-logs.html">Working with logs</a></li>
         <li><a class="side-link" href="exploring-a-process.html" aria-current="page">Exploring a process</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#the-frame">The frame</a></li><li><a data-toc href="#the-events-tab">The events tab</a></li><li><a data-toc href="#variants-and-activities">Variants and activities</a></li><li><a data-toc href="#cross-module-navigation">Cross-module navigation</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#process-page-layout">Process page layout</a></li><li><a data-toc href="#events-tab">Events tab</a></li><li><a data-toc href="#variants-and-activities">Variants and activities</a></li><li><a data-toc href="#cross-module-navigation">Cross-module navigation</a></li></ul></li>
         <li><a class="side-link" href="modules.html">Modules</a></li>
         <li><a class="side-link" href="jobs-and-the-interface.html">Jobs and the interface</a></li>
         <li><a class="side-link" href="dashboards.html">Dashboards</a></li>
@@ -863,19 +919,19 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Exploring a process</h1>
-      <p class="doc-lead">The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, one variant, one activity — is a link.</p>
+      <p class="doc-lead">The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, a variant, an activity — is a shareable link.</p>
     </div>
     <div class="prose">
-<h2 id="the-frame">The frame<a class="h-anchor" href="#the-frame" aria-label="Link to this section">#</a></h2>
-<p>The header carries the name, format, model, and a stat strip (cases, events, variants, date range, import time). Tabs stay disabled until the log is <code>ready</code>. Banners appear for a mapping that needs review, an import in progress, and a failure.</p>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Tab</th><th>Contents</th></tr></thead><tbody><tr><td>Overview</td><td>Stat strip, then the module grid with search; disabled cards state their reason.</td></tr><tr><td>Events</td><td>Virtualised event table with search, per-column filters, sorting, and edit mode.</td></tr><tr><td>Variants</td><td>Aggregated variants: cases, average duration, share of cases, last seen.</td></tr><tr><td>Activities</td><td>Activity list with event counts and editable display names.</td></tr><tr><td>Settings</td><td>Everything in <a href="../working-with-logs.html#log-settings">log settings</a>.</td></tr></tbody></table></div></div>
+<h2 id="process-page-layout">Process page layout<a class="h-anchor" href="#process-page-layout" aria-label="Link to this section">#</a></h2>
+<p>The breadcrumb carries the name and the Overview tab opens with the stat strip (format, cases, events, variants, date range, import time); OCEL logs are also badged object-centric. The data tabs — Events, Variants, Activities (or Objects/Events/Relationships on an OCEL log) — stay disabled until the log is <code>ready</code>; Overview and Settings are always available. Banners appear for a mapping that needs review, an import in progress, and a failure.</p>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Tab</th><th>Contents</th></tr></thead><tbody><tr><td>Overview</td><td>Stat strip, then the module grid with search; disabled cards state their reason.</td></tr><tr><td>Events</td><td>Virtualised event table with search, per-column filters, sorting, and edit mode.</td></tr><tr><td>Variants</td><td>Aggregated variants: cases, average duration, share of cases, last seen.</td></tr><tr><td>Activities</td><td>Activity list with event counts and editable display names.</td></tr><tr><td>Settings</td><td>Everything in <a href="working-with-logs.html#log-settings">log settings</a>.</td></tr></tbody></table></div></div>
 <p>OCEL logs swap the middle tabs for <strong>Objects</strong>, <strong>Events</strong>, and <strong>Relationships</strong>, driven by the log's own Parquet schema.</p>
-<h2 id="the-events-tab">The events tab<a class="h-anchor" href="#the-events-tab" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Control</th><th>Behaviour</th></tr></thead><tbody><tr><td>Cross-column search</td><td>Debounced 300 ms.</td></tr><tr><td>Missing-values switch</td><td>Shows only rows with empty cells.</td></tr><tr><td>Column filters</td><td>Operators per column type: string (<code>contains</code>, <code>equals</code>, <code>is null</code>, <code>is not null</code>), numeric and datetime (<code>equals</code>, <code>gte</code>, <code>lte</code>), enum and boolean (<code>equals</code>).</td></tr><tr><td>Apply / Clear</td><td>Commits the filter to the log (re-running modules) or clears it.</td></tr><tr><td>Case chip</td><td>Arriving with <code>?case_id=</code> restricts the table to that case.</td></tr><tr><td>Paging</td><td>25, 50, 100, or 200 rows.</td></tr></tbody></table></div></div>
+<h2 id="events-tab">Events tab<a class="h-anchor" href="#events-tab" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Control</th><th>Behaviour</th></tr></thead><tbody><tr><td>Cross-column search</td><td>Debounced 300 ms.</td></tr><tr><td>Missing-values switch</td><td>Shows only rows with empty cells.</td></tr><tr><td>Column filters</td><td>Operators per column type — string: <code>contains</code>, <code>equals</code>, <code>is_null</code>, <code>is_not_null</code>; numeric, duration, and datetime: <code>equals</code>, <code>gte</code>, <code>lte</code>, <code>is_null</code>, <code>is_not_null</code>; enum and boolean: <code>equals</code>, <code>is_null</code>, <code>is_not_null</code>.</td></tr><tr><td>Apply / Restore</td><td>Commits the filter to the log (re-running modules), or restores the unfiltered view.</td></tr><tr><td>Case chip</td><td>Arriving with <code>?case_id=</code> restricts the table to that case.</td></tr><tr><td>Paging</td><td>25, 50, 100, or 200 rows.</td></tr></tbody></table></div></div>
 <h2 id="variants-and-activities">Variants and activities<a class="h-anchor" href="#variants-and-activities" aria-label="Link to this section">#</a></h2>
 <p>The variants tab filters by activity and minimum case count, sorts by cases, duration, or recency, and shows each variant's share of all cases. Opening a variant gives its sequence, a duration histogram, attribute breakdowns, and the list of its cases. The activities tab lists each activity with its event count and lets you set a display name used across the app.</p>
 <h2 id="cross-module-navigation">Cross-module navigation<a class="h-anchor" href="#cross-module-navigation" aria-label="Link to this section">#</a></h2>
-<p>Wherever a module renders an activity or a variant, the label links into the matching view, carrying the standard drill parameters (<code>activity</code>, <code>case</code>, <code>variant</code>, <code>from</code>/<code>to</code>, <code>view</code>, <code>metric</code>). That is what makes a chart a starting point rather than an endpoint.</p>
+<p>Wherever a module renders an activity or a variant, the label links into the matching view, carrying the standard drill parameters (<code>activity</code>, <code>case</code>, <code>variant</code>, <code>object_type</code>, <code>ts_from</code>/<code>ts_to</code>, <code>view</code>, <code>metric</code>; <code>from</code>/<code>to</code> name the two ends of a graph edge). That is what makes a chart a starting point rather than an endpoint.</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="working-with-logs.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Working with logs</b></a>
@@ -1227,6 +1283,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

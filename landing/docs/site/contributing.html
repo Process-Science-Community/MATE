@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Contributing and development - MATE Docs</title>
-<meta name="description" content="Four ways in: ship a module, report a bug, improve the docs, or work on the platform.">
+<meta name="description" content="Four contribution paths: ship a module, report a bug, improve this manual, or work on the platform.">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -773,15 +829,15 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
-        <a data-toc href="#ways-to-contribute">Ways to contribute</a>
+        <a data-toc href="#contribution-paths">Contribution paths</a>
         <a data-toc href="#toolchains">Toolchains</a>
-        <a data-toc href="#the-loop">The loop</a>
+        <a data-toc href="#development-loop">Development loop</a>
         <a data-toc href="#migrations">Migrations</a>
-        <a data-toc href="#testing-philosophy">Testing philosophy</a>
-        <a data-toc href="#conventions-the-codebase-enforces">Conventions the codebase enforces</a>
+        <a data-toc href="#testing-approach">Testing approach</a>
+        <a data-toc href="#enforced-conventions">Enforced conventions</a>
         <a data-toc href="#pull-requests">Pull requests</a>
         <a data-toc href="#design-documents">Design documents</a>
-        <a data-toc href="#reserved-designs">Reserved designs</a>
+        <a data-toc href="#specified-but-unimplemented">Specified but unimplemented</a>
     </div>
   </div>
 </details>
@@ -850,7 +906,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Project</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="contributing.html" aria-current="page">Contributing and development</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#ways-to-contribute">Ways to contribute</a></li><li><a data-toc href="#toolchains">Toolchains</a></li><li><a data-toc href="#the-loop">The loop</a></li><li><a data-toc href="#migrations">Migrations</a></li><li><a data-toc href="#testing-philosophy">Testing philosophy</a></li><li><a data-toc href="#conventions-the-codebase-enforces">Conventions the codebase enforces</a></li><li><a data-toc href="#pull-requests">Pull requests</a></li><li><a data-toc href="#design-documents">Design documents</a></li><li><a data-toc href="#reserved-designs">Reserved designs</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#contribution-paths">Contribution paths</a></li><li><a data-toc href="#toolchains">Toolchains</a></li><li><a data-toc href="#development-loop">Development loop</a></li><li><a data-toc href="#migrations">Migrations</a></li><li><a data-toc href="#testing-approach">Testing approach</a></li><li><a data-toc href="#enforced-conventions">Enforced conventions</a></li><li><a data-toc href="#pull-requests">Pull requests</a></li><li><a data-toc href="#design-documents">Design documents</a></li><li><a data-toc href="#specified-but-unimplemented">Specified but unimplemented</a></li></ul></li>
       </ul>
     </details>
     <nav class="side-site" aria-label="Site">
@@ -868,11 +924,11 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Contributing and development</h1>
-      <p class="doc-lead">Four ways in: ship a module, report a bug, improve the docs, or work on the platform.</p>
+      <p class="doc-lead">Four contribution paths: ship a module, report a bug, improve this manual, or work on the platform.</p>
     </div>
     <div class="prose">
-<h2 id="ways-to-contribute">Ways to contribute<a class="h-anchor" href="#ways-to-contribute" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Path</th><th>Start with</th></tr></thead><tbody><tr><td><strong>Ship a module</strong> — the highest-leverage contribution</td><td><a href="your-first-module.html">Your first module</a>, then the <a href="../testing-and-publishing.html#author-checklist">author checklist</a>. Your citation travels with the manifest, so users always see whose method they are running.</td></tr><tr><td><strong>Report a bug or request a feature</strong></td><td><a href="https://github.com/Process-Science-Community/MATE/issues">github.com/Process-Science-Community/MATE/issues</a>. Attach the diagnostics blob from Settings → About, plus the steps and the expected result. A minimal reproduction beats a long description.</td></tr><tr><td><strong>Improve this documentation</strong></td><td>Edit the markdown under <code>landing/docs/content/</code>, run <code>make docs</code>, open a pull request. The authoring syntax is documented in <a href="https://github.com/Process-Science-Community/MATE/blob/main/landing/docs/README.md"><code>landing/docs/README.md</code></a>.</td></tr><tr><td><strong>Work on the platform</strong></td><td><a href="architecture.html">How MATE works</a> for the mechanisms, then the setup below.</td></tr></tbody></table></div></div>
+<h2 id="contribution-paths">Contribution paths<a class="h-anchor" href="#contribution-paths" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Path</th><th>Start with</th></tr></thead><tbody><tr><td><strong>Ship a module</strong> — the highest-impact contribution</td><td><a href="your-first-module.html">Your first module</a>, then the <a href="testing-and-publishing.html#author-checklist">author checklist</a>. Your citation travels with the manifest, so users always see whose method they are running.</td></tr><tr><td><strong>Report a bug or request a feature</strong></td><td><a href="https://github.com/Process-Science-Community/MATE/issues">github.com/Process-Science-Community/MATE/issues</a>. Attach the diagnostics blob from Settings → About, plus the steps and the expected result. A minimal reproduction beats a long description.</td></tr><tr><td><strong>Improve this documentation</strong></td><td>Edit the markdown under <code>landing/docs/content/</code>, run <code>make docs</code>, open a pull request. The authoring syntax is documented in <a href="https://github.com/Process-Science-Community/MATE/blob/main/landing/docs/README.md"><code>landing/docs/README.md</code></a>.</td></tr><tr><td><strong>Work on the platform</strong></td><td><a href="architecture.html">How MATE works</a> for the mechanisms, then the setup below.</td></tr></tbody></table></div></div>
 <h2 id="toolchains">Toolchains<a class="h-anchor" href="#toolchains" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Tool</th><th>Version</th><th>Used for</th></tr></thead><tbody><tr><td>Python</td><td>3.12 (pinned by <code>.python-version</code>)</td><td>API, Python SDK, module backends</td></tr><tr><td>uv</td><td>current</td><td>Dependency resolution and virtual environments</td></tr><tr><td>Node.js + pnpm</td><td>20+ / current</td><td>Web app, TypeScript SDK, docs build</td></tr><tr><td>Docker + Compose v2</td><td>current</td><td>The full stack</td></tr><tr><td>JDK 17+</td><td>optional</td><td>JVM module SDK and its conformance tests</td></tr></tbody></table></div></div>
 <figure class="codeblock" data-lang="bash">
@@ -882,9 +938,9 @@ cd mate
 make install       # uv sync --extra dev + pnpm install
 make dev           # alembic upgrade head, then uvicorn --reload and next dev</code></pre>
 </figure>
-<p><code>make dev</code> frees port <code>8000</code>, reaps stale processes, runs migrations, and starts both servers. A host API defaults to SQLite under <code>data/</code>.</p>
-<h2 id="the-loop">The loop<a class="h-anchor" href="#the-loop" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>Command</th></tr></thead><tbody><tr><td>Everything with reload</td><td><code>make dev</code> (or <code>make dev-api</code>, <code>make dev-web</code>)</td></tr><tr><td>In containers with reload</td><td><code>make up-dev</code></td></tr><tr><td>API tests</td><td><code>make test</code></td></tr><tr><td>One test</td><td><code>uv run --extra dev pytest apps/api/tests/test_x.py::test_y -v</code></td></tr><tr><td>A module's tests</td><td><code>uv run pytest modules/&lt;folder&gt;/tests</code></td></tr><tr><td>Python types</td><td><code>uv run pyright</code> (strict)</td></tr><tr><td>Web types</td><td><code>make typecheck</code></td></tr><tr><td>Format</td><td><code>make fmt</code></td></tr><tr><td>Regenerate API types</td><td><code>make codegen</code> (API on <code>:8000</code>)</td></tr><tr><td>Rebuild this manual</td><td><code>make docs</code></td></tr><tr><td>Reset state</td><td><code>make clean</code> (irrevocable)</td></tr></tbody></table></div></div>
+<p><code>make dev</code> runs a preflight that frees port <code>8000</code> and clears stale processes, applies migrations, then starts both servers. A host API defaults to SQLite under <code>data/</code>.</p>
+<h2 id="development-loop">Development loop<a class="h-anchor" href="#development-loop" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>Command</th></tr></thead><tbody><tr><td>Both servers with reload</td><td><code>make dev</code> (or <code>make dev-api</code>, <code>make dev-web</code>)</td></tr><tr><td>Both servers in containers with reload</td><td><code>make up-dev</code></td></tr><tr><td>API tests</td><td><code>make test</code></td></tr><tr><td>One test</td><td><code>uv run --extra dev pytest apps/api/tests/test_x.py::test_y -v</code></td></tr><tr><td>One module's tests</td><td><code>uv run pytest modules/&lt;folder&gt;/tests</code></td></tr><tr><td>Python type check</td><td><code>uv run pyright</code> (strict)</td></tr><tr><td>Web type check</td><td><code>make typecheck</code></td></tr><tr><td>Format Python</td><td><code>make fmt</code></td></tr><tr><td>Regenerate API types</td><td><code>make codegen</code> (API on <code>:8000</code>)</td></tr><tr><td>Rebuild this manual</td><td><code>make docs</code></td></tr><tr><td>Wipe local state</td><td><code>make clean</code> (irrevocable)</td></tr></tbody></table></div></div>
 <h2 id="migrations">Migrations<a class="h-anchor" href="#migrations" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Adding a migration</span></figcaption>
@@ -893,20 +949,20 @@ make dev           # alembic upgrade head, then uvicorn --reload and next dev</c
 <span class="t-note"># make dev applies it on boot</span></code></pre>
 </figure>
 <p>Never edit a migration that has been applied anywhere, keep DDL additive (add nullable columns, backfill, then tighten), and remember that rolling back code does not roll back the schema.</p>
-<h2 id="testing-philosophy">Testing philosophy<a class="h-anchor" href="#testing-philosophy" aria-label="Link to this section">#</a></h2>
+<h2 id="testing-approach">Testing approach<a class="h-anchor" href="#testing-approach" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Layer</th><th>Approach</th></tr></thead><tbody><tr><td>Routes</td><td><code>httpx.ASGITransport</code> against the app, with a scoped SQLite database per session.</td></tr><tr><td>Modules</td><td>The real loader with fixture module folders, plus Protocol-faithful fakes for unit tests.</td></tr><tr><td>Isolation</td><td>Conformance tests that run the same expectations against Python and JVM workers.</td></tr><tr><td>AI and MCP</td><td>Tests that assert the data wall by attempting to read rows through an AI-scoped context.</td></tr><tr><td>Storage</td><td>Quota, eviction, migration, and snapshot tests against a fake S3 layer.</td></tr></tbody></table></div></div>
-<p>Two habits worth copying: name tests as expectations (<code>test_returns_404_for_another_users_log</code>), and when you fix a bug, write the test that would have caught it first.</p>
-<h2 id="conventions-the-codebase-enforces">Conventions the codebase enforces<a class="h-anchor" href="#conventions-the-codebase-enforces" aria-label="Link to this section">#</a></h2>
+<p>Two testing conventions: name each test as an expectation (<code>test_returns_404_for_another_users_log</code>), and write the failing test before fixing a bug.</p>
+<h2 id="enforced-conventions">Enforced conventions<a class="h-anchor" href="#enforced-conventions" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Convention</th><th>Why</th></tr></thead><tbody><tr><td>Modules never import platform internals</td><td>The SDK is the contract; anything else breaks on upgrade.</td></tr><tr><td>Bus events carry <code>user_id</code></td><td>Server-side fan-out filters on it; omitting it leaks events.</td></tr><tr><td>Analytics routes avoid trigger words (<code>/usage</code>, <code>/sync</code>, <code>/insights</code>)</td><td>Ad blockers break otherwise working pages.</td></tr><tr><td>Mutations to existing resources are optimistic in the web app</td><td>Snapshot, write the expected state, roll back on error, reconcile on settle.</td></tr><tr><td>Account-scoped flags are server state, not <code>localStorage</code></td><td>They must follow the account across browsers.</td></tr><tr><td>Module frontends import only declared externals</td><td>Anything else breaks the esbuild bundle.</td></tr><tr><td>Code comments cite the design document by section (<code>INSTRUCTIONS.md §5.4</code>)</td><td>The reason stays one hop from the mechanism.</td></tr></tbody></table></div></div>
 <h2 id="pull-requests">Pull requests<a class="h-anchor" href="#pull-requests" aria-label="Link to this section">#</a></h2>
 <ul><li>The suite passes: <code>make test</code>, <code>uv run pyright</code>, <code>make typecheck</code>.</li><li>New behaviour has a test that would fail without it.</li><li>Route or schema changes are followed by <code>make codegen</code>, with the regenerated types committed.</li><li>Documentation that is now wrong is fixed in the same pull request.</li><li>The description states the problem first, not the files touched.</li></ul>
 <h2 id="design-documents">Design documents<a class="h-anchor" href="#design-documents" aria-label="Link to this section">#</a></h2>
 <p>The manual explains how to use and extend MATE; these explain why it is built the way it is.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Document</th><th>Contents</th></tr></thead><tbody><tr><td><a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/INSTRUCTIONS.md"><code>docs/INSTRUCTIONS.md</code></a></td><td>The platform specification: principles, tech stack, storage strategy, the module system (§5), API surface (§6), frontend (§7), jobs and progress (§8).</td></tr><tr><td><a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/DEPLOY.md"><code>docs/DEPLOY.md</code></a></td><td>The production runbook in full: proxy chain, secrets and realm, resource limits, verification, MCP enablement.</td></tr><tr><td><a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/MCP.md"><code>docs/MCP.md</code></a></td><td>The MCP consumer reference in depth.</td></tr><tr><td><a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/S3_OFFLOAD.md"><code>docs/S3_OFFLOAD.md</code></a></td><td>The S3 design: cache and eviction, migration and quota, the still-open multi-node seams.</td></tr><tr><td><a href="https://github.com/Process-Science-Community/MATE/blob/main/modules/PROTOCOL.md"><code>modules/PROTOCOL.md</code></a> · <a href="https://github.com/Process-Science-Community/MATE/blob/main/modules/SIDECAR_SERVICES.md"><code>modules/SIDECAR_SERVICES.md</code></a></td><td>The worker wire protocol, and the contract for modules with their own server.</td></tr><tr><td><a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/README.md"><code>docs/README.md</code></a></td><td>The index of every document in the repository.</td></tr></tbody></table></div></div>
-<p>Decisions that a reader would otherwise reverse-engineer belong in a document, not a chat thread: add the rationale there, cite it from the code that implements it, and update the manual in the same pull request.</p>
-<h2 id="reserved-designs">Reserved designs<a class="h-anchor" href="#reserved-designs" aria-label="Link to this section">#</a></h2>
-<p>Specified but deliberately unimplemented — knowing they are designed prevents accidental conflicts: Node and R runtimes for modules (the protocol needs no host change), multi-node deployments (the S3 layer is the groundwork, and the open seams are named in <code>S3_OFFLOAD.md</code>), and additional dataset shapes (the envelope is shape-tagged, so new shapes are additive).</p>
-<p>Out of scope on purpose: a multi-tenant SaaS, a plugin marketplace with ranking, anything that requires a managed cloud service, and replacing the analyst — modules produce results and explanations, the interpretation stays with people.</p>
+<p>A decision that a reader would otherwise have to reverse-engineer belongs in a document: record the rationale there, cite it from the code that implements it, and update this manual in the same pull request.</p>
+<h2 id="specified-but-unimplemented">Specified but unimplemented<a class="h-anchor" href="#specified-but-unimplemented" aria-label="Link to this section">#</a></h2>
+<p>Documenting them prevents conflicting implementations: Node and R runtimes for modules (the protocol needs no host change), git-URL and registry module installs (today the only channel is an uploaded archive), multi-node deployments (the S3 layer is the groundwork, and the open seams are named in <code>S3_OFFLOAD.md</code>), and additional dataset shapes (the envelope is shape-tagged, so new shapes are additive).</p>
+<p>Deliberately out of scope: a multi-tenant SaaS, a plugin marketplace with ranking, anything that requires a managed cloud service, and replacing the analyst — modules produce results and explanations; interpretation stays with people.</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="troubleshooting.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Troubleshooting</b></a>
@@ -1258,6 +1314,103 @@ make dev           # alembic upgrade head, then uvicorn --reload and next dev</c
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 

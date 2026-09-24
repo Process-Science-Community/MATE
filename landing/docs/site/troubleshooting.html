@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Troubleshooting - MATE Docs</title>
-<meta name="description" content="Symptoms in the order people hit them, with the cause that usually explains them.">
+<meta name="description" content="Symptoms by area, with the cause that most often explains them.">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -506,6 +506,13 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   max-width: 100%;
 }
 .tbl-scroll { overflow-x: auto; }
+/* A wide table pins its column widths instead of letting min-content push it into
+   a horizontal scroll, so a JSON-heavy row stays in view while it wraps. Gated to
+   viewports with room for four columns; below that the card scrolls as usual. */
+@media (min-width: 1100px) {
+  .tbl-fixed table { table-layout: fixed; }
+  .tbl-fixed th, .tbl-fixed td { overflow-wrap: anywhere; }
+}
 .tbl table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl thead { background: var(--panel); }
 .tbl th {
@@ -519,6 +526,27 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
    split mid-word */
 .tbl th, .tbl td { overflow-wrap: break-word; }
 .tbl tbody tr:last-child td { border-bottom: none; }
+/* JSON in a table cell: a real, formatted block rather than a minified line.
+   Keys, strings, numbers and literals are coloured so the shape is scannable,
+   and the block is a copy target like any other code literal. */
+.jblock {
+  position: relative;
+  margin: 0; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--panel); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.jblock .copy { position: absolute; top: 4px; right: 4px; background: var(--panel); }
+.jblock:hover .copy, .jblock .copy:focus-visible { opacity: 1; }
+@media (hover: none) { .jblock .copy { opacity: 0.85; } }
+.tbl td .jblock { margin-top: 7px; }
+.tbl td > .jblock:first-child { margin-top: 0; }
+.j-key { color: var(--accent); }
+.j-str { color: var(--c-tip); }
+.j-num { color: var(--c-warn); }
+.j-lit { color: var(--c-note); }
+.j-pun { color: var(--muted); }
+.j-ell { color: var(--muted); letter-spacing: 0.06em; }
 
 /* code — a card with a header strip, so a block reads as a file, not a wall */
 .codeblock {
@@ -547,6 +575,34 @@ a.card:hover { text-decoration: none; transform: translateY(-2px); border-color:
   background: var(--panel); border: 1px solid var(--line-soft);
   border-radius: 6px; padding: 0.12em 0.42em; font-size: 0.84em; color: var(--ink);
 }
+/* Every inline code span — a route path, an id, an env key — and every JSON
+   panel is a copy target. The docs script tags each one with data-copy and wires
+   the click handler, so the affordance appears exactly where the handler exists:
+   no script, no pointer. Other block code keeps its button in the card header. */
+:not(pre) > code[data-copy], pre.jblock[data-copy] {
+  cursor: copy;
+  transition: color 150ms var(--ease-base), background 150ms var(--ease-base),
+    border-color 150ms var(--ease-base);
+}
+@media (hover: hover) {
+  :not(pre) > code[data-copy]:hover {
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+  }
+  pre.jblock[data-copy]:hover { border-color: var(--accent); }
+}
+:not(pre) > code[data-copy].copied { color: var(--c-tip); border-color: var(--c-tip); }
+pre.jblock[data-copy].copied { border-color: var(--c-tip); }
+/* The confirmation for an inline span: it has no header strip to swap a check
+   icon into, so a small pill appears at the click and fades on its own. */
+.copy-pill {
+  position: fixed; left: 0; top: 0; z-index: 55;
+  padding: 5px 10px; border-radius: 7px; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -140%);
+  transition: opacity 150ms var(--ease-base);
+}
+.copy-pill.on { opacity: 1; }
 .copy {
   flex: none; width: 1.875rem; height: 1.875rem; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -741,7 +797,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   header, .xtoc { background: var(--bg); backdrop-filter: none; border-bottom-color: var(--line); }
 }
 @media print {
-  header, footer, .side, .xtoc, .backdrop,
+  header, footer, .side, .xtoc, .backdrop, .copy-pill,
   .pager, .search-overlay, .skip { display: none !important; }
   .docs { display: block; padding: 0; }
   .hero::before { display: none; }
@@ -779,7 +835,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <a data-toc href="#deployment">Deployment</a>
         <a data-toc href="#mcp">MCP</a>
         <a data-toc href="#performance">Performance</a>
-        <a data-toc href="#when-you-cannot-tell">When you cannot tell</a>
+        <a data-toc href="#diagnosing-an-unknown-failure">Diagnosing an unknown failure</a>
     </div>
   </div>
 </details>
@@ -842,7 +898,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="configuration.html">Configuration</a></li>
         <li><a class="side-link" href="backup-and-storage.html">Backup, storage and limits</a></li>
         <li><a class="side-link" href="troubleshooting.html" aria-current="page">Troubleshooting</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#sign-in-and-identity">Sign-in and identity</a></li><li><a data-toc href="#imports">Imports</a></li><li><a data-toc href="#jobs-and-modules">Jobs and modules</a></li><li><a data-toc href="#deployment">Deployment</a></li><li><a data-toc href="#mcp">MCP</a></li><li><a data-toc href="#performance">Performance</a></li><li><a data-toc href="#when-you-cannot-tell">When you cannot tell</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#sign-in-and-identity">Sign-in and identity</a></li><li><a data-toc href="#imports">Imports</a></li><li><a data-toc href="#jobs-and-modules">Jobs and modules</a></li><li><a data-toc href="#deployment">Deployment</a></li><li><a data-toc href="#mcp">MCP</a></li><li><a data-toc href="#performance">Performance</a></li><li><a data-toc href="#diagnosing-an-unknown-failure">Diagnosing an unknown failure</a></li></ul></li>
       </ul>
     </details>
     <details class="side-group" data-group="Project" open>
@@ -866,13 +922,13 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Troubleshooting</h1>
-      <p class="doc-lead">Symptoms in the order people hit them, with the cause that usually explains them.</p>
+      <p class="doc-lead">Symptoms by area, with the cause that most often explains them.</p>
     </div>
     <div class="prose">
 <h2 id="sign-in-and-identity">Sign-in and identity<a class="h-anchor" href="#sign-in-and-identity" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead><tbody><tr><td>Every API call returns <code>401</code> after login</td><td>Issuer or JWKS mismatch — compare <code>KEYCLOAK_ISSUER</code> with the realm, and confirm the API can reach <code>KEYCLOAK_JWKS_URL</code>.</td></tr><tr><td>Login redirects forever</td><td>The realm's valid redirect URIs do not match the deployment.</td></tr><tr><td>Safari bounces between app and login</td><td>The session cookie exceeds 4 KB — set <code>SESSION_STORE_DIR</code>.</td></tr><tr><td><code>/admin</code> returns <code>403</code></td><td>The account lacks the <code>admin</code> realm role.</td></tr><tr><td>A role change has no effect</td><td>Roles come from the access token; wait for the next refresh or sign in again.</td></tr></tbody></table></div></div>
 <h2 id="imports">Imports<a class="h-anchor" href="#imports" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead><tbody><tr><td>Import fails immediately</td><td>Unsupported or corrupt file — read the job's error and re-export the source.</td></tr><tr><td>Modules report unavailable after a successful import</td><td>Column roles are wrong — remap them in the log settings.</td></tr><tr><td>Time bounds empty, trends flat</td><td>The timestamp column was misidentified or misparsed.</td></tr><tr><td>One giant case in a CSV</td><td>The case id column was mapped to a near-constant column.</td></tr><tr><td>Staged upload vanished</td><td>Staging is swept after two hours — re-upload.</td></tr><tr><td>First import on a fresh host takes very long</td><td>Module environments are being materialised; later imports are fast.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead><tbody><tr><td>Import fails immediately</td><td>Unsupported or corrupt file — read the job's error and re-export the source.</td></tr><tr><td>Modules report unavailable after a successful import</td><td>Column roles are wrong — remap them in the log settings.</td></tr><tr><td>Time bounds empty, trends flat</td><td>The timestamp column was misidentified or misparsed.</td></tr><tr><td>One giant case in a CSV</td><td>The case id column was mapped to a near-constant column.</td></tr><tr><td>Staged upload vanished</td><td>Staging is cleared after two hours — re-upload.</td></tr><tr><td>First import on a fresh host takes very long</td><td>Module environments are being materialised; later imports are fast.</td></tr></tbody></table></div></div>
 <h2 id="jobs-and-modules">Jobs and modules<a class="h-anchor" href="#jobs-and-modules" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead><tbody><tr><td>Progress bar stalls with a &quot;no progress&quot; hint</td><td>The module reports nothing; cancel and retry, or fix the module.</td></tr><tr><td>Job fails with a timeout</td><td>It exceeds <code>JOB_EXECUTION_TIMEOUT_SECONDS</code>.</td></tr><tr><td>A module fails to load</td><td>Manifest, install, or import error — API log, then the module detail page's log tail.</td></tr><tr><td>Cards stay <em>Limited</em></td><td>An optional dependency is missing.</td></tr><tr><td>Installed module does not appear</td><td>The install job failed and rolled back.</td></tr><tr><td>Subprocess module restarts repeatedly</td><td>A crash at worker startup; the bridge logs the exit code and attempt count.</td></tr></tbody></table></div></div>
 <h2 id="deployment">Deployment<a class="h-anchor" href="#deployment" aria-label="Link to this section">#</a></h2>
@@ -881,7 +937,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead><tbody><tr><td><code>503</code> &quot;MCP is disabled&quot;</td><td>Boot flag off, or the live admin kill switch is on.</td></tr><tr><td><code>401</code> on every call</td><td>Token missing, expired, revoked, or wrong OAuth audience.</td></tr><tr><td><code>[consent_required]</code></td><td>The user has not enabled external data access.</td></tr><tr><td><code>[scope_missing]</code></td><td>The token lacks the scope; mint a new one.</td></tr><tr><td><code>[read_only]</code> on a write tool</td><td>Server-wide read-only.</td></tr><tr><td><code>[conflict]</code> &quot;no precomputed results yet&quot;</td><td>The module has not run for this log.</td></tr><tr><td><code>404</code> on <code>/mcp</code></td><td>The flag never reached the container, or the proxy route is missing.</td></tr><tr><td>Output truncated</td><td>The 200 KB per-result cap — narrow the query or paginate.</td></tr></tbody></table></div></div>
 <h2 id="performance">Performance<a class="h-anchor" href="#performance" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead><tbody><tr><td>Dashboards slow to paint</td><td>Many cards, each querying DuckDB — reduce cards, cap <code>DUCKDB_THREADS</code>.</td></tr><tr><td>One module slow only on large logs</td><td>Row-by-row Python instead of SQL.</td></tr><tr><td>API restarts under load</td><td>Memory pressure from a module — isolate it, or bound its allocations.</td></tr><tr><td>Everyone waits for one user's jobs</td><td>The offload pool is saturated — set <code>MAX_OFFLOADS_PER_USER</code>.</td></tr></tbody></table></div></div>
-<h2 id="when-you-cannot-tell">When you cannot tell<a class="h-anchor" href="#when-you-cannot-tell" aria-label="Link to this section">#</a></h2>
+<h2 id="diagnosing-an-unknown-failure">Diagnosing an unknown failure<a class="h-anchor" href="#diagnosing-an-unknown-failure" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p>Reproduce with a synthetic log of 200 cases — most module bugs show up immediately.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p>Collect <strong>Settings → About → Copy diagnostics</strong> and the failing job's log tail.</p></div></li>
@@ -889,7 +945,6 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p>Search the API log for the log id — ingest and precompute log both.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p>Still stuck? Open an issue with the diagnostics blob, the steps, and the version: <a href="https://github.com/Process-Science-Community/MATE/issues">github.com/Process-Science-Community/MATE/issues</a>.</p></div></li>
   </ol>
-<p>&lt;!-- Project — contributing to MATE itself. --&gt;</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="backup-and-storage.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Backup, storage and limits</b></a>
@@ -1241,6 +1296,103 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       });
       wrap.appendChild(btn);
       (wrap.querySelector('.cb-head') || wrap).appendChild(btn);
+    });
+  })();
+
+  /* Code literals copy on click, everywhere they appear in the article: inline
+     spans, and the REST chapter's JSON panels. This is the global switch —
+     targets are tagged here, never marked up in the markdown. */
+  (function () {
+    var targets = [].slice
+      .call(document.querySelectorAll('main.doc :not(pre) > code'))
+      .filter(function (el) {
+        /* a span inside a link still has to navigate, and a diagram node is a
+           label — its code is one fragment of a longer phrase, not a literal */
+        return el.textContent.trim() && !el.closest('a') && !el.closest('.dg-node');
+      })
+      .concat([].slice.call(document.querySelectorAll('main.doc pre.jblock')));
+    if (!targets.length) return;
+
+    var COPY = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg>";
+    var CHECK = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6 9 17l-5-5\"/></svg>";
+    var pill = document.createElement('div');
+    pill.className = 'copy-pill';
+    pill.setAttribute('role', 'status');
+    document.body.appendChild(pill);
+    var timer = 0;
+
+    function say(x, y) {
+      /* the pill is centred on the click, so clamp it off the viewport edges */
+      pill.style.left = Math.min(Math.max(x, 50), window.innerWidth - 50) + 'px';
+      pill.style.top = y + 'px';
+      pill.textContent = 'Copied';
+      pill.classList.add('on');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        pill.classList.remove('on');
+        /* emptied, so a repeated copy is still a change for a screen reader */
+        pill.textContent = '';
+      }, 1200);
+    }
+
+    /* Fallback for when the async clipboard is missing or denied: it reports
+       failure by returning false, not by throwing. */
+    function legacy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    targets.forEach(function (el) {
+      el.setAttribute('data-copy', '');
+      /* A JSON panel is big enough to carry the card's button in its corner;
+         an inline span is not, so it confirms with the pill alone. */
+      var btn = null;
+      if (el.tagName === 'PRE') {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'copy';
+        btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+        btn.innerHTML = COPY;
+        el.appendChild(btn);
+      }
+      el.addEventListener('click', function (e) {
+        /* the reader is copying by hand — do not fight the selection */
+        var sel = window.getSelection();
+        if (sel && sel.toString().length) return;
+        var text = el.textContent.trim();
+        function done() {
+          el.classList.add('copied');
+          setTimeout(function () { el.classList.remove('copied'); }, 1200);
+          if (btn) {
+            btn.innerHTML = CHECK;
+            btn.classList.add('done');
+            btn.setAttribute('aria-label', 'Copied');
+            setTimeout(function () {
+              btn.innerHTML = COPY;
+              btn.classList.remove('done');
+              btn.setAttribute('aria-label', 'Copy JSON to clipboard');
+            }, 2000);
+          } else {
+            say(e.clientX, e.clientY);
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {
+            if (legacy(text)) done();
+          });
+        } else if (legacy(text)) {
+          done();
+        }
+      });
     });
   })();
 
