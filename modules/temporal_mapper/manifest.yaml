@@ -1,0 +1,43 @@
+id: temporal_mapper
+name: Temporal Mapper
+version: 0.1.0
+license: MIT
+category: advanced
+description: Explore recurring activity patterns and their evolution across calendar periods.
+about: >-
+  Explore how activity patterns recur and change across days, weeks, months,
+  or years. Groups similar periods into states and shows directed connections;
+  select a state to inspect its dates and most frequent patterns. Defaults to
+  daily patterns, with optional PCA and a retained-variance control (off by default). Uses GraphExplain's cosine-similarity adaptation of Temporal
+  Mapper, with activities grouped by case-start period and transitions by the
+  first cross-activity transition period. The original Temporal Mapper method was
+  introduced by Mengsen Zhang, Samir Chowdhury, and Manish Saggar (2023).
+source:
+  - title: "Temporal Mapper: Transition networks in simulated and real neural dynamics"
+    fullCitation: >-
+      Mengsen Zhang, Samir Chowdhury, and Manish Saggar, "Temporal Mapper: Transition networks
+      in simulated and real neural dynamics," Netw. Neurosci., vol. 7, no. 2,
+      pp. 431–460, 2023
+    url: https://doi.org/10.1162/netn_a_00301
+keywords: [temporal mapper, recurring patterns, process evolution, daily patterns]
+default_enabled: true
+isConfidentialSafe: true
+requirements:
+  event_log:
+    log_model: case_centric
+    required_columns: [case_id, activity, timestamp]
+    min_events: 1
+    min_cases: 1
+# On-demand HTTP route only; no registered RPC capabilities or bus subscriptions.
+provides: []
+consumes: []
+dependencies:
+  python:
+    requires-python: ">=3.12"
+    packages: []
+    # Reuse MATE's scientific Python stack; no R runtime is required.
+    inherit: [numpy, pandas, scipy, fastapi]
+    isolation: in_process
+frontend:
+  panel: ./panel/index.tsx
+permissions: [read:event_log]
