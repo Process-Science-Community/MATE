@@ -15,7 +15,8 @@ from scipy.spatial.distance import squareform
 
 
 def period_of(timestamp, unit):
-    t = pd.Timestamp(timestamp).tz_convert("UTC").tz_localize(None)
+    t = pd.Timestamp(timestamp)
+    t = t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC").tz_localize(None)
     freq = {"day": "D", "week": "W-SUN", "month": "M", "year": "Y"}[unit]
     return t.to_period(freq).start_time
 

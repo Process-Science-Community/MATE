@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { CanvasControlCluster, CanvasSettings, CanvasSettingsSwitch } from "@/components/visualizations/canvases/shared/canvas-toolbar";
+import { CanvasBusyChip, CanvasControlCluster, CanvasSettings, CanvasSettingsSwitch } from "@/components/visualizations/canvases/shared/canvas-toolbar";
+import { useFullscreen } from "@/components/visualizations/canvases/shared/canvas-controls";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { networkLayout } from "./layouts";
 import UserGuide from "./UserGuide";
 import DistanceHeatmap from "./DistanceHeatmap";
@@ -11,7 +13,8 @@ type StateNode = { id: string; size: number; time: number; members: string[]; pa
 type Result = { nodes: StateNode[]; edges: { source: string; target: string }[]; periods: string[]; n_features: number; n_gaps: number; dropped_events: number; pca: { components: number; retained_variance_percent: number; note: string | null } | null };
 
 export default function TemporalMapperPanel({ logId }: { logId: string; moduleId: string }) {
-  const [fullscreen, setFullscreen] = useState(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen(canvasRef);
   const [spacing, setSpacing] = useState(3);
   const [showIds, setShowIds] = useState(false);
   const [zoom, setZoom] = useState(0.39);
@@ -36,9 +39,9 @@ export default function TemporalMapperPanel({ logId }: { logId: string; moduleId
   const [selected, setSelected] = useState<StateNode | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const field = "rounded-md border bg-background px-3 py-2 text-sm";
+  const field = "h-10 rounded-md border bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
   async function run() {
-    resetView(); setShowDistances(false); setBusy(true); setError(""); setResult(null); setSelected(null);
+    resetView(); setShowDistances(false); setBusy(true); setError(""); setSelected(null);
     try {
       const params = new URLSearchParams({ log_id: logId, time_unit: unit, similarity_threshold: similarity, method, temporal_edges: mode, loop_size: loop, pca_enabled: String(pcaEnabled), pca_variance: pcaEnabled ? pcaVariance : "95" });
       const data = await api<Result>(`/api/v1/modules/temporal_mapper/graph?${params}`);
@@ -106,18 +109,18 @@ export default function TemporalMapperPanel({ logId }: { logId: string; moduleId
   };
   const colorStops = Array.from({ length: 21 }, (_, i) => `${timeColor(lastTime === firstTime ? 0 : i / 20)} ${i * 5}%`).join(", ");
   const dateLabel = (fraction: number) => new Date(firstTime + fraction * (lastTime - firstTime)).toISOString().slice(0, 10);
-  function clear() { setShowDistances(false); setResult(null); setSelected(null); }
+  function clear() { setShowDistances(false); setSelected(null); }
   return <div className="space-y-5">
     <div><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Temporal Mapper</h2><UserGuide/></div><p className="mt-2 text-sm text-muted-foreground">Find recurring activity patterns across calendar periods. Each state contains one or more periods; arrows retain connections from the temporal and similarity graph.</p></div>
-    <form className="flex flex-wrap items-start gap-4 rounded-xl border p-4" onSubmit={e => { e.preventDefault(); void run(); }}>
-      <label className="grid gap-2 text-sm">Time unit<select className={field} value={unit} disabled={busy} onChange={e => { setUnit(e.target.value); clear(); }}>{["day", "week", "month", "year"].map(v => <option key={v}>{v}</option>)}</select></label>
+    <form className="flex flex-wrap items-end gap-4 rounded-xl border bg-card/40 p-4 shadow-sm" onSubmit={e => { e.preventDefault(); void run(); }}>
+      <label className="grid min-w-32 gap-2 text-sm">Time unit<Select value={unit} disabled={busy} onValueChange={value => { setUnit(value); clear(); }}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent>{["day", "week", "month", "year"].map(v => <SelectItem key={v} value={v}>{v[0].toUpperCase() + v.slice(1)}</SelectItem>)}</SelectContent></Select></label>
       <label className="grid gap-2 text-sm">Similarity<input className={field + " w-28"} type="number" min="0" max="1" step="0.01" required value={similarity} disabled={busy} onChange={e => { setSimilarity(e.target.value); clear(); }}/></label>
-      <label className="grid gap-2 text-sm">Clustering<select className={field} value={method} disabled={busy} onChange={e => { setMethod(e.target.value); clear(); }}><option value="hclust">Average linkage</option><option value="heuristic">Pairwise threshold</option></select></label>
-      <div className="grid gap-2"><label className="grid gap-2 text-sm">Add temporal links across gaps?<select className={field} value={mode} disabled={busy} aria-describedby="tm-gap-help" onChange={e => { setMode(e.target.value); clear(); }}><option value="consecutive">Yes</option><option value="adjacent">No</option></select></label><p id="tm-gap-help" className="text-xs text-muted-foreground">A gap is a {unit} with no recorded patterns.</p></div>
+      <label className="grid min-w-44 gap-2 text-sm">Clustering<Select value={method} disabled={busy} onValueChange={value => { setMethod(value); clear(); }}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hclust">Average linkage</SelectItem><SelectItem value="heuristic">Pairwise threshold</SelectItem></SelectContent></Select></label>
+      <div className="grid gap-2"><label className="grid min-w-44 gap-2 text-sm">Temporal links across gaps<Select value={mode} disabled={busy} onValueChange={value => { setMode(value); clear(); }}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="consecutive">Bridge gaps</SelectItem><SelectItem value="adjacent">Adjacent only</SelectItem></SelectContent></Select></label><p id="tm-gap-help" className="text-xs text-muted-foreground">A gap is a {unit} with no recorded patterns.</p></div>
       <label className="grid gap-2 text-sm">Loop size<input className={field + " w-24"} type="number" min="1" max="20" required value={loop} disabled={busy} onChange={e => { setLoop(e.target.value); clear(); }}/></label>
-      <label className="mt-7 flex items-center gap-2 py-2 text-sm"><input type="checkbox" checked={pcaEnabled} disabled={busy} onChange={e => { setPcaEnabled(e.target.checked); clear(); }}/>Enable PCA</label>
+      <label className="flex items-center gap-2 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-primary" checked={pcaEnabled} disabled={busy} onChange={e => { setPcaEnabled(e.target.checked); clear(); }}/>Enable PCA</label>
       {pcaEnabled && <label className="grid gap-2 text-sm">Retained variance (%)<input className={field + " w-28"} type="number" min="0" max="100" step="0.1" required value={pcaVariance} disabled={busy} onChange={e => { setPcaVariance(e.target.value); clear(); }}/></label>}
-      <button type="submit" disabled={busy} className="mt-7 rounded-md bg-primary px-5 py-2 text-primary-foreground disabled:opacity-50">{busy ? "Building…" : "Build map"}</button>
+      <button type="submit" disabled={busy} className="rounded-md bg-primary px-5 py-2.5 font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Building…" : "Build map"}</button>
     </form>
     <p className="text-xs text-muted-foreground">Activity and transition counts are normalized separately before analysis. <a href="https://doi.org/10.1162/netn_a_00301" target="_blank" rel="noopener noreferrer" className="underline">Temporal Mapper: Zhang, Chowdhury &amp; Saggar (2023)</a>. See “How to use” for details.</p>
     {error && <div role="alert" className="rounded-lg border border-red-400 p-4 text-red-600">{error}</div>}
@@ -127,29 +130,30 @@ export default function TemporalMapperPanel({ logId }: { logId: string; moduleId
       {result.pca && <p role="status" className="text-sm">PCA: {result.pca.components} components · {result.pca.retained_variance_percent.toFixed(2)}% variance retained{result.pca.note ? ` · ${result.pca.note}` : ""}</p>}
       {result.dropped_events > 0 && <p role="status">Excluded {result.dropped_events} invalid events.</p>}
       <div className="flex flex-wrap items-end gap-4">
-        <label className="grid gap-2 text-sm">Layout<select className={field} value={layout} onChange={e => { setLayout(e.target.value); resetView(); }}><option value="circular">Circular</option><option value="grid">Grid</option><option value="timeline">Timeline</option><option value="kk">Kamada–Kawai (KK)</option><option value="spring">Spring (Fruchterman–Reingold)</option></select></label>
-        <label className="grid gap-2 text-sm">Color palette<select className={field} value={palette} onChange={e => setPalette(e.target.value)}><option value="original">Blue–orange (original)</option><option value="viridis">Viridis</option><option value="plasma">Plasma</option><option value="blues">Blues</option></select></label>
+        <label className="grid min-w-48 gap-2 text-sm">Layout<Select value={layout} onValueChange={value => { setLayout(value); resetView(); }}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="circular">Circular</SelectItem><SelectItem value="grid">Grid</SelectItem><SelectItem value="timeline">Timeline</SelectItem><SelectItem value="kk">Kamada–Kawai (KK)</SelectItem><SelectItem value="spring">Spring (Fruchterman–Reingold)</SelectItem></SelectContent></Select></label>
+        <label className="grid min-w-48 gap-2 text-sm">Color palette<Select value={palette} onValueChange={setPalette}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="original">Blue–orange</SelectItem><SelectItem value="viridis">Viridis</SelectItem><SelectItem value="plasma">Plasma</SelectItem><SelectItem value="blues">Blues</SelectItem></SelectContent></Select></label>
       </div>
-      <fieldset className="flex flex-wrap items-center gap-5 rounded-lg border p-3">
+      <fieldset className="flex flex-wrap items-center gap-5 rounded-lg border bg-card/40 p-4 shadow-sm">
         <legend className="px-1 text-sm font-medium">Node size, spacing, and arrows</legend>
         <label className="grid gap-1 text-sm">Layout spacing: {spacing.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={spacing} onChange={e => { setSpacing(Number(e.target.value)); setManualPositions({}); }}/></label>
         <label className="grid gap-1 text-sm">Minimum radius: {minRadius}<input type="range" min="3" max="48" step="1" value={minRadius} onChange={e => { const value = Number(e.target.value); setMinRadius(value); setMaxRadius(current => Math.max(current, value)); }}/></label>
         <label className="grid gap-1 text-sm">Maximum radius: {maxRadius}<input type="range" min="3" max="48" step="1" value={maxRadius} onChange={e => { const value = Number(e.target.value); setMaxRadius(value); setMinRadius(current => Math.min(current, value)); }}/></label>
         <label className="grid gap-1 text-sm">Arrow size: {arrowSize}<input type="range" min="2" max="20" step="1" value={arrowSize} onChange={e => setArrowSize(Number(e.target.value))}/></label>
-        <button type="button" className={field} onClick={() => { setMinRadius(7); setMaxRadius(20); }}>Reset sizes</button>
+        <button type="button" className={field + " cursor-pointer hover:bg-accent"} onClick={() => { setMinRadius(7); setMaxRadius(20); }}>Reset sizes</button>
         <p className="w-full text-xs text-muted-foreground">Sizes span {smallest}–{largest} member periods. Circle area scales between the selected limits. If all states have the same count, all use the minimum size.</p>
       </fieldset>
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className={fullscreen ? "fixed inset-0 z-50 overflow-auto bg-background p-4" : "relative overflow-auto rounded-xl border bg-background"}>
+        <div ref={canvasRef} className="relative overflow-auto rounded-xl border bg-background">
           <CanvasControlCluster
             onZoomIn={() => setZoom(z => Math.min(4, z * 1.25))}
             onZoomOut={() => setZoom(z => Math.max(.25, z / 1.25))}
             onFit={fitView}
             onReset={resetView}
-            isFullscreen={fullscreen}
-            onToggleFullscreen={() => setFullscreen(value => !value)}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
             settings={<CanvasSettings><CanvasSettingsSwitch label="Show state IDs" checked={showIds} onChange={setShowIds}/></CanvasSettings>}
           />
+          {busy && <CanvasBusyChip label="Building map…" />}
           <p className="px-4 pt-14 text-xs text-muted-foreground">Drag nodes to move them; drag the background to pan. Zoom: {Math.round(zoom * 100)}%.</p>
           <svg style={{ touchAction: "none", cursor: "grab" }}
             onPointerDown={e => {
@@ -202,9 +206,9 @@ export default function TemporalMapperPanel({ logId }: { logId: string; moduleId
           </div>
           <p className="px-4 pb-4 text-xs text-muted-foreground">Size = number of periods · Color = mean calendar date, following the scale from earlier to later. {layout === "timeline" ? "Horizontal position = mean calendar date; vertical lanes separate states." : layout === "kk" || layout === "spring" ? "Network layout uses connections without direction for placement; arrows and geodesic distances remain directed. Display distances are not exact graph distances." : "States are ordered by mean date; distance has no analytical meaning."} Internal self-links are hidden.</p>
         </div>
-        <aside className="space-y-4 rounded-xl border p-5">{selected && <><h3 className="font-semibold">State {selected.id}</h3><p className="text-sm">{selected.size} member periods</p><div className="max-h-36 overflow-auto text-sm">{selected.members.join(", ")}</div><h4 className="text-sm font-semibold">Most frequent patterns</h4><ul className="space-y-2 text-xs">{selected.patterns.map(p => <li key={p.name} className="flex justify-between gap-3"><span className="break-all">{p.name}</span><strong>{p.count}</strong></li>)}</ul></>}</aside>
+        <aside className="space-y-4 rounded-xl border bg-card p-5 shadow-sm">{selected ? <><div><h3 className="font-semibold tracking-tight">State {selected.id}</h3><p className="mt-1 text-sm text-muted-foreground">{selected.size} member periods</p></div><div className="max-h-36 overflow-auto rounded-md bg-muted/30 p-3 text-sm leading-relaxed">{selected.members.join(", ")}</div><h4 className="text-sm font-semibold">Most frequent patterns</h4><ul className="space-y-2 text-xs">{selected.patterns.map(p => <li key={p.name} className="flex justify-between gap-3 border-b pb-2 last:border-0"><span className="break-all text-muted-foreground">{p.name}</span><strong>{p.count}</strong></li>)}</ul></> : <p className="text-sm text-muted-foreground">Select a state to inspect its periods and patterns.</p>}</aside>
       </div>
-      <button type="button" className={field} aria-expanded={showDistances} onClick={() => setShowDistances(!showDistances)}>{showDistances ? "Hide distance heatmap" : "Generate time-to-time distance heatmap"}</button>
+      <button type="button" className={field + " cursor-pointer font-medium hover:bg-accent"} aria-expanded={showDistances} onClick={() => setShowDistances(!showDistances)}>{showDistances ? "Hide distance heatmap" : "Generate time-to-time distance heatmap"}</button>
       {showDistances && <DistanceHeatmap ids={result.periods} nodes={result.nodes} edges={result.edges} timeColor={timeColor}/>}
     </>}
   </div>;

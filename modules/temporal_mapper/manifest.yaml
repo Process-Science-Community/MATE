@@ -19,6 +19,9 @@ source:
       in simulated and real neural dynamics," Netw. Neurosci., vol. 7, no. 2,
       pp. 431–460, 2023
     url: https://doi.org/10.1162/netn_a_00301
+artifacts:
+  - name: GraphExplain Temporal Mapper adaptation
+    url: https://github.com/atancredi/graphexplain
 keywords: [temporal mapper, recurring patterns, process evolution, daily patterns]
 default_enabled: true
 isConfidentialSafe: true
@@ -26,8 +29,8 @@ requirements:
   event_log:
     log_model: case_centric
     required_columns: [case_id, activity, timestamp]
-    min_events: 1
-    min_cases: 1
+    min_events: 50
+    min_cases: 2
 # On-demand HTTP route only; no registered RPC capabilities or bus subscriptions.
 provides: []
 consumes: []

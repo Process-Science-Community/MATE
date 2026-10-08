@@ -94,7 +94,7 @@ No R runtime or separate service is needed. The module inherits NumPy, pandas,
 SciPy, and FastAPI from MATE's environment and changes no platform source files.
 
 ```bash
-uv run --all-packages --extra dev python -m pytest modules/temporal_mapper/tests -q
+uv run --all-packages --extra dev pytest modules/temporal_mapper/tests -q
 uv run --all-packages --extra dev ruff check modules/temporal_mapper
 node apps/web/scripts/bundle-modules.mjs temporal_mapper
 pnpm --dir apps/web typecheck

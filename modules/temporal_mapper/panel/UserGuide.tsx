@@ -29,11 +29,11 @@ export default function UserGuide() {
     return () => document.removeEventListener("keydown", handleKey);
   }, [open]);
   return <>
-    <button ref={trigger} type="button" aria-expanded={open} aria-controls="tm-user-guide" className="rounded-md border px-3 py-1.5 text-sm" onClick={() => setOpen(value => !value)}>How to use</button>
-    {open && <aside id="tm-user-guide" aria-labelledby="tm-guide-title" className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-md flex-col border-l bg-background shadow-xl">
-      <div className="flex items-center justify-between gap-3 border-b p-4"><h2 id="tm-guide-title" className="font-semibold">Temporal Mapper guide</h2><button ref={closeButton} type="button" className="rounded-md border px-3 py-1 text-sm" onClick={close}>Close</button></div>
-      <div className="overflow-y-auto p-4"><p className="mb-4 text-xs text-muted-foreground">Keep this guide open while exploring. Close it or press Escape to return to the full map.</p>
-        {sections.map((section, i) => <details key={section.title} open={i === 0 ? true : undefined} className="border-b py-3"><summary className="cursor-pointer text-sm font-medium">{section.title}</summary><div className="mt-3 space-y-3 text-sm leading-relaxed text-muted-foreground">{section.content}</div></details>)}
+    <button ref={trigger} type="button" aria-expanded={open} aria-controls="tm-user-guide" className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={() => setOpen(value => !value)}>How to use</button>
+    {open && <aside id="tm-user-guide" aria-labelledby="tm-guide-title" className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-md flex-col border-l bg-background shadow-2xl">
+      <div className="flex items-center justify-between gap-3 border-b bg-card px-5 py-4"><h2 id="tm-guide-title" className="font-semibold tracking-tight">Temporal Mapper guide</h2><button ref={closeButton} type="button" className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={close}>Close</button></div>
+      <div className="overflow-y-auto p-5"><p className="mb-4 rounded-md bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">Keep this guide open while exploring. Close it or press Escape to return to the full map.</p>
+        {sections.map((section, i) => <details key={section.title} open={i === 0 ? true : undefined} className="group border-b py-3"><summary className="cursor-pointer list-none text-sm font-medium transition-colors hover:text-primary [&::-webkit-details-marker]:hidden">{section.title}<span className="float-right text-muted-foreground transition-transform group-open:rotate-180">⌄</span></summary><div className="mt-3 space-y-3 text-sm leading-relaxed text-muted-foreground">{section.content}</div></details>)}
       </div>
     </aside>}
   </>;

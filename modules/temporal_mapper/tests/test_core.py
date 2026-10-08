@@ -10,7 +10,7 @@ REFERENCE = json.loads(Path(__file__).with_name("r_reference.json").read_text())
 
 
 @pytest.mark.parametrize("case", REFERENCE["cases"])
-def test_matches_original_r_pipeline(case):
+def test_map_patterns_matches_r_reference(case):
     result = map_patterns(
         REFERENCE["matrix"],
         REFERENCE["periods"],
@@ -48,7 +48,13 @@ def test_case_boundaries_stable_ties_and_r_period_assignment():
 
 
 def test_single_period_keeps_isolated_node():
-    events = pd.DataFrame({"case_id": ["a"], "activity": ["A"], "timestamp": ["2024-01-01"]})
+    events = pd.DataFrame(
+        {
+            "case_id": [f"case-{i}" for i in range(2)],
+            "activity": ["A", "A"],
+            "timestamp": ["2024-01-01", "2024-01-01"],
+        }
+    )
     result = compute(events)
     assert len(result["nodes"]) == 1
     assert result["nodes"][0]["members"] == ["2024-01-01"]
