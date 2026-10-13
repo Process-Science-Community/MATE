@@ -12,10 +12,10 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.db.models import ModuleInstall
+from mate.api.db.upsert import upsert_insert
 
 
 async def record_install(
@@ -69,7 +69,7 @@ async def seed_default_modules(
     if not ids:
         return
     now = datetime.now(UTC).replace(tzinfo=None)
-    stmt = sqlite_insert(ModuleInstall).values(
+    stmt = upsert_insert(session, ModuleInstall).values(
         [
             {
                 "user_id": user_id,
