@@ -28,10 +28,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.db.models import AnalyticsEventObject, AnalyticsObject, AnalyticsObjectRelation
+from mate.api.db.upsert import upsert_insert
 
 APP_WEB_ID = "app:mate-web"
 APP_API_ID = "app:mate-api"
@@ -227,7 +227,7 @@ async def persist_event_objects(
                 e2o_rows.add((event_id, ref.object_id, ref.qualifier))
 
     if objects:
-        stmt = sqlite_insert(AnalyticsObject).values(
+        stmt = upsert_insert(session, AnalyticsObject).values(
             [
                 {
                     "user_id": user_id,
@@ -247,7 +247,7 @@ async def persist_event_objects(
         await session.execute(stmt)
 
     if relations:
-        rel_stmt = sqlite_insert(AnalyticsObjectRelation).values(
+        rel_stmt = upsert_insert(session, AnalyticsObjectRelation).values(
             [
                 {"user_id": user_id, "src_object_id": src, "tgt_object_id": tgt, "qualifier": q}
                 for src, tgt, q in relations
@@ -256,7 +256,7 @@ async def persist_event_objects(
         await session.execute(rel_stmt.on_conflict_do_nothing())
 
     if e2o_rows:
-        e2o_stmt = sqlite_insert(AnalyticsEventObject).values(
+        e2o_stmt = upsert_insert(session, AnalyticsEventObject).values(
             [
                 {"event_id": eid, "object_id": oid, "qualifier": q, "user_id": user_id}
                 for eid, oid, q in e2o_rows
