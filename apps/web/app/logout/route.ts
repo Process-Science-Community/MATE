@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { isAuthCookie } from "@/lib/clear-session";
+import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import * as sessionStore from "@/lib/session-store";
 
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"];
@@ -32,9 +33,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const cb = req.nextUrl.searchParams.get("callbackUrl") ?? "";
-  // Relative-path-only guard (no `//host` or absolute URLs → no open redirect).
-  const safeCb = cb.startsWith("/") && !cb.startsWith("//") ? cb : "";
+  // Same-origin paths only (no `//host`, `/\host` or absolute URLs → no open redirect).
+  const safeCb = safeCallbackUrl(req.nextUrl.searchParams.get("callbackUrl"), "");
   const location = safeCb ? `/login?callbackUrl=${encodeURIComponent(safeCb)}` : "/login";
 
   // Relative Location keeps the redirect scheme/host-agnostic behind the

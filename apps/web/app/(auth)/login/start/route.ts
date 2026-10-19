@@ -23,11 +23,11 @@ import type { NextRequest } from "next/server";
 
 import { signIn, KEYCLOAK_IDP_HINT } from "@/auth";
 import { clearAuthCookies } from "@/lib/clear-session";
+import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 export async function GET(req: NextRequest): Promise<Response> {
-  const raw = req.nextUrl.searchParams.get("callbackUrl") ?? "/processes";
-  // Relative-path-only guard (no `//host` or absolute URLs → no open redirect).
-  const callbackUrl = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/processes";
+  // Same-origin paths only (no `//host`, `/\host` or absolute URLs → no open redirect).
+  const callbackUrl = safeCallbackUrl(req.nextUrl.searchParams.get("callbackUrl"));
   const forceLogin = req.nextUrl.searchParams.get("prompt") === "login";
   const localAccount = req.nextUrl.searchParams.get("local") === "1";
 
