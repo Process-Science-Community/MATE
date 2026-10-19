@@ -55,6 +55,42 @@ export function hasLowConfidence(mapping: MappingState): boolean {
 }
 
 /**
+ * Format-specific parser settings that a role mapping can't carry: the CSV
+ * delimiter, the XML event element, the JSON array key, the timestamp format.
+ * Roles themselves always travel as `column_roles` so the confirmed mapping is
+ * recorded as the user's choice rather than a guess.
+ */
+export function parserMappingFor(probe: LogProbeResponse, mapping: MappingState) {
+  if (!probe.needs_mapping) return {};
+  const roles = mapping.roles;
+  const required = roles.case_id && roles.activity && roles.timestamp;
+  if (!required) return {};
+
+  const shared = {
+    case_id: roles.case_id,
+    activity: roles.activity,
+    timestamp: roles.timestamp,
+    end_timestamp: roles.end_timestamp || undefined,
+    resource: roles.resource || undefined,
+    cost: roles.cost || undefined,
+    timestamp_format: mapping.timestampFormat || undefined,
+  };
+
+  if (probe.source_format === "csv") {
+    return { csvMapping: { ...shared, delimiter: mapping.delimiter } };
+  }
+  if (probe.source_format === "xml" && mapping.eventElement) {
+    return { xmlMapping: { ...shared, event_element: mapping.eventElement } };
+  }
+  if (probe.source_format === "json") {
+    return { jsonMapping: { ...shared, event_path: mapping.eventPath || undefined } };
+  }
+  // XES (and XES-shaped XML) need no parser mapping at all - the parser knows
+  // its own canonical schema and `column_roles` covers the rest.
+  return {};
+}
+
+/**
  * The deliberate step: what the importer *would* do, shown with real values, and
  * gated behind an explicit confirmation. Anything the user changes is recorded
  * as `quality: "user"`, which is what later suppresses the "review your column

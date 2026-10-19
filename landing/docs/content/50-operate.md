@@ -135,6 +135,16 @@ Every knob a running platform reads. The deployment variables — URLs, identity
 | `CACHE_EVICT_DRY_RUN` | `true` | Log candidates without deleting — run in dry-run mode first. |
 | `JOB_RETENTION_DAYS` | `0` | Prune terminal jobs after N days. |
 
+## Uploads
+
+Compressed uploads and archives unpack behind zip-bomb guards. The caps count bytes actually produced, never what an archive claims about itself.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `INGEST_MAX_DECOMPRESSED_BYTES` | `10737418240` (10 GiB) | Most one upload may unpack to: a single log, or all logs picked from one archive together. |
+| `INGEST_MAX_COMPRESSION_RATIO` | `1000` | Unpacked/packed ceiling, checked beyond 64 MiB of output; `0` disables. |
+| `INGEST_MAX_ARCHIVE_ENTRIES` | `10000` | Entries an uploaded archive may hold. |
+
 ## Jobs and compute
 
 | Variable | Default | Notes |
@@ -266,6 +276,7 @@ Symptoms by area, with the cause that most often explains them.
 | Time bounds empty, trends flat | The timestamp column was misidentified or misparsed. |
 | One giant case in a CSV | The case id column was mapped to a near-constant column. |
 | Staged upload vanished | Staging is cleared after two hours — re-upload. |
+| Upload refused with `413` | It trips a zip-bomb guard: overlapping archive entries, an implausible compression ratio, or more than `INGEST_MAX_DECOMPRESSED_BYTES` unpacked. |
 | First import on a fresh host takes very long | Module environments are being materialised; later imports are fast. |
 
 ## Jobs and modules

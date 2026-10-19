@@ -24,10 +24,10 @@ from pathlib import Path
 import structlog
 from lxml import etree
 
+from mate.api.ingest.archive import TAR_SUFFIXES, member_basename, resolve_single_member
 from mate.api.ingest.compression import (
     decompressed,
     detect_compression,
-    resolve_zip_member,
     split_compression,
 )
 
@@ -70,14 +70,17 @@ def detect_format(filename: str) -> str:
     by :func:`sniff_format`; this only narrows to the family. Every format may
     additionally be compressed (``.gz`` / ``.bz2`` / ``.xz`` / ``.zip``) - the
     compression suffix is stripped before classifying. A bare ``data.zip`` maps
-    to the transient coarse format ``"zip"``: its inner format is resolved from
-    the archive's single member by :func:`sniff_format` after staging.
+    to the transient coarse format ``"zip"`` and a tar archive (``.tar``,
+    ``.tar.gz``, ``.tgz``, …) to ``"tar"``: the inner format is resolved from
+    the archive's member(s) after staging.
     """
     lower = filename.lower()
     # Legacy special case: `.xes.gz` stays its own source_format (persisted DB
     # rows and re-import payloads reference it).
     if lower.endswith(".xes.gz"):
         return "xes.gz"
+    if lower.endswith(TAR_SUFFIXES):
+        return "tar"
     inner, algo = split_compression(lower)
     if algo is None:
         fmt = _detect_inner(lower)
@@ -104,6 +107,9 @@ def original_extension(filename: str, source_format: str) -> str:
     :func:`sniff_format` carries the flavor explicitly.
     """
     lower = filename.lower()
+    for tar_suffix in sorted(TAR_SUFFIXES, key=len, reverse=True):
+        if lower.endswith(tar_suffix):
+            return tar_suffix.lstrip(".")
     inner, algo = split_compression(lower)
     comp_suffix = lower[len(inner) + 1 :] if algo is not None else ""
     base = inner if algo is not None else lower
@@ -196,16 +202,15 @@ def sniff_format(
     Returns ``(source_format, ocel_flavor)`` where ``ocel_flavor`` is set only
     for OCEL logs. Unambiguous families (xes / xes.gz / csv) pass through
     untouched. Compressed uploads are content-sniffed on a decompressed temp
-    copy; a bare ``"zip"`` coarse format resolves to its single member's format
-    first (raising ``ValueError`` for empty/ambiguous archives).
+    copy; a bare ``"zip"`` / ``"tar"`` coarse format resolves to its single
+    member's format first (raising ``ValueError`` for an archive with no log or
+    several - those go through the import wizard's archive step instead).
     """
     name = filename or path.name
-    if coarse == "zip":
-        member = resolve_zip_member(path)
-        name = member.rsplit("/", 1)[-1]
+    if coarse in {"zip", "tar"}:
+        # Never another bare archive: those aren't importable members.
+        name = member_basename(resolve_single_member(path))
         coarse = detect_format(name)
-        if coarse == "zip":  # zip-in-zip: unwrapped by `decompressed` below
-            raise ValueError("Nested zip archives are not supported.")
     # The content probes below need plain bytes; everything else passes through
     # on the extension alone.
     if coarse == "ocel":

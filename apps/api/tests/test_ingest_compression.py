@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
+from mate.api.ingest.archive import resolve_single_member
 from mate.api.ingest.compression import (
     decompressed,
     detect_compression,
-    resolve_zip_member,
     split_compression,
 )
 from mate.api.ingest.detect import detect_format, original_extension, sniff_format
@@ -122,19 +122,19 @@ def test_decompressed_nested_zip_of_gz(tmp_path: Path) -> None:
         assert plain.read_bytes() == CSV_BODY
 
 
-def test_resolve_zip_member_rejects_ambiguous_and_empty(tmp_path: Path) -> None:
+def test_resolve_single_member_rejects_ambiguous_and_empty(tmp_path: Path) -> None:
     multi = tmp_path / "multi.zip"
     with zipfile.ZipFile(multi, "w") as zf:
         zf.writestr("a.csv", CSV_BODY)
         zf.writestr("b.csv", CSV_BODY)
-    with pytest.raises(ValueError, match="multiple"):
-        resolve_zip_member(multi)
+    with pytest.raises(ValueError, match="2 event logs"):
+        resolve_single_member(multi)
 
     empty = tmp_path / "empty.zip"
     with zipfile.ZipFile(empty, "w") as zf:
         zf.writestr("readme.txt", b"hello")
     with pytest.raises(ValueError, match="no supported"):
-        resolve_zip_member(empty)
+        resolve_single_member(empty)
 
 
 # ── sniff integration ─────────────────────────────────────────────────────────

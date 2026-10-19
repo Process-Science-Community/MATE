@@ -135,6 +135,29 @@ class Settings(BaseSettings):
     # within the freshness window. 0 disables; bounded by a per-frame size guard.
     event_log_cache_entries: int = Field(default=3, ge=0, le=64)
 
+    # --- Compressed / archived uploads (zip-bomb guards) --------------------
+    # Every decompression of an upload is bounded by the bytes it actually
+    # produces (never by what an archive claims about itself), by how far it may
+    # expand relative to its packed size, and by how many archive entries we are
+    # willing to look at. The members of one archive share a single budget, so
+    # unpacking them one at a time can't add up past it.
+    ingest_max_decompressed_bytes: int = Field(
+        default=10 * 1024**3,
+        ge=1024**2,
+        description="INGEST_MAX_DECOMPRESSED_BYTES - cap on what one upload may unpack to.",
+    )
+    ingest_max_compression_ratio: int = Field(
+        default=1000,
+        ge=0,
+        description="INGEST_MAX_COMPRESSION_RATIO - unpacked/packed size cap (0 disables).",
+    )
+    ingest_max_archive_entries: int = Field(
+        default=10_000,
+        ge=1,
+        le=1_000_000,
+        description="INGEST_MAX_ARCHIVE_ENTRIES - entries an uploaded archive may hold.",
+    )
+
     # --- Storage backend (see docs/S3_OFFLOAD.md) --------------------------
     # Where event logs + module outputs are durably stored. ``local`` (default)
     # keeps everything under ``data_dir``; ``s3`` makes an S3-compatible bucket

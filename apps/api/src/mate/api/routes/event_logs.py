@@ -26,27 +26,37 @@ from mate.api.auth import (
 from mate.api.db.models import EventLog
 from mate.api.db.session import SessionDep
 from mate.api.ingest import staging
-from mate.api.ingest.compression import decompressed
+from mate.api.ingest.archive import (
+    ArchiveEntry,
+    ArchiveListing,
+    extract_member,
+    inspect_archive,
+)
+from mate.api.ingest.compression import DecompressionLimitError, decompressed, human_bytes
 from mate.api.ingest.detect import (
     detect_format,
     original_extension,
     sniff_format,
 )
 from mate.api.ingest.dispatch import IMPORT_JOB_TYPE
-from mate.api.ingest.probe import probe_staged
+from mate.api.ingest.probe import ProbeResult, probe_staged
 from mate.api.ingest.storage import log_paths
 from mate.api.jobs.runtime import JobRuntime, get_job_runtime
 from mate.api.schemas.event_logs import (
+    ArchiveMember,
+    ArchiveProbeResponse,
     CsvColumnMapping,
     EventLogCreateResponse,
     EventLogDetail,
     EventLogSummary,
     EventLogUpdate,
+    ExtractMemberRequest,
     JsonColumnMapping,
     JsonProbeResponse,
     LogProbeResponse,
     ProbeColumn,
     RemapColumnRoles,
+    StageResponse,
     XmlColumnMapping,
     XmlProbeResponse,
 )
@@ -72,7 +82,7 @@ _RuntimeDep = Annotated[JobRuntime, Depends(_runtime_dep)]
 
 @router.post(
     "/stage",
-    response_model=LogProbeResponse,
+    response_model=StageResponse,
 )
 async def stage_event_log(
     user: CurrentUserDep,
@@ -80,10 +90,11 @@ async def stage_event_log(
         UploadFile,
         File(
             description="XES, CSV, XML, JSON, or OCEL (.jsonocel/.xmlocel/.sqlite) upload, "
-            "optionally compressed (.gz/.bz2/.xz/.zip)"
+            "optionally compressed (.gz/.bz2/.xz/.zip), or a .zip / .tar(.gz/.bz2/.xz) "
+            "archive holding several of them"
         ),
     ],
-) -> LogProbeResponse:
+) -> LogProbeResponse | ArchiveProbeResponse:
     """Stage an upload and describe its columns for the import wizard.
 
     The bytes are written once, under `data/staging/{user}/{token}/`, and then
@@ -92,6 +103,10 @@ async def stage_event_log(
     each guess is (`quality`). Nothing is created in the database - the client
     posts `staging_token` back to `POST /event-logs` to confirm, or walks away
     and lets the TTL sweep reclaim the bytes.
+
+    An archive holding several event logs answers with an `ArchiveProbeResponse`
+    (`kind: "archive"`) instead: its members, none of them unpacked yet. The
+    client stages the ones the user picks with `POST /event-logs/stage/{token}/extract`.
     """
     if file.filename is None:
         raise HTTPException(status_code=400, detail="Upload is missing a filename.")
@@ -117,31 +132,25 @@ async def stage_event_log(
             while chunk := await file.read(1024 * 1024):
                 await out.write(chunk)
 
-        try:
-            source_format, ocel_flavor = await asyncio.to_thread(
-                sniff_format, staged_path, coarse_format, filename=file.filename
+        # By content, not by name: a `.csv` that is really a zip of three CSVs
+        # still gets the picker.
+        listing = await _inspect_staged_archive(staged_path)
+        if listing is not None and len(listing.importable) > 1:
+            await asyncio.to_thread(
+                staging.write_manifest,
+                root,
+                {"kind": "archive", "filename": file.filename, "archive": listing.as_dict()},
             )
-        except ValueError as exc:
-            raise HTTPException(status_code=415, detail=str(exc)) from exc
+            return _archive_response(token, file.filename, staged_path, listing)
+        if listing is not None and listing.kind == "tar" and listing.importable:
+            # A tar is one stream: unpack its lone log once, here, instead of
+            # re-reading the whole archive on every probe and (re)import.
+            probe, _written = await _stage_member(user.id, staged_path, listing.importable[0])
+            await asyncio.to_thread(shutil.rmtree, root, True)
+            return probe
 
-        try:
-            probe = await asyncio.to_thread(probe_staged, staged_path, source_format)
-        except HTTPException:
-            raise
-        except Exception as exc:
-            log.warning("event_log.probe_failed", format=source_format, error=str(exc))
-            raise HTTPException(
-                status_code=400, detail=f"Could not read the uploaded file: {exc}"
-            ) from exc
-
-        await asyncio.to_thread(
-            staging.write_manifest,
-            root,
-            {
-                "filename": file.filename,
-                "source_format": source_format,
-                "ocel_flavor": ocel_flavor,
-            },
+        return await _describe_staged(
+            token, root, staged_path, filename=file.filename, coarse_format=coarse_format
         )
     except Exception:
         # Never leave bytes behind for a staging attempt that failed - the TTL
@@ -149,6 +158,161 @@ async def stage_event_log(
         await asyncio.to_thread(shutil.rmtree, root, True)
         raise
 
+
+@router.post(
+    "/stage/{token}/extract",
+    response_model=LogProbeResponse,
+)
+async def extract_staged_member(
+    token: str,
+    body: ExtractMemberRequest,
+    user: CurrentUserDep,
+) -> LogProbeResponse:
+    """Stage one member of a staged archive as an upload of its own.
+
+    The member is unpacked into a fresh staging slot - bounded by its declared
+    size and by what is left of the archive's budget - and probed like any
+    other upload, so it is confirmed with `POST /event-logs` exactly like a
+    single file. Asking for the same member again answers from its existing
+    slot instead of unpacking it twice.
+    """
+    archive = await asyncio.to_thread(staging.resolve_staged, user.id, token)
+    listing = archive.archive if archive is not None and archive.kind == "archive" else None
+    if archive is None or listing is None:
+        raise HTTPException(
+            status_code=404,
+            detail="This archive is no longer staged - it expired or was discarded. "
+            "Choose the file again.",
+        )
+    entry = listing.get(body.member)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"{body.member!r} is not in this archive.")
+    if not entry.importable:
+        raise HTTPException(
+            status_code=413 if entry.unsafe else 422, detail=f"{entry.name}: {entry.reason}"
+        )
+
+    async with staging.lock_for(user.id, token):
+        manifest = await asyncio.to_thread(staging.read_manifest, archive.root)
+        extracted: dict[str, str] = dict(manifest.get("extracted") or {})
+        previous = extracted.get(entry.path)
+        if previous:
+            slot = await asyncio.to_thread(staging.resolve_staged, user.id, previous)
+            if slot is not None and slot.kind == "log":
+                probe = await _probe(slot.file, slot.source_format)
+                return _probe_response(
+                    slot.token, slot.file, slot.filename, slot.source_format, probe
+                )
+
+        # Every unpack counts, re-unpacks of an already imported member too:
+        # the budget bounds what this one upload can ever expand to.
+        unpacked = int(manifest.get("unpacked_bytes") or 0)
+        if unpacked + entry.size > listing.budget:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Unpacking {entry.name} would take this archive past its "
+                f"{human_bytes(listing.budget)} limit - import fewer logs from it.",
+            )
+        probe, written = await _stage_member(user.id, archive.file, entry)
+        extracted[entry.path] = probe.staging_token
+        manifest.update(extracted=extracted, unpacked_bytes=unpacked + written)
+        await asyncio.to_thread(staging.write_manifest, archive.root, manifest)
+        return probe
+
+
+@router.delete("/stage/{token}", status_code=status.HTTP_204_NO_CONTENT)
+async def discard_staged_upload(token: str, user: CurrentUserDep) -> None:
+    """Drop a staged upload the wizard is done with: a cancelled import, or an
+    archive whose picked members are staged on their own. Unknown tokens are a
+    no-op, so the client can always call it."""
+    staged = await asyncio.to_thread(staging.resolve_staged, user.id, token)
+    if staged is not None:
+        await asyncio.to_thread(staged.discard)
+
+
+async def _inspect_staged_archive(path: Path) -> ArchiveListing | None:
+    try:
+        return await asyncio.to_thread(inspect_archive, path)
+    except DecompressionLimitError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+
+async def _stage_member(
+    user_id: str, archive_path: Path, entry: ArchiveEntry
+) -> tuple[LogProbeResponse, int]:
+    """Unpack one archive member into a staging slot of its own and probe it.
+
+    Returns the probe and the bytes unpacked.
+    """
+    token = uuid7_str()
+    root = await asyncio.to_thread(staging.create_staging_dir, user_id, token)
+    # Importable members always carry a format; "csv" only satisfies the checker.
+    coarse_format = entry.format or "csv"
+    dest = root / f"original.{original_extension(entry.name, coarse_format).lstrip('.')}"
+    try:
+        try:
+            written = await asyncio.to_thread(_unpack_member, archive_path, entry, dest)
+        except DecompressionLimitError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Could not unpack {entry.name}: {exc}"
+            ) from exc
+        probe = await _describe_staged(
+            token, root, dest, filename=entry.name, coarse_format=coarse_format
+        )
+        return probe, written
+    except Exception:
+        await asyncio.to_thread(shutil.rmtree, root, True)
+        raise
+
+
+def _unpack_member(archive_path: Path, entry: ArchiveEntry, dest: Path) -> int:
+    with dest.open("wb") as out:
+        return extract_member(archive_path, entry.path, out, limit=entry.size)
+
+
+async def _describe_staged(
+    token: str, root: Path, staged_path: Path, *, filename: str, coarse_format: str
+) -> LogProbeResponse:
+    """Sniff + probe a staged file and record what was found next to it."""
+    try:
+        source_format, ocel_flavor = await asyncio.to_thread(
+            sniff_format, staged_path, coarse_format, filename=filename
+        )
+    except DecompressionLimitError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+    probe = await _probe(staged_path, source_format)
+    await asyncio.to_thread(
+        staging.write_manifest,
+        root,
+        {"filename": filename, "source_format": source_format, "ocel_flavor": ocel_flavor},
+    )
+    return _probe_response(token, staged_path, filename, source_format, probe)
+
+
+async def _probe(staged_path: Path, source_format: str) -> ProbeResult:
+    try:
+        return await asyncio.to_thread(probe_staged, staged_path, source_format)
+    except HTTPException:
+        raise
+    except DecompressionLimitError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except Exception as exc:
+        log.warning("event_log.probe_failed", format=source_format, error=str(exc))
+        raise HTTPException(
+            status_code=400, detail=f"Could not read the uploaded file: {exc}"
+        ) from exc
+
+
+def _probe_response(
+    token: str, staged_path: Path, filename: str, source_format: str, probe: ProbeResult
+) -> LogProbeResponse:
     return LogProbeResponse(
         staging_token=token,
         source_format=source_format,
@@ -161,10 +325,35 @@ async def stage_event_log(
         quality=probe.quality,
         events_sampled=probe.events_sampled,
         size_bytes=staged_path.stat().st_size,
-        filename=file.filename,
+        filename=filename,
         delimiter=probe.delimiter,
         event_element=probe.event_element,
         event_path=probe.event_path,
+    )
+
+
+def _archive_response(
+    token: str, filename: str, staged_path: Path, listing: ArchiveListing
+) -> ArchiveProbeResponse:
+    return ArchiveProbeResponse(
+        staging_token=token,
+        filename=filename,
+        size_bytes=staged_path.stat().st_size,
+        archive_format=listing.label,
+        members=[
+            ArchiveMember(
+                path=e.path,
+                name=e.name,
+                size_bytes=e.size,
+                compressed_bytes=e.packed,
+                format=e.format,
+                importable=e.importable,
+                reason=e.reason,
+                unsafe=e.unsafe,
+            )
+            for e in listing.entries
+        ],
+        limit_bytes=listing.budget,
     )
 
 
@@ -212,6 +401,12 @@ async def create_event_log(
                 status_code=404,
                 detail="This upload is no longer staged - it expired or was already imported. "
                 "Choose the file again.",
+            )
+        if staged.kind == "archive":
+            raise HTTPException(
+                status_code=409,
+                detail="This upload is an archive holding several event logs - stage the "
+                "ones to import with POST /event-logs/stage/{token}/extract first.",
             )
         source_filename = staged.filename
         coarse_format = staged.source_format or "csv"
@@ -304,7 +499,8 @@ async def create_event_log(
             )
         except ValueError as exc:
             await asyncio.to_thread(paths.remove)
-            raise HTTPException(status_code=415, detail=str(exc)) from exc
+            code = 413 if isinstance(exc, DecompressionLimitError) else 415
+            raise HTTPException(status_code=code, detail=str(exc)) from exc
 
     display_name = (name or source_filename).strip() or source_filename
 
@@ -408,6 +604,8 @@ async def probe_xml_upload(
 
         try:
             probe = await asyncio.to_thread(_probe_plain, tmp_path)
+        except DecompressionLimitError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Could not parse XML file: {exc}") from exc
         # XES- and OCEL-shaped probes ship without fields - they're handled by
@@ -450,6 +648,8 @@ async def probe_json_upload(
 
         try:
             probe = await asyncio.to_thread(_probe_plain, tmp_path)
+        except DecompressionLimitError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(
                 status_code=400, detail=f"Could not parse JSON file: {exc}"

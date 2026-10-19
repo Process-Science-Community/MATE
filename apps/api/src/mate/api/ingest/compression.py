@@ -1,8 +1,8 @@
-"""Transparent decompression for uploaded event logs.
+"""Transparent, bounded decompression for uploaded event logs.
 
 Any supported source format may arrive compressed (``log.csv.gz``,
-``events.json.xz``, ``export.xes.bz2``, ``data.zip``, …). Compression is
-handled at two choke points:
+``events.json.xz``, ``export.xes.bz2``, ``data.zip``, ``logs.tar.gz``, …).
+Compression is handled at two choke points:
 
 - filename level - :func:`split_compression` strips the compression suffix so
   ``detect_format`` can classify the *inner* extension;
@@ -12,24 +12,34 @@ handled at two choke points:
   compressed bytes.
 
 Magic bytes (not the filename) drive the actual decompression, so legacy
-``original.xes.gz`` re-imports and misnamed uploads both work. Zip archives
-must contain exactly one importable member (macOS junk like ``__MACOSX/`` is
-ignored); a zip's inner format is resolved after staging via
-:func:`resolve_zip_member`.
+``original.xes.gz`` re-imports and misnamed uploads both work. Archives (zip,
+tar, compressed tar - see :mod:`mate.api.ingest.archive`) unwrap here only when
+they hold exactly one importable member; an archive with several logs is split
+into one staged upload per member by the import wizard instead.
+
+Everything produced here is counted against :class:`DecompressionLimits`. The
+cap is on bytes actually written, never on what a file claims about itself, so
+a zip bomb fails fast with :class:`DecompressionLimitError` instead of filling
+the disk.
 """
 
 from __future__ import annotations
 
 import bz2
 import gzip
+import io
 import lzma
-import shutil
+import struct
 import tempfile
 import zipfile
-from collections.abc import Generator
+import zlib
+from collections.abc import Buffer, Generator
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, cast
+
+from mate.api.config import get_settings
 
 # Filename suffix → algorithm. Values are informational; decompression itself
 # is magic-byte-driven.
@@ -54,6 +64,78 @@ _MAX_NESTING = 3
 
 _CHUNK = 1024 * 1024
 
+# Outputs up to this size are never ratio-checked: a small but very repetitive
+# log can legitimately compress beyond any sane ratio, and a bomb that has to
+# stop here costs nothing.
+RATIO_FLOOR_BYTES = 64 * 1024 * 1024
+
+# Decoder memory cap for LZMA - `.xz` / `.lzma` streams and LZMA members of a
+# zip alike. A hostile header can ask for a dictionary of gigabytes, and the
+# decoder's memory grows into it as output is produced; even `xz -9e` and
+# 7-Zip's "ultra" only use 64 MiB.
+LZMA_MEMLIMIT = 128 * 1024 * 1024
+
+
+class DecompressionLimitError(ValueError):
+    """An upload would unpack past the zip-bomb guards."""
+
+
+@dataclass(frozen=True)
+class DecompressionLimits:
+    """How far an upload may expand (see ``ingest_max_*`` in settings)."""
+
+    max_bytes: int
+    # Unpacked / packed size. 0 disables the ratio check.
+    max_ratio: int
+    max_entries: int
+
+    @classmethod
+    def from_settings(cls) -> DecompressionLimits:
+        settings = get_settings()
+        return cls(
+            max_bytes=settings.ingest_max_decompressed_bytes,
+            max_ratio=settings.ingest_max_compression_ratio,
+            max_entries=settings.ingest_max_archive_entries,
+        )
+
+    def budget_for(self, packed_bytes: int) -> int:
+        """The most ``packed_bytes`` of input may unpack to, every layer included."""
+        if self.max_ratio <= 0:
+            return self.max_bytes
+        return min(self.max_bytes, max(RATIO_FLOOR_BYTES, packed_bytes * self.max_ratio))
+
+    def implausible_ratio(self, unpacked: int, packed: int) -> bool:
+        """Does a declared ``unpacked`` size give its ``packed`` bytes away as a bomb?"""
+        return (
+            self.max_ratio > 0
+            and unpacked > RATIO_FLOOR_BYTES
+            and unpacked > packed * self.max_ratio
+        )
+
+    def overflow(self, what: str, budget: int) -> DecompressionLimitError:
+        """The error for ``what`` producing more than ``budget`` bytes."""
+        if budget < self.max_bytes:
+            return DecompressionLimitError(
+                f"{what} expands to more than {self.max_ratio}x its compressed size - "
+                "refusing to unpack what looks like a zip bomb."
+            )
+        return DecompressionLimitError(
+            f"{what} unpacks to more than {human_bytes(self.max_bytes)}, the limit for "
+            "compressed uploads. Unpack it locally and upload the log itself, or ask the "
+            "operator to raise INGEST_MAX_DECOMPRESSED_BYTES."
+        )
+
+
+def human_bytes(n: int) -> str:
+    """``10737418240`` → ``"10 GiB"`` - for limits quoted in error messages."""
+    value = float(n)
+    unit = "B"
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if value < 1024 or unit == "GiB":
+            break
+        value /= 1024
+    return f"{value:.0f} {unit}" if value.is_integer() else f"{value:.1f} {unit}"
+
 
 def split_compression(filename: str) -> tuple[str, str | None]:
     """``log.csv.gz`` → (``log.csv``, "gzip"); ``log.csv`` → (``log.csv``, None)."""
@@ -77,63 +159,135 @@ def detect_compression(path: Path) -> str | None:
     return None
 
 
-def _is_zip_junk(name: str) -> bool:
-    """Archive noise that must never count as a candidate member."""
-    if name.endswith("/"):
-        return True
-    parts = name.split("/")
-    if any(p == "__MACOSX" for p in parts):
-        return True
-    base = parts[-1]
-    return base.startswith(".") or base.startswith("~$")
+class _XzReader(io.RawIOBase):
+    """``lzma.open`` with a decoder memory cap - the stdlib reader has no knob.
 
-
-def zip_members(path: Path) -> list[str]:
-    """Real-file members of a zip, junk filtered, order preserved."""
-    with zipfile.ZipFile(path) as zf:
-        return [n for n in zf.namelist() if not _is_zip_junk(n)]
-
-
-def resolve_zip_member(path: Path) -> str:
-    """The single importable member of a zip upload.
-
-    Raises ``ValueError`` when the archive holds zero or more than one
-    importable file - the archive-per-log contract keeps ``source_format``
-    and the retained original unambiguous.
+    Mirrors the stdlib reader otherwise: concatenated streams decode back to
+    back, and trailing garbage after a complete stream reads as end of file.
     """
-    # Runtime import: detect.py imports this module for split_compression.
-    from mate.api.ingest.detect import detect_format
 
-    members = zip_members(path)
-    importable: list[str] = []
-    for name in members:
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._fp = path.open("rb")
+        self._decoder = self._new_decoder()
+        self._done = False
+
+    @staticmethod
+    def _new_decoder() -> lzma.LZMADecompressor:
+        return lzma.LZMADecompressor(lzma.FORMAT_AUTO, memlimit=LZMA_MEMLIMIT)
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Buffer, /) -> int:
+        with memoryview(buffer) as view, view.cast("B") as byte_view:
+            data = self._read(len(byte_view))
+            byte_view[: len(data)] = data
+        return len(data)
+
+    def _read(self, size: int) -> bytes:
         try:
-            detect_format(name.rsplit("/", 1)[-1])
-        except ValueError:
-            continue
-        importable.append(name)
-    if not importable:
-        raise ValueError(
-            "The zip archive contains no supported event-log file "
-            "(.xes, .xes.gz, .csv, .xml, .json, or an OCEL extension)."
-        )
-    if len(importable) > 1:
-        listing = ", ".join(importable[:5]) + ("…" if len(importable) > 5 else "")
-        raise ValueError(
-            f"The zip archive contains multiple event-log files ({listing}). "
-            "Upload one log per archive."
-        )
-    return importable[0]
+            while not self._done:
+                if self._decoder.eof:
+                    rest = self._decoder.unused_data or self._fp.read(_CHUNK)
+                    if not rest:
+                        self._done = True
+                        break
+                    self._decoder = self._new_decoder()
+                    try:
+                        data = self._decoder.decompress(rest, size)
+                    except lzma.LZMAError:
+                        self._done = True  # trailing garbage after a complete stream
+                        break
+                elif self._decoder.needs_input:
+                    raw = self._fp.read(_CHUNK)
+                    if not raw:
+                        raise EOFError(
+                            "Compressed file ended before the end-of-stream marker was reached"
+                        )
+                    data = self._decoder.decompress(raw, size)
+                else:
+                    data = self._decoder.decompress(b"", size)
+                if data:
+                    return data
+        except lzma.LZMAError as exc:
+            if "memory usage limit" in str(exc).lower():
+                raise DecompressionLimitError(
+                    "The xz stream needs more than "
+                    f"{human_bytes(LZMA_MEMLIMIT)} of memory to decode - refusing to unpack it."
+                ) from exc
+            raise
+        return b""
+
+    def close(self) -> None:
+        if not self.closed:
+            self._fp.close()
+        super().close()
 
 
-def _open_compressed(path: Path, algo: str) -> IO[bytes]:
+def open_compressed(path: Path, algo: str) -> IO[bytes]:
+    """A readable stream of ``path``'s decompressed bytes (not size-bounded)."""
     if algo == "gzip":
         return cast(IO[bytes], gzip.open(path, "rb"))
     if algo == "bzip2":
         return cast(IO[bytes], bz2.open(path, "rb"))
     if algo == "xz":
-        return cast(IO[bytes], lzma.open(path, "rb"))
+        return io.BufferedReader(_XzReader(path), _CHUNK)
     raise ValueError(f"Unsupported compression: {algo}")
+
+
+def _is_damage(exc: BaseException) -> bool:
+    """Is this how a damaged or truncated stream fails - as opposed to the disk
+    (an ``OSError`` carrying an errno: full, read-only, permissions)?"""
+    if isinstance(
+        exc,
+        EOFError
+        | zlib.error
+        | lzma.LZMAError
+        | zipfile.BadZipFile
+        | struct.error
+        | UnicodeDecodeError,  # a zip entry flagged UTF-8 that isn't
+    ):
+        return True
+    return isinstance(exc, OSError) and exc.errno is None
+
+
+@contextmanager
+def reading(what: str) -> Generator[None]:
+    """Turn the many ways a damaged upload fails while being decoded (gzip's
+    ``BadGzipFile``, bzip2's errno-less ``OSError``, ``EOFError`` on a cut-off
+    stream, …) into one ``ValueError``, which the routes answer with a 4xx."""
+    try:
+        yield
+    except Exception as exc:
+        if isinstance(exc, DecompressionLimitError) or not _is_damage(exc):
+            raise
+        raise ValueError(f"{what} is damaged or truncated: {exc}") from exc
+
+
+def bounded_copy(
+    src: IO[bytes],
+    dst: IO[bytes],
+    *,
+    budget: int,
+    limits: DecompressionLimits,
+    what: str,
+) -> int:
+    """Stream ``src`` into ``dst``, failing once more than ``budget`` bytes came out."""
+    written = 0
+    while chunk := src.read(_CHUNK):
+        written += len(chunk)
+        if written > budget:
+            raise limits.overflow(what, budget)
+        dst.write(chunk)
+    return written
+
+
+def file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
 
 
 def _inner_suffix(path: Path, member: str | None) -> str:
@@ -145,37 +299,53 @@ def _inner_suffix(path: Path, member: str | None) -> str:
 
 
 @contextmanager
-def decompressed(path: Path) -> Generator[Path]:
+def decompressed(path: Path, *, limits: DecompressionLimits | None = None) -> Generator[Path]:
     """Yield a plain-file path for ``path``.
 
     Uncompressed inputs are yielded as-is. Compressed inputs are streamed into
     a temp file that lives only within the context. Nested wrapping (a
-    ``log.csv.gz`` inside a zip) is unwrapped up to ``_MAX_NESTING`` layers.
+    ``log.csv.gz`` inside a zip) is unwrapped up to ``_MAX_NESTING`` layers,
+    every one of them bounded by the budget of the *outermost* file, so the
+    amplification is always measured against what was actually uploaded.
     """
+    # Runtime import: archive.py builds on this module.
+    from mate.api.ingest import archive
+
+    limits = limits or DecompressionLimits.from_settings()
+    budget = limits.budget_for(file_size(path))
     temps: list[Path] = []
     try:
         current = path
-        for _ in range(_MAX_NESTING):
-            algo = detect_compression(current)
-            if algo is None:
-                break
-            member = resolve_zip_member(current) if algo == "zip" else None
-            with tempfile.NamedTemporaryFile(
-                prefix="mate-decompress-",
-                suffix=_inner_suffix(current, member),
-                delete=False,
-            ) as fd:
-                tmp = Path(fd.name)
-                temps.append(tmp)
-                if algo == "zip":
-                    with zipfile.ZipFile(current) as zf, zf.open(cast(str, member)) as src:
-                        shutil.copyfileobj(src, fd, _CHUNK)
-                else:
-                    with _open_compressed(current, algo) as src:
-                        shutil.copyfileobj(src, fd, _CHUNK)
-            current = tmp
-        else:
-            raise ValueError("Upload is nested in too many compression layers.")
+        # Only the unwrapping: whatever the caller does with the plain file
+        # keeps its own error semantics.
+        with reading("The upload"):
+            for _ in range(_MAX_NESTING):
+                kind = archive.archive_kind(current)
+                algo = None if kind is not None else detect_compression(current)
+                if kind is None and algo is None:
+                    break
+                member = archive.resolve_single_member(current, limits=limits) if kind else None
+                with tempfile.NamedTemporaryFile(
+                    prefix="mate-decompress-",
+                    suffix=_inner_suffix(current, member),
+                    delete=False,
+                ) as fd:
+                    tmp = Path(fd.name)
+                    temps.append(tmp)
+                    out = cast(IO[bytes], fd)
+                    if member is not None:
+                        archive.extract_member(current, member, out, limit=budget, limits=limits)
+                    else:
+                        with open_compressed(current, cast(str, algo)) as src:
+                            bounded_copy(src, out, budget=budget, limits=limits, what="The upload")
+                if current != path:
+                    # The layer just unwrapped is dead weight - don't keep every
+                    # intermediate copy on disk at once.
+                    with suppress(OSError):
+                        current.unlink()
+                current = tmp
+            else:
+                raise ValueError("Upload is nested in too many compression layers.")
         yield current
     finally:
         for tmp in temps:
@@ -185,9 +355,16 @@ def decompressed(path: Path) -> Generator[Path]:
 
 __all__ = [
     "COMPRESSION_SUFFIXES",
+    "LZMA_MEMLIMIT",
+    "RATIO_FLOOR_BYTES",
+    "DecompressionLimitError",
+    "DecompressionLimits",
+    "bounded_copy",
     "decompressed",
     "detect_compression",
-    "resolve_zip_member",
+    "file_size",
+    "human_bytes",
+    "open_compressed",
+    "reading",
     "split_compression",
-    "zip_members",
 ]

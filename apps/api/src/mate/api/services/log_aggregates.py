@@ -16,6 +16,7 @@ import json
 import shutil
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import unquote, urlparse
 
@@ -30,6 +31,7 @@ from mate.api.auth import get_owned_event_log
 from mate.api.config import get_settings
 from mate.api.db.models import EventLog, Folder
 from mate.api.events import get_event_bus
+from mate.api.ingest.compression import DecompressionLimitError, human_bytes
 from mate.api.ingest.detect import detect_format, original_extension, sniff_format
 from mate.api.ingest.dispatch import IMPORT_JOB_TYPE
 from mate.api.ingest.storage import log_paths
@@ -790,6 +792,51 @@ async def ocel_object_type_counts(log_id: str, user_id: str) -> list[OcelObjectT
 # ── event-log lifecycle (import / reimport / remap / duplicate / delete) ────
 
 
+# Transfer encodings a download may arrive in. gzip is kept as-is: the importer
+# magic-sniffs it and unpacks it behind the zip-bomb guards like any `.gz`.
+_STORABLE_ENCODINGS = frozenset({"", "identity", "gzip", "x-gzip"})
+
+
+async def _download(url: str, dest: Path) -> None:
+    """Stream ``url`` to ``dest``, capped at the upload unpack limit.
+
+    Raw bytes only: httpx would otherwise undo a ``Content-Encoding`` in memory
+    with no bound, so a few KB of gzip or brotli from a hostile server could
+    inflate to gigabytes before a single byte reached the disk.
+    """
+    limit = get_settings().ingest_max_decompressed_bytes
+    try:
+        async with (
+            httpx.AsyncClient(timeout=120, follow_redirects=True) as client,
+            client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as resp,
+        ):
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Remote server returned HTTP {resp.status_code} for the given URL.",
+                )
+            encoding = resp.headers.get("content-encoding", "").strip().lower()
+            if encoding not in _STORABLE_ENCODINGS:
+                raise HTTPException(
+                    status_code=415,
+                    detail=f"The server sent the file {encoding}-encoded, which can't be "
+                    "imported from a URL - download it and upload the file instead.",
+                )
+            written = 0
+            async with aiofiles.open(dest, "wb") as out:
+                async for chunk in resp.aiter_raw():
+                    written += len(chunk)
+                    if written > limit:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"The download is larger than {human_bytes(limit)}, the "
+                            "import limit (INGEST_MAX_DECOMPRESSED_BYTES).",
+                        )
+                    await out.write(chunk)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {exc}") from exc
+
+
 async def import_log_from_url(
     session: AsyncSession,
     runtime: JobRuntime,
@@ -817,7 +864,7 @@ async def import_log_from_url(
             status_code=415,
             detail=f"Cannot determine file format from URL path ({filename!r}). "
             "Make sure the URL ends with .xes, .csv, .xml, .json, an OCEL extension, "
-            "or a compressed variant (.gz/.bz2/.xz/.zip).",
+            "a compressed variant (.gz/.bz2/.xz/.zip), or a single-log .tar(.gz).",
         ) from exc
 
     parsed_mapping: CsvColumnMapping | None = None
@@ -841,19 +888,6 @@ async def import_log_from_url(
         except (ValueError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=422, detail=f"Invalid json_mapping: {exc}") from exc
 
-    # Download the remote file.
-    try:
-        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-            resp = await client.get(url)
-            if resp.status_code >= 400:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Remote server returned HTTP {resp.status_code} for the given URL.",
-                )
-            raw = resp.content
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {exc}") from exc
-
     log_id = uuid7_str()
     paths = log_paths(log_id, user_id)
     paths.ensure()
@@ -861,19 +895,23 @@ async def import_log_from_url(
     ext = original_extension(filename, coarse_format)
     original_path = paths.original_for(ext)
 
-    async with aiofiles.open(original_path, "wb") as out:
-        await out.write(raw)
+    try:
+        await _download(url, original_path)
+    except Exception:
+        await asyncio.to_thread(paths.remove)
+        raise
 
     # Refine the coarse guess from the downloaded content (OCEL vs case-centric;
-    # a bare .zip resolves to its single member's format - ValueError means an
-    # empty/ambiguous archive).
+    # a bare .zip / tar resolves to its single member's format - ValueError
+    # means an empty or multi-log archive, or one that trips a zip-bomb guard).
     try:
         source_format, ocel_flavor = await asyncio.to_thread(
             sniff_format, original_path, coarse_format, filename=filename
         )
     except ValueError as exc:
         await asyncio.to_thread(paths.remove)
-        raise HTTPException(status_code=415, detail=str(exc)) from exc
+        code = 413 if isinstance(exc, DecompressionLimitError) else 415
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
     display_name = (name or filename).strip() or filename
     # Strip the extension (and a compression suffix) from auto-derived names.

@@ -18,6 +18,8 @@ The wizard accepts five format families, probes them server-side, and writes not
 
 All formats accept `.gz`, `.bz2`, `.xz`, and `.zip` wrappers.
 
+An archive holding several logs (`.zip`, `.tar`, `.tar.gz`, `.tgz` – a BPI Challenge download, say) opens a picker first. Every log in it starts selected; READMEs, licences and nested archives are listed with the reason they are skipped. Each log you keep is unpacked on its own, gets its own mapping step, and becomes a separate process. Unpacking is bounded by the zip-bomb guards in [Configuration](configuration.html#uploads).
+
 ## The mapping wizard
 
 :::steps
