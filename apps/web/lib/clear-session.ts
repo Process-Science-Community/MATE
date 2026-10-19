@@ -23,6 +23,9 @@ const AUTH_COOKIE_BASES = [
   "authjs.callback-url",
 ];
 
+/** The session cookie's two spellings: plain on http (dev), `__Secure-` under https (prod). */
+export const SESSION_COOKIE_NAMES = ["authjs.session-token", "__Secure-authjs.session-token"];
+
 export function isAuthCookie(name: string): boolean {
   const bare = name.startsWith("__Secure-") ? name.slice("__Secure-".length) : name;
   return AUTH_COOKIE_BASES.some((base) => bare === base || bare.startsWith(`${base}.`));

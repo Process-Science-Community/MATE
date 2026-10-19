@@ -414,6 +414,12 @@ Then in a browser:
    on the web service, §5) keeps the auth cookie ~64 B so the full Keycloak token
    never chunks — without it Safari drops a chunk and loops between the app and
    `/login` (Chrome tolerates the same chunked cookie). See Troubleshooting.
+8. **Sign out, then sign in again with each button.** Neither may let you
+   straight back in: the email button must show Keycloak's own form and the
+   university button the university's login page (`/logout` ends the Keycloak
+   session and every sign-in sends `prompt=login`). If the university signs you
+   in silently, its IdP ignores `prompt=login` – raise it with the IdP's
+   operators; MATE already sends it.
 
 > **Staged rollout — internal OIDC back-channel (removes the TLS bypass).** The
 > web container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to tolerate the cert-name
