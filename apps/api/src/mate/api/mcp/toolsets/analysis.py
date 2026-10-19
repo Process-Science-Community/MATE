@@ -37,6 +37,7 @@ from mate.api.mcp.errors import (
 )
 from mate.api.mcp.registry import mcp_resource, mcp_tool
 from mate.api.mcp.scopes import SCOPE_MODULES_MANAGE, SCOPE_MODULES_READ, SCOPE_MODULES_WRITE
+from mate.api.modules.processing import get_coordinator
 
 # Per-module budget inside get_process_overview - one slow module must not
 # starve the composite (the whole tool still runs under the global timeout).
@@ -65,8 +66,52 @@ async def _ensure_installed(session: AsyncSession, user_id: str, module_id: str)
 def _no_results_error(module_id: str) -> Exception:
     return tool_error(
         CODE_CONFLICT,
-        f"Module '{module_id}' has no precomputed results yet - run its analysis first.",
+        f"Module '{module_id}' has no computed results for this process.",
     )
+
+
+async def _require_computed(user_id: str, log_id: str, module_id: str) -> None:
+    """Start the module's compute for this log if it has not run, and refuse the read
+    until it has.
+
+    MCP reads run behind the data wall: they see a module's cached results, never raw
+    events, so a module that has not computed for the log has nothing to return - and
+    an agent cannot "run the analysis" itself. Modules compute lazily, so ask the
+    processing coordinator to start it and hand back the job to wait on. A module with
+    nothing to precompute passes straight through to the read.
+    """
+    coordinator = get_coordinator()
+    if coordinator is None:
+        return
+    try:
+        states = await coordinator.ensure(user_id, log_id, module_id)
+    except LookupError as exc:
+        raise tool_error(CODE_NOT_FOUND, str(exc)) from exc
+    for state in states:
+        if state.status == "ready":
+            continue
+        if state.status in ("failed", "cancelled", "unavailable"):
+            detail = f": {state.error}" if state.error else "."
+            raise tool_error(
+                CODE_CONFLICT,
+                f"Module '{state.module_id}' {state.status} for this process{detail}",
+            )
+        if state.status == "idle":
+            raise tool_error(
+                CODE_CONFLICT, "The process is not ready yet - wait for its import to finish."
+            )
+        # Queued or running; a module waiting on another has no job of its own, so
+        # point at the first job in flight among the modules it needs.
+        job_id = next((s.job_id for s in states if s.job_id and s.status != "ready"), None)
+        hint = (
+            f"call wait_for_job('{job_id}') and retry"
+            if job_id
+            else "retry shortly (see list_jobs)"
+        )
+        raise tool_error(
+            CODE_CONFLICT,
+            f"Module '{state.module_id}' is computing for this process - {hint}.",
+        )
 
 
 async def _module_output(user_id: str, log_id: str, module_id: str) -> dict[str, Any]:
@@ -76,6 +121,7 @@ async def _module_output(user_id: str, log_id: str, module_id: str) -> dict[str,
     async with sm() as session:
         await ensure_owned_log(session, log_id, user_id)
         await _ensure_installed(session, user_id, module_id)
+    await _require_computed(user_id, log_id, module_id)
     try:
         # restrict_event_log=True is the structural data wall: a module whose
         # guidance_payload reaches for raw event rows hits PermissionError
@@ -97,8 +143,11 @@ async def list_modules(ctx: MCPContext, log_id: str) -> list[dict[str, Any]]:
 
     Each entry carries ``module_id``, ``name``, ``description``, ``enabled``
     (your per-module toggle), ``has_guidance`` (whether get_module_output can
-    read it) and ``availability`` (status ``available|degraded|unavailable``
-    plus reasons) for the given ``log_id``.
+    read it), ``availability`` (status ``available|degraded|unavailable``
+    plus reasons) and ``run_status`` for the given ``log_id``. ``run_status`` is
+    ``idle|queued|running|ready|stale|failed|cancelled|unavailable`` for a module
+    that precomputes (``idle``/``stale``: get_module_output starts it) and null
+    for one that does not.
     """
     p = await authz(ctx, SCOPE_MODULES_READ)
 
@@ -128,6 +177,12 @@ async def list_modules(ctx: MCPContext, log_id: str) -> list[dict[str, Any]]:
                 )
             )
             enabled_map: dict[str, bool] = {mid: bool(en) for mid, en in rows.all()}
+        coordinator = get_coordinator()
+        run_status: dict[str, str] = {}
+        if coordinator is not None:
+            run_status = {
+                s.module_id: s.status for s in await coordinator.list_states(p.user.id, log_id)
+            }
         # Same availability computation the GET /modules?log_id= route uses.
         avail_map = loader.availability_for(
             detected_schema=detected_schema,
@@ -151,6 +206,7 @@ async def list_modules(ctx: MCPContext, log_id: str) -> list[dict[str, Any]]:
                     "enabled": enabled_map.get(mid, man.default_enabled),
                     "has_guidance": callable(getattr(loaded.instance, "guidance_payload", None)),
                     "availability": avail.to_dict() if avail is not None else None,
+                    "run_status": run_status.get(mid),
                 }
             )
         return out
@@ -176,7 +232,7 @@ def _skip_reason(exc: BaseException) -> str:
     if isinstance(exc, HTTPException):
         return str(exc.detail)
     if isinstance(exc, PermissionError):
-        return "no precomputed results yet - run the module's analysis first"
+        return "not computed yet - get_module_output starts it"
     return f"failed: {type(exc).__name__}"
 
 
@@ -229,6 +285,7 @@ async def _module_results(user_id: str, log_id: str, module_id: str) -> dict[str
     async with sm() as session:
         await ensure_owned_log(session, log_id, user_id)
         await _ensure_installed(session, user_id, module_id)
+    await _require_computed(user_id, log_id, module_id)
     cache = ResultCache(log_id, module_id, user_id)
 
     def _read() -> tuple[dict[str, Any], list[str]]:
@@ -332,6 +389,7 @@ async def get_dataset(
         async with sm() as session:
             await ensure_owned_log(session, log_id, p.user.id)
             await _ensure_installed(session, p.user.id, module_id)
+        await _require_computed(p.user.id, log_id, module_id)
         try:
             loader = get_module_loader()
         except HTTPException as exc:
@@ -349,8 +407,7 @@ async def get_dataset(
         except PermissionError as exc:
             raise tool_error(
                 CODE_CONFLICT,
-                f"Dataset '{module_id}/{dataset_id}' is not computed yet - "
-                "run the module's analysis first.",
+                f"Dataset '{module_id}/{dataset_id}' has no computed results for this process.",
             ) from exc
         except HTTPException as exc:
             raise from_http_exception(exc) from exc

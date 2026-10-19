@@ -58,6 +58,8 @@ The table is generated from that schema: after changing a route, a request model
 | Log data | `GET /event-logs/{log_id}/events` | `?limit=50&offset=0&q=…` | `200` `{"rows":["…"],"total":25,"offset":25,"limit":25,"columns":[{…}],"header":{…}}` |
 | Log data | `POST /event-logs/{log_id}/events/bulk-fill` | `{"row_indices":[25],"field":"…","value":null}` | `200` `{"updated":25,"header":{"events_count":25,"cases_count":25,…}}` |
 | Log data | `PATCH /event-logs/{log_id}/events/{row_index}` | `{"field":"…","value":null}` | `200` `{"row":null,"row_index":25,"new_row_index":25,"header":{…}}` |
+| Log data | `GET /event-logs/{log_id}/module-runs` | — | `200` `[{"module_id":"018f2c9a…","status":"idle","job_id":"018f2c9a…","precompute":"eager",…}]` |
+| Log data | `POST /event-logs/{log_id}/module-runs/{module_id}` | `{"force":false}` | `200` `[{"module_id":"018f2c9a…","status":"idle","job_id":"018f2c9a…","precompute":"eager",…}]` |
 | Log data | `POST /event-logs/{log_id}/reimport` | — | `202` `{"log_id":"018f2c9a…","job_id":"018f2c9a…"}` |
 | Log data | `POST /event-logs/{log_id}/remap` | `{"case_id":"018f2c9a…","activity":"…","timestamp":"2026-01-01T00:00:00Z",…}` | `202` `{"log_id":"018f2c9a…","job_id":"018f2c9a…"}` |
 | Log data | `GET /event-logs/{log_id}/time-bounds` | — | `200` `{"field":"…","min_ts":"…","max_ts":"…"}` |
@@ -190,6 +192,7 @@ The table is generated from that schema: after changing a route, a request model
 | Admin | `PUT /admin/modules/{module_id}/default` | `{"is_default":false}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `POST /admin/modules/{module_id}/installs` | `{"user_id":"018f2c9a…"}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `DELETE /admin/modules/{module_id}/installs/{user_id}` | — | `204` — |
+| Admin | `PUT /admin/modules/{module_id}/precompute` | `{"mode":"eager"}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `PUT /admin/modules/{module_id}/withhold` | `{"withheld":false}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `GET /admin/teams` | — | `200` `[{"id":"018f2c9a…","name":"nightly import","member_count":0,…}]` |
 | Admin | `POST /admin/teams` | `{"name":"nightly import"}` | `201` `{"id":"018f2c9a…","name":"nightly import","member_count":0,…}` |
@@ -248,8 +251,15 @@ log_id = created["log_id"]
 job = wait_for_job(created["job_id"])
 assert job["status"] == "completed", job.get("error")
 
-# 2. wait for the module precompute chain to settle
+# 2. the log is ready once it is parsed; modules compute on demand, so ask for the one you need
 while client.get(f"/event-logs/{log_id}").json()["status"] != "ready":
+    time.sleep(2)
+while True:
+    states = client.post(f"/event-logs/{log_id}/module-runs/performance_java").raise_for_status().json()
+    if all(s["status"] == "ready" for s in states):  # [] when the module has nothing to precompute
+        break
+    if any(s["status"] in ("failed", "cancelled", "unavailable") for s in states):
+        raise RuntimeError(states)
     time.sleep(2)
 
 # 3. read a dataset a module publishes — rows live under `data` in the envelope
@@ -259,7 +269,7 @@ rows = client.get(
 print(rows)
 ```
 
-Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; treat `processing` as "module results do not exist yet"; the dataset endpoint takes only `log_id` (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.
+Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; ask `POST /event-logs/{id}/module-runs/{module}` (idempotent) before reading a module's results, because they only exist once its run is `ready`; the dataset endpoint takes only `log_id` (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.
 
 # MCP server
 

@@ -104,17 +104,25 @@ def _reset_admin_module_defaults(_sync_engine: Any) -> None:
     the effective default set for every test that runs after it - which is how
     ``test_modules_per_user.py`` came to pass alone but fail in a full run.
     Clearing them up front keeps default resolution independent of file order.
+    The admin ``precompute`` overrides get the same treatment: one test flipping a
+    module to eager must not make it run on every later import.
     """
     from sqlalchemy import delete
     from sqlalchemy.orm import Session
 
     from mate.api.db.models import SystemSetting
-    from mate.api.modules.defaults import ADMIN_DEFAULTS_KEY, EXCLUDED_DEFAULTS_KEY
+    from mate.api.modules.defaults import (
+        ADMIN_DEFAULTS_KEY,
+        EXCLUDED_DEFAULTS_KEY,
+        PRECOMPUTE_OVERRIDES_KEY,
+    )
 
     with Session(_sync_engine) as s:
         s.execute(
             delete(SystemSetting).where(
-                SystemSetting.key.in_([ADMIN_DEFAULTS_KEY, EXCLUDED_DEFAULTS_KEY])
+                SystemSetting.key.in_(
+                    [ADMIN_DEFAULTS_KEY, EXCLUDED_DEFAULTS_KEY, PRECOMPUTE_OVERRIDES_KEY]
+                )
             )
         )
         s.commit()

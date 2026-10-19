@@ -103,7 +103,7 @@ dependencies:
 | --- | --- |
 | `id` in both files | The loader matches them; a mismatch fails the load with a clear error. |
 | `@route.get` | Registered under `/api/v1/modules/my_module/top-activities`, with auth and OpenAPI types handled. |
-| `@job` under `@on_event` | The precompute becomes a job: it counts towards the log's readiness and appears in the jobs UI. |
+| `@job` under `@on_event` | The precompute becomes a job the platform runs when a log first needs the module: it appears in the jobs UI and drives the page's progress state. |
 | `ctx.cache` | Results stored per `(log_id, module_id)`, surviving restarts. |
 | `requirements.event_log` | The card is only offered on case-centric logs with those columns. |
 
@@ -220,6 +220,7 @@ config_schema:                      # renders the per-user settings form
 | `requirements.modules` / `optional_modules` | Hard and soft module dependencies. A cycle or a missing hard dependency drops the affected modules and logs an error; the rest boot. |
 | `provides` / `consumes` | The contract you publish and rely on; a boot-time check logs an unmatched job-backed subscription (`modules.precompute_subscription_unprovided`). Availability and the precompute closure are derived from it. |
 | `default_enabled` | Whether new accounts get the module enabled. |
+| `precompute` | `lazy` (default) computes the first time a log opens the module; `eager` also runs it in the background right after every import. Reserve `eager` for the one module whose output is opened first — it costs CPU on every import, and an admin can override it per module. |
 | `isConfidentialSafe` | Set `true` only when the log never leaves the host. |
 | `source` / `artifacts` | Citations and links, at most 20 each. |
 | `config_schema` | JSON-Schema-flavoured; the platform renders the form. |
@@ -348,8 +349,9 @@ async def precompute(self, ctx: ModuleContext, payload: dict) -> None:
     await ctx.progress.update(1.0, "Done")
 ```
 
-- Only job-backed handlers participate in the readiness gate. A handler without `@job` is fire-and-forget: no row, no gating, no plan entry.
-- Precompute jobs of one import run in parallel up to the worker limit, so keep memory bounded and never assume you are alone.
+- Precompute is **lazy**. The platform runs the job the first time a log needs the module (the page, a dashboard card, an MCP read) and mounts your panel only once it has finished, so the panel can assume its cache is filled. `precompute: eager` in the manifest also runs it after every import.
+- Only job-backed handlers are tracked. A handler without `@job` is fire-and-forget: no run state, never shown, never run on demand.
+- The handler also runs after the log's data changes and again after an interrupted run is restarted, and its payload has no `import_job_id` when run on demand: make it idempotent and rebuild from `ctx.event_log` alone. Other jobs run in parallel up to the worker limit, so keep memory bounded.
 - To run after another module, subscribe to `<module_id>.completed` — see [Module communication](module-communication.html).
 
 ## Results
@@ -424,8 +426,8 @@ async def overlay(self, ctx: ModuleContext, payload: dict) -> None:
 ```
 
 - The platform emits `<module_id>.completed` when a module's precompute job **succeeds**; a failure or cancellation emits nothing.
-- Dependents are skipped rather than stranded, so the log always reaches `ready`.
-- Steps are ordered topologically, then alphabetically by module id within a layer — deterministic enough to describe in progress copy.
+- Opening a dependent first runs its producers, then its own job. If a producer fails or is cancelled the dependent shows that error with a Retry instead of waiting forever. A module that only *requires* one (`requirements.modules`) is gated on it the same way.
+- Steps in an import's plan are ordered topologically, then alphabetically by module id within a layer — deterministic enough to describe in progress copy.
 
 | Need | Mechanism |
 | --- | --- |
@@ -714,7 +716,7 @@ Bump `version:` whenever results change, not only when code changes. A results-a
 - [ ] `Manifest.load_yaml(...)` passes, and `id` matches `module.py`.
 - [ ] `log_model` matches the log the module can actually handle.
 - [ ] Every emitted topic is in `provides:`; every subscription and capability call is in `consumes:` or `optional_modules:`.
-- [ ] Precompute ordering uses `<module_id>.completed`, not hope.
+- [ ] Precompute ordering uses `<module_id>.completed` (or `requirements.modules`), not hope; the handler is idempotent and rebuilds from `ctx.event_log`.
 - [ ] Long jobs use `@job(progress=True)` and check cancellation at loop boundaries.
 - [ ] Results live in `ctx.cache` under keys that encode the parameters that change them.
 - [ ] No imports from `apps/api/*` or `apps/web/*`.

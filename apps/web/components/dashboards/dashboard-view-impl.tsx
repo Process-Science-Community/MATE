@@ -660,6 +660,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
                       selectedIds={selectedIds}
                       onSelectionChange={setSelectedIds}
                       historyApplying={history.isApplying}
+                      isOwner={isOwner}
                       // Every geometry change goes through the history so it
                       // can be undone; the label groups a burst of the same
                       // edit into one step.

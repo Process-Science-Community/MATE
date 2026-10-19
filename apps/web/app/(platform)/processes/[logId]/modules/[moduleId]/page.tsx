@@ -12,6 +12,7 @@ import { PanelSkeleton } from "@/components/skeletons";
 import { useModules } from "@/lib/queries";
 import { getModulePanel, prefetchModulePanel } from "@/lib/module-panels";
 import { LogFilterProvider } from "@/components/processes/log-filter";
+import { ModuleRunGate } from "@/components/processes/module-run-gate";
 
 export default function ModulePage() {
   const params = useParams<{ logId: string; moduleId: string }>();
@@ -88,14 +89,22 @@ export default function ModulePage() {
           </ul>
         </div>
       ) : (
-        // Log-scoped global filter: sets the active log's ephemeral event filter
-        // and re-scopes this (and every other) module view for the log. Wraps
-        // the panel so its data queries pick up the `X-FF-Event-Filter` header.
-        // Modules opt out via the manifest (`frontend.log_filter: false`) and
-        // mount without the bar or the header.
-        <LogFilterProvider logId={logId} enabled={mod.supports_log_filter}>
-          <ModulePanelSlot logId={logId} moduleId={mod.id} hasFrontend={mod.has_frontend} />
-        </LogFilterProvider>
+        // Modules compute lazily: opening one starts its job if the log has no
+        // results for it yet (or the data changed since), shows live progress, and
+        // mounts the panel only once they exist - so the panel never fetches into
+        // an empty cache. It sits *outside* the filter provider on purpose: the
+        // provider owns the panel's isolated QueryClient, which is therefore
+        // created fresh after each run instead of carrying a stale miss.
+        <ModuleRunGate logId={logId} moduleId={mod.id} deps={mod.precompute_deps ?? []}>
+          {/* Log-scoped global filter: sets the active log's ephemeral event filter
+              and re-scopes this (and every other) module view for the log. Wraps
+              the panel so its data queries pick up the `X-FF-Event-Filter` header.
+              Modules opt out via the manifest (`frontend.log_filter: false`) and
+              mount without the bar or the header. */}
+          <LogFilterProvider logId={logId} enabled={mod.supports_log_filter}>
+            <ModulePanelSlot logId={logId} moduleId={mod.id} hasFrontend={mod.has_frontend} />
+          </LogFilterProvider>
+        </ModuleRunGate>
       )}
     </PageContainer>
   );

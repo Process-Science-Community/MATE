@@ -125,6 +125,12 @@ class ModuleSummary(BaseModel):
     enabled: bool = True
     is_confidential_safe: bool = False
     availability: Availability | None = None
+    # Modules that must have computed for a log before this one's panel can show
+    # data - itself when it precomputes, plus what it needs first (chained producers,
+    # hard `requirements.modules`), in dependency order. Empty means the module needs
+    # no gate: it computes inline or on an explicit user action. The UI gates a
+    # module page / dashboard card on exactly these (`/event-logs/{id}/module-runs`).
+    precompute_deps: list[str] = Field(default_factory=list)
 
 
 class ModuleConfigPayload(BaseModel):
@@ -205,6 +211,7 @@ async def list_modules(
             enabled=enabled_map.get(m.id, m.default_enabled),
             is_confidential_safe=m.is_confidential_safe,
             availability=avail_map.get(m.id),
+            precompute_deps=loader.precompute_deps(m.id, owned),
         )
         for m in manifests
     ]

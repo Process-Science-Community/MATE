@@ -234,6 +234,42 @@ export interface ModuleSummary {
   enabled: boolean;
   is_confidential_safe: boolean;
   availability: { status: "available" | "unavailable" | "degraded"; reasons: string[] } | null;
+  /** Modules that must have computed for a log before this one's panel can show
+   *  data — itself when it precomputes, plus what it needs first, in dependency
+   *  order. Empty = no gate: the module computes inline or on an explicit action.
+   *  The module page / dashboard cards gate on exactly these. */
+  precompute_deps: string[];
+}
+
+/** Where one module stands for one log (`GET /event-logs/{id}/module-runs`).
+ *  `idle`: never computed. `stale`: computed, but the data or module version has
+ *  since changed. `queued` with no `job_id`: waiting on a module it depends on. */
+export type ModuleRunStatus =
+  | "idle"
+  | "queued"
+  | "running"
+  | "ready"
+  | "stale"
+  | "failed"
+  | "cancelled"
+  | "unavailable";
+
+export interface ModuleRunState {
+  module_id: string;
+  status: ModuleRunStatus;
+  job_id: string | null;
+  /** Import-time mode for a module that precomputes on import; null otherwise. */
+  precompute: "eager" | "lazy" | null;
+  error: string | null;
+  finished_at: string | null;
+}
+
+/** `module_run.updated` bus event — a run changed state. Always carries `user_id`. */
+export interface ModuleRunUpdatedPayload {
+  log_id: string;
+  module_id: string;
+  status: ModuleRunStatus;
+  job_id: string | null;
 }
 
 export interface BusEnvelope<T = Record<string, unknown>> {
@@ -816,6 +852,17 @@ export interface AdminModuleRow {
   /** Earliest source="upload" owner – best-effort "who uploaded this". */
   uploaded_by: AdminModuleOwner | null;
   owners: AdminModuleOwner[];
+  /** Null when the module has no import-time precompute – nothing to switch. */
+  precompute: AdminModulePrecompute | null;
+}
+
+/** Whether a module also computes in the background right after every import. */
+export interface AdminModulePrecompute {
+  /** What the module's manifest recommends. */
+  manifest: "eager" | "lazy";
+  /** What applies now (the admin's override, else the manifest's). */
+  effective: "eager" | "lazy";
+  overridden: boolean;
 }
 
 // --- GET /system/resources (Admin → System, live CPU/RAM monitor) ----------

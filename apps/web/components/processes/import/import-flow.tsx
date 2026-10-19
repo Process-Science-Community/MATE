@@ -80,7 +80,7 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
 
   const etaRef = useRef(new EtaTracker());
 
-  // Poll the log row while it walks importing → processing → ready. The store
+  // Poll the log row while it walks importing → ready. The store
   // drives the live stages; this is what gives us the final counts.
   const { data: log } = useEventLog(phase === "running" ? logId : null);
 

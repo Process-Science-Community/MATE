@@ -83,8 +83,9 @@ export function useEventLog(id: string | null) {
     refetchInterval: (q) => {
       const data = q.state.data as EventLogDetail | undefined;
       if (!data) return false;
-      // Poll through both transient states: `importing` (parsing) and
-      // `processing` (modules precomputing) both resolve to `ready`/`failed`.
+      // Poll through the transient states: `importing` (parsing) resolves to
+      // `ready`/`failed`. (`processing` - the retired "modules precomputing" gate -
+      // is never written any more; it is only polled for rows an old build left.)
       // The poll is only a safety net – the SSE bus (jobs-provider.tsx) already
       // invalidates the ["event-logs"] prefix on log.ready / job.completed, so
       // a relaxed cadence costs nothing when the stream is healthy.

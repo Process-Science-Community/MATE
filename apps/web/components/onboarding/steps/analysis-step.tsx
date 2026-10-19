@@ -12,10 +12,8 @@ import { useModules } from "@/lib/queries";
  *
  * This replaced a "Choose your modules" toggle list. That screen asked for a
  * decision with no consequence - every bundled module is installed and enabled
- * by default, and `enabled: false` only hides cards; the precompute closure is
- * keyed off *installs*, so a disabled module still runs on import and still
- * gates the log's readiness. It also line-clamped 15 of 17 descriptions to one
- * line behind a hover-only tooltip.
+ * by default - and it line-clamped 15 of 17 descriptions to one line behind a
+ * hover-only tooltip.
  *
  * So the screen answers the question the toggles implied instead: nothing to
  * pick here, here is what you got, here is when it computes. Real per-module
@@ -44,8 +42,8 @@ export function AnalysisStep() {
         />
         <Point
           icon={Workflow}
-          title="They compute the moment a log arrives"
-          body="As soon as an import finishes parsing, one job per module is queued and they run in dependency order. The process reads “Preparing modules…” until they're done — after that every module opens instantly. You can watch the steps in the Jobs panel at the bottom of the left sidebar."
+          title="They compute when you open them"
+          body="A log opens as soon as it's parsed. Each module computes the first time you open it — you'll see its progress, and it's instant afterwards — so you only spend processing time on the analyses you actually use. You can watch running jobs in the Jobs panel at the bottom of the left sidebar."
         />
         <Point
           icon={SlidersHorizontal}

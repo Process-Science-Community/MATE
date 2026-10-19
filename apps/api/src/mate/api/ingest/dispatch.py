@@ -11,11 +11,11 @@ shape (set by the route in `routes/event_logs.py`) is::
     }
 
 On success `events.parquet` / `cases.parquet` / `meta.json` are written and the
-row in `process_logs` is moved to status='ready' - or 'processing' when an
-installed module subscribes to the import topic, in which case
-`mate.api.modules.processing` un-gates the log to 'ready' once those modules
-finish precomputing. On failure the status is flipped to 'failed' with `error`
-set.
+row in `process_logs` is moved to status='ready' with its `data_revision` bumped
+(so module results computed against the previous data read as stale). Module
+precompute is lazy and never gates the log: `mate.api.modules.processing` starts
+only the modules that are eager or already used on the log, in the background.
+On failure the status is flipped to 'failed' with `error` set.
 """
 
 from __future__ import annotations
@@ -318,18 +318,26 @@ async def _import_handler(handle: JobHandle) -> None:
     }
     paths.write_meta(meta)
 
-    # Decide the resting status: `ready` immediately when no installed module
-    # subscribes to `log.imported`, else `processing` until those modules finish
-    # precomputing (the coordinator un-gates the log off their terminal jobs).
+    # The log is `ready` the moment it is parsed - module precompute is lazy and
+    # never gates it. `data_revision` moves on so results computed against the
+    # previous data (a reimport / remap) read as stale.
     async with handle.sessionmaker() as session:
-        expected, plan = await _precompute_plan("log.imported", handle.user_id, session)
+        _nodes, plan = await _precompute_plan(
+            "log.imported",
+            handle.user_id,
+            session,
+            log_id=log_id,
+            log_model="case_centric",
+            detected_schema=detected_schema,
+            events_count=len(df),
+            cases_count=int(cases_df.shape[0]),
+        )
         await session.execute(
             update(EventLog)
             .where(EventLog.id == log_id)
             .values(
-                status="ready" if not expected else "processing",
-                processing_import_job_id=None if not expected else handle.id,
-                expected_modules=None if not expected else sorted(expected),
+                status="ready",
+                data_revision=EventLog.data_revision + 1,
                 log_model="case_centric",
                 events_count=meta["events_count"],
                 cases_count=meta["cases_count"],
@@ -347,7 +355,7 @@ async def _import_handler(handle: JobHandle) -> None:
                 error=None,
             )
         )
-        if expected:
+        if plan:
             await _stash_precompute_plan(session, handle.id, plan)
         await session.commit()
 
@@ -372,7 +380,8 @@ async def _import_handler(handle: JobHandle) -> None:
     # Hand the precompute DAG plan to the jobs UI before the children spawn, so a
     # live import's group card can render waiting/skipped steps immediately (the
     # frontend store otherwise only sees the plan on a full `GET /jobs` rehydrate).
-    if expected:
+    # Empty when no module will run for this import - the usual lazy case.
+    if plan:
         await handle.bus.publish(
             "job.plan",
             {"id": handle.id, "user_id": handle.user_id, "precompute_plan": plan},
@@ -390,10 +399,8 @@ async def _import_handler(handle: JobHandle) -> None:
             "fixed_columns": fixed_columns,
         },
     )
-    # No subscribing module → the log is already openable; emit `log.ready` so
-    # the frontend flips it without waiting on a (never-coming) module finish.
-    if not expected:
-        await handle.bus.publish("log.ready", {"user_id": handle.user_id, "log_id": log_id})
+    # The log is already openable; the frontend flips it on this.
+    await handle.bus.publish("log.ready", {"user_id": handle.user_id, "log_id": log_id})
 
 
 async def _import_ocel(
@@ -494,14 +501,22 @@ async def _import_ocel(
     paths.write_meta(meta)
 
     async with handle.sessionmaker() as session:
-        expected, plan = await _precompute_plan("ocel.imported", handle.user_id, session)
+        _nodes, plan = await _precompute_plan(
+            "ocel.imported",
+            handle.user_id,
+            session,
+            log_id=log_id,
+            log_model="object_centric",
+            detected_schema=result.detected_schema,
+            events_count=result.stats["events_count"],
+            cases_count=None,
+        )
         await session.execute(
             update(EventLog)
             .where(EventLog.id == log_id)
             .values(
-                status="ready" if not expected else "processing",
-                processing_import_job_id=None if not expected else handle.id,
-                expected_modules=None if not expected else sorted(expected),
+                status="ready",
+                data_revision=EventLog.data_revision + 1,
                 log_model="object_centric",
                 events_count=result.stats["events_count"],
                 objects_count=result.stats["objects_count"],
@@ -518,7 +533,7 @@ async def _import_ocel(
                 error=None,
             )
         )
-        if expected:
+        if plan:
             await _stash_precompute_plan(session, handle.id, plan)
         await session.commit()
 
@@ -541,7 +556,7 @@ async def _import_ocel(
         log_model="object_centric",
     )
 
-    if expected:
+    if plan:
         await handle.bus.publish(
             "job.plan",
             {"id": handle.id, "user_id": handle.user_id, "precompute_plan": plan},
@@ -562,8 +577,7 @@ async def _import_ocel(
             "detected_schema": result.detected_schema,
         },
     )
-    if not expected:
-        await handle.bus.publish("log.ready", {"user_id": handle.user_id, "log_id": log_id})
+    await handle.bus.publish("log.ready", {"user_id": handle.user_id, "log_id": log_id})
 
 
 def _to_iso(value: Any) -> str | None:
@@ -580,23 +594,39 @@ def _to_iso(value: Any) -> str | None:
 
 
 async def _precompute_plan(
-    topic: str, user_id: str, session: AsyncSession
+    topic: str,
+    user_id: str,
+    session: AsyncSession,
+    *,
+    log_id: str,
+    log_model: str,
+    detected_schema: dict[str, Any] | None,
+    events_count: int | None,
+    cases_count: int | None,
 ) -> tuple[set[str], list[dict[str, Any]]]:
-    """Modules the just-imported log must wait on, plus the DAG plan for the UI.
+    """Modules this import will start in the background, plus the DAG plan for the UI.
 
-    Delegates to the process-global :class:`ModuleProcessingCoordinator`. When it
-    isn't wired (e.g. a bare-runtime test that never started the module loader)
-    we return ``(set(), [])`` so the import falls back to the legacy "ready
-    immediately" behaviour instead of failing. The returned set is the transitive
-    precompute closure (direct subscribers plus everything chained off their
-    ``<id>.completed`` events).
+    Delegates to the process-global :class:`ModuleProcessingCoordinator`: lazy
+    processing means only eager modules and those already used on the log (a
+    reimport) run, so this is usually empty. When the coordinator isn't wired (e.g.
+    a bare-runtime test that never started the module loader) we return
+    ``(set(), [])`` and no module runs.
     """
     from mate.api.modules.processing import get_coordinator
 
     coordinator = get_coordinator()
     if coordinator is None:
         return set(), []
-    return await coordinator.precompute_plan(topic, user_id, session)
+    return await coordinator.precompute_plan(
+        topic,
+        user_id,
+        session,
+        log_id=log_id,
+        log_model=log_model,
+        detected_schema=detected_schema,
+        events_count=events_count,
+        cases_count=cases_count,
+    )
 
 
 async def _stash_precompute_plan(

@@ -487,6 +487,15 @@ class Manifest(BaseModel):
     datasets: list[DatasetEntry] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     default_enabled: bool = True
+    # When the module's import-time precompute (`@on_event("log.imported")` +
+    # `@job`) runs. `lazy` (the default) computes it the first time a log needs
+    # the module - the module page, a dashboard card or an MCP read - so a fresh
+    # import costs nothing; `eager` also runs it in the background right after
+    # every import. Keep `eager` for the one or two modules whose output is the
+    # first thing people open. An admin can override this per module, so treat it
+    # as the author's recommendation, not a guarantee. Irrelevant for a module
+    # with no precompute handler.
+    precompute: Literal["eager", "lazy"] = "lazy"
     # Whether the module is safe to run against confidential data - i.e. it
     # processes the event log entirely locally and never ships data to an
     # external service. When the user enables "Show only confidential modules"

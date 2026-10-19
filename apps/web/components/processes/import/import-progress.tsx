@@ -1,24 +1,22 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Circle, Loader2, Minus, X } from "lucide-react";
+import { Check, Circle, Loader2, Minus, X } from "lucide-react";
 
 import { CountUp } from "@/components/count-up";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { EventLogDetail } from "@/lib/api-types";
 import { cn } from "@/lib/cn";
-import type {
-  ImportModuleStep,
-  ImportStage,
-  StageState,
-} from "@/components/processes/import/use-import-stages";
+import type { ImportStage, StageState } from "@/components/processes/import/use-import-stages";
 
 /**
  * The live import, as a checklist. Deliberately mirrors the jobs drawer's
  * icon/state vocabulary (`job-child-row.tsx`) so the same import doesn't look
  * like two different things in two places.
+ *
+ * The log opens the moment it is saved: modules compute lazily, so there is no
+ * "preparing" phase to wait out.
  */
 export function ImportProgress({
   stages,
@@ -76,11 +74,13 @@ export function ImportProgress({
             <Button variant="outline" asChild className="cursor-pointer">
               <Link href="/processes">All processes</Link>
             </Button>
-            <Button asChild disabled={!logId} className="cursor-pointer">
-              <Link href={logId ? `/processes/${logId}` : "/processes"}>
-                {ready ? "Open process" : "Open anyway"}
-              </Link>
-            </Button>
+            {ready && logId ? (
+              <Button asChild className="cursor-pointer">
+                <Link href={`/processes/${logId}`}>Open process</Link>
+              </Button>
+            ) : (
+              <Button disabled>Open process</Button>
+            )}
           </>
         )}
       </div>
@@ -90,7 +90,6 @@ export function ImportProgress({
 
 function StageRow({ stage }: { stage: ImportStage }) {
   const active = stage.state === "active";
-  const modules = stage.modules ?? [];
 
   return (
     <li
@@ -127,91 +126,6 @@ function StageRow({ stage }: { stage: ImportStage }) {
           <Progress
             value={stage.pct ?? undefined}
             className={cn("h-1", (stage.pct === null || stage.pct === undefined) && "animate-pulse")}
-          />
-        )}
-        {modules.length > 0 && (
-          <ModuleBreakdown steps={modules} defaultOpen={stage.state !== "done"} />
-        )}
-      </div>
-    </li>
-  );
-}
-
-/**
- * The precompute closure, one row per module. Open while the modules are still
- * running (that's the phase where "which one is this waiting on?" is the whole
- * question) and folded away once they're all done - a settled list of 17 green
- * checks is noise. A manual toggle wins over both.
- */
-function ModuleBreakdown({
-  steps,
-  defaultOpen,
-}: {
-  steps: ImportModuleStep[];
-  defaultOpen: boolean;
-}) {
-  const [override, setOverride] = useState<boolean | null>(null);
-  const open = override ?? defaultOpen;
-  const running = steps.filter((s) => s.state === "active").length;
-
-  return (
-    <div className="pt-1">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOverride(!open)}
-        className="flex cursor-pointer items-center gap-1 rounded text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <span>
-          {open ? "Hide" : "Show"} modules
-          {running > 0 && ` · ${running} running`}
-        </span>
-      </button>
-
-      {open && (
-        <ul className="mt-1 space-y-0.5 border-l border-border pl-2">
-          {steps.map((step) => (
-            <ModuleRow key={step.moduleId} step={step} />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function ModuleRow({ step }: { step: ImportModuleStep }) {
-  const active = step.state === "active";
-
-  return (
-    <li className="flex items-start gap-2 rounded-md px-1 py-1">
-      <StageIcon state={step.state} className="mt-[3px] h-3 w-3" />
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            title={step.moduleId}
-            className={cn(
-              "truncate text-xs",
-              step.state === "pending" && "text-muted-foreground",
-              step.state === "skipped" && "text-muted-foreground line-through",
-              active && "font-medium",
-            )}
-          >
-            {step.name}
-          </span>
-          <span
-            className={cn(
-              "shrink-0 text-[11px] tabular-nums",
-              step.state === "failed" ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {step.detail}
-          </span>
-        </div>
-        {active && (
-          <Progress
-            value={step.pct ?? undefined}
-            className={cn("h-0.5", step.pct === null && "animate-pulse")}
           />
         )}
       </div>

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mate.api.db.models import EventEdit, EventLog
 from mate.api.ingest.aggregation import compute_cases
 from mate.api.ingest.storage import log_paths
+from mate.api.modules.processing import get_coordinator
 from mate.api.schemas.common import utc_isoformat
 from mate.api.schemas.event_log_data import ColumnSpec, EventsHeader
 from mate.api.storage import sync as storage_sync
@@ -246,6 +247,8 @@ async def _persist_after_write(
             date_min=outcome.header.date_min,
             date_max=outcome.header.date_max,
             last_edited_at=now,
+            # Module results computed against the old rows now read as stale.
+            data_revision=EventLog.data_revision + 1,
         )
     )
     for row_index, field, old, new in outcome.audit:
@@ -263,6 +266,11 @@ async def _persist_after_write(
     await session.commit()
     # Re-mirror the edited parquet to the S3 primary store (no-op in local mode).
     await storage_sync.persist_log(log_id=log_id, user_id=user_id)
+    # Refresh the modules already used on this log - but once the edits go quiet, not
+    # after every cell: edits come in bursts and each refresh recomputes real work.
+    coordinator = get_coordinator()
+    if coordinator is not None:
+        coordinator.schedule_refresh(user_id, log_id)
 
 
 def _align_to_column(series: pd.Series, value: Any) -> Any:

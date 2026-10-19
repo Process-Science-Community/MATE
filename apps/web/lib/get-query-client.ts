@@ -29,3 +29,24 @@ export function makeQueryClient(): QueryClient {
     },
   });
 }
+
+let browserClient: QueryClient | undefined;
+
+/**
+ * The app-wide QueryClient. Browser: one client for the tab's lifetime, so
+ * SSR-hydrated caches persist across client-side navigations. Server: a
+ * throwaway (RSC prefetch uses the request-scoped client in `lib/prefetch.ts`,
+ * never this one).
+ *
+ * Exported - rather than read through `useQueryClient()` - because module pages
+ * and dashboards wrap their content in their own isolated clients (a filter
+ * commit must be able to reset a panel without touching the rest of the app). A
+ * hook that has to share state with the app shell, like a module's compute
+ * state, passes this client explicitly so the SSE handlers that keep it fresh and
+ * the components that read it are looking at the same cache.
+ */
+export function getAppQueryClient(): QueryClient {
+  if (typeof window === "undefined") return makeQueryClient();
+  if (!browserClient) browserClient = makeQueryClient();
+  return browserClient;
+}

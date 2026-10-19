@@ -119,8 +119,8 @@ export function EventsTab({ logId, log }: { logId: string; log: EventLogDetail }
       onSuccess: () =>
         toast.success(
           filters.length === 0
-            ? "Filter cleared - modules reprocessing the full dataset."
-            : "Filter applied - modules reprocessing the filtered dataset.",
+            ? "Filter cleared - modules you've opened are recomputing on the full dataset."
+            : "Filter applied - modules you've opened are recomputing on the filtered dataset.",
         ),
       onError: (e) => toast.error((e as Error)?.message ?? "Could not apply filter."),
     });
@@ -131,7 +131,7 @@ export function EventsTab({ logId, log }: { logId: string; log: EventLogDetail }
     setPage(0);
     applyFilter.mutate([], {
       onSuccess: () =>
-        toast.success("Filter cleared - modules reprocessing the full dataset."),
+        toast.success("Filter cleared - modules you've opened are recomputing on the full dataset."),
       onError: (e) => toast.error((e as Error)?.message ?? "Could not clear filter."),
     });
   }, [applyFilter]);
@@ -176,7 +176,7 @@ export function EventsTab({ logId, log }: { logId: string; log: EventLogDetail }
             className="h-9 cursor-pointer"
             disabled={(!hasApplied && filters.length === 0) || applyFilter.isPending}
             onClick={onRestore}
-            title="Clear the applied filter and reprocess every module on the full dataset"
+            title="Clear the applied filter; modules you've already opened recompute on the full dataset"
           >
             <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
             Restore
@@ -187,7 +187,7 @@ export function EventsTab({ logId, log }: { logId: string; log: EventLogDetail }
             className="h-9 cursor-pointer"
             disabled={!isDirty || applyFilter.isPending}
             onClick={onApply}
-            title="Apply the filter to every module (re-runs all import processes)"
+            title="Apply the filter to your modules - ones you've already opened recompute now, the rest when you open them"
           >
             {applyFilter.isPending ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

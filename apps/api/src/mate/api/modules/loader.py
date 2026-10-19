@@ -71,6 +71,19 @@ from mate.sdk.module import Module
 
 log = structlog.get_logger(__name__)
 
+# `(module_id, declared_topic, event_topic, user_id, event_payload)` - the hook the
+# processing coordinator installs to decide whether a job-backed `@on_event`
+# subscription really submits its job for this event (lazy module processing).
+# `declared_topic` is the pattern the module subscribed with (possibly a
+# wildcard), `event_topic` the concrete topic that fired. Without a dispatcher the
+# loader submits for every event, as it always did.
+PrecomputeDispatcher = Callable[[str, str, str, str, dict[str, Any]], Awaitable[None]]
+
+
+def _event_job_type(module_id: str, topic: str) -> str:
+    """The `JobRuntime` type a module's job-backed `@on_event(topic)` runs under."""
+    return f"module.{module_id}.event.{topic.replace('.', '_')}"
+
 
 def _topic_matches(pattern: str, topic: str) -> bool:
     """Whether a subscription `pattern` matches a concrete `topic`.
@@ -568,6 +581,12 @@ class ModuleLoader:
         # a fire-and-forget `@on_event` with no `@job` would otherwise strand a
         # log in `processing` forever (no job ever reaches a terminal status).
         self._precompute_subscribers: dict[str, set[str]] = {}
+        # `@job` options per `(module_id, declared topic)` of those subscriptions,
+        # so a job can be submitted outside the bus runner (`submit_precompute`).
+        self._precompute_job_specs: dict[tuple[str, str], JobSpec] = {}
+        # Installed by the processing coordinator at boot. When set, the bus
+        # runners hand every job-backed event to it instead of submitting directly.
+        self.precompute_dispatcher: PrecomputeDispatcher | None = None
         # Per-module-id locks serialising concurrent install/reload of one id
         # (see `id_lock`). Created lazily; never pruned (bounded by id count).
         self._id_locks: dict[str, asyncio.Lock] = {}
@@ -655,6 +674,7 @@ class ModuleLoader:
         self.loaded.clear()
         self._event_subscribers.clear()
         self._precompute_subscribers.clear()
+        self._precompute_job_specs.clear()
         reset_finder()
 
     async def id_lock(self, module_id: str) -> asyncio.Lock:
@@ -746,6 +766,7 @@ class ModuleLoader:
         # `_bind_event` for each remaining module below).
         self._event_subscribers.clear()
         self._precompute_subscribers.clear()
+        self._precompute_job_specs.clear()
         for remaining in self.loaded.values():
             self._rebind_events(remaining)
         self.registry.remove_module(module_id)
@@ -891,6 +912,102 @@ class ModuleLoader:
             for consumer in self._precompute_consumers(producer, nodes):
                 edges.setdefault(consumer, set()).add(producer)
         return edges
+
+    # -- on-demand precompute (lazy processing) ------------------------------
+
+    def has_precompute(self, module_id: str) -> bool:
+        """Whether `module_id` has any job-backed `@on_event` - i.e. a precompute
+        job the processing coordinator can run for a log."""
+        return any(module_id in ids for ids in self._precompute_subscribers.values())
+
+    def precompute_declared_topics(self, module_id: str) -> list[str]:
+        """The declared `@on_event` patterns behind `module_id`'s precompute jobs."""
+        return sorted(t for (mid, t) in self._precompute_job_specs if mid == module_id)
+
+    def precompute_subscription(self, module_id: str, topic: str) -> str | None:
+        """The declared `@on_event` pattern under which `module_id` runs its
+        precompute for a concrete `topic` (`log.imported`, `cv4cdd.completed`, ...).
+
+        A module may subscribe through a wildcard, and its job type is named after
+        the *declared* pattern, so a caller that submits a job needs that pattern,
+        not the concrete topic. `None` when no job-backed subscription matches.
+        """
+        patterns = self.precompute_declared_topics(module_id)
+        return next((p for p in patterns if _topic_matches(p, topic)), None)
+
+    def chained_producers(self, module_id: str, owned_ids: set[str]) -> set[str]:
+        """Modules in `owned_ids` whose output event (`<id>.completed` or a declared
+        `provides` topic) triggers `module_id`'s job-backed handler."""
+        return {
+            producer
+            for producer in owned_ids
+            if producer != module_id
+            and module_id in self._precompute_consumers(producer, {module_id})
+        }
+
+    def precompute_deps(self, module_id: str, owned_ids: set[str]) -> list[str]:
+        """Every module that must have computed before `module_id` is usable,
+        itself included when it has a precompute, in dependency order.
+
+        Follows the chained-producer edges *and* the manifest's hard
+        `requirements.modules` (restricted to `owned_ids` - a module the user never
+        installed cannot run for them). A module with no precompute anywhere in
+        that closure yields `[]` and needs no gate: it computes inline on demand,
+        or on an explicit user action, exactly as before.
+        """
+        order: list[str] = []
+        seen: set[str] = set()
+
+        def visit(mid: str) -> None:
+            if mid in seen:
+                return
+            seen.add(mid)
+            for producer in sorted(self.chained_producers(mid, owned_ids)):
+                visit(producer)
+            loaded = self.loaded.get(mid)
+            if loaded is not None:
+                for required in loaded.manifest.requirements.modules:
+                    if required in owned_ids:
+                        visit(required)
+            if self.has_precompute(mid):
+                order.append(mid)
+
+        visit(module_id)
+        return order
+
+    async def submit_precompute(
+        self,
+        module_id: str,
+        topic: str,
+        user_id: str,
+        log_id: str,
+        event_payload: dict[str, Any],
+        *,
+        parent_job_id: str | None = None,
+        subtitle: str | None = None,
+    ) -> str:
+        """Submit the job behind `module_id`'s job-backed `@on_event(topic)`.
+
+        `topic` is the *declared* pattern (see `precompute_subscription`). This is
+        the one place that turns such a subscription into a `Job` - the bus runner
+        (legacy path) and the processing coordinator both come through here, so a
+        job carries the same type, title and priority however it was triggered.
+        Returns the job id.
+        """
+        spec = self._precompute_job_specs.get((module_id, topic))
+        if spec is None:
+            raise LookupError(f"Module {module_id!r} has no job-backed @on_event({topic!r}).")
+        return await self.runtime.submit(
+            type_=_event_job_type(module_id, topic),
+            user_id=user_id,
+            title=_resolve_dynamic(spec.title, log_id, module_id, f"{module_id}.{topic}"),
+            subtitle=subtitle
+            or _resolve_dynamic(spec.subtitle, log_id, module_id, f"{module_id} · on {topic}"),
+            module_id=module_id,
+            payload={"log_id": log_id, "_event_payload": event_payload},
+            priority=spec.priority,
+            parent_job_id=parent_job_id,
+        )
 
     def _warn_unprovided_precompute_subscriptions(self) -> None:
         """Warn for any job-backed `@on_event` whose topic no loaded module emits -
@@ -1214,9 +1331,11 @@ class ModuleLoader:
         # subscribe via a wildcard (`log.*`) - kept verbatim and matched later.
         self._event_subscribers.setdefault(topic, set()).add(module_id)
         # Job-backed subscriptions are the only ones that produce a `Job` row, so
-        # only they may gate a log's `processing → ready` transition.
+        # only they are precompute: the processing coordinator tracks a run per
+        # (log, module) for exactly these.
         if job_spec is not None:
             self._precompute_subscribers.setdefault(topic, set()).add(module_id)
+            self._precompute_job_specs[(module_id, topic)] = job_spec
 
         if job_spec is None:
 
@@ -1260,7 +1379,7 @@ class ModuleLoader:
 
         # Stacked @on_event + @job - run handler through the JobRuntime so it
         # appears in the dock with progress, cancellation, etc.
-        job_type = f"module.{module_id}.event.{topic.replace('.', '_')}"
+        job_type = _event_job_type(module_id, topic)
 
         async def _job_handler(handle: JobHandle) -> None:
             handler = self._live_handler(module_id, attr_name)
@@ -1285,9 +1404,6 @@ class ModuleLoader:
         # previous closure would otherwise keep serving this topic forever.
         self.runtime.register(job_type, _job_handler, replace=True)
 
-        static_title_default = f"{module_id}.{topic}"
-        static_subtitle_default = f"{module_id} · on {topic}"
-
         async def _runner() -> None:
             try:
                 async with self.bus.subscribe([topic]) as stream:
@@ -1301,23 +1417,21 @@ class ModuleLoader:
                             # module - see the no-job runner above.
                             if not await self._user_owns(event_user_id, module_id):
                                 continue
-                            resolved_title = _resolve_dynamic(
-                                job_spec.title, log_id, module_id, static_title_default
-                            )
-                            resolved_subtitle = _resolve_dynamic(
-                                job_spec.subtitle, log_id, module_id, static_subtitle_default
-                            )
-                            await self.runtime.submit(
-                                type_=job_type,
-                                user_id=event_user_id,
-                                title=resolved_title,
-                                subtitle=resolved_subtitle,
-                                module_id=module_id,
-                                payload={
-                                    "log_id": log_id,
-                                    "_event_payload": env.payload,
-                                },
-                                priority=job_spec.priority,
+                            # Lazy processing: the coordinator decides whether this
+                            # event is worth a job (eager module, or one already
+                            # computed for the log) and submits it itself.
+                            dispatcher = self.precompute_dispatcher
+                            if dispatcher is not None:
+                                await dispatcher(
+                                    module_id, topic, env.topic, event_user_id, env.payload
+                                )
+                                continue
+                            await self.submit_precompute(
+                                module_id,
+                                topic,
+                                event_user_id,
+                                log_id,
+                                env.payload,
                                 # Link import-triggered children to the import job so
                                 # the drawer can group them into a step checklist.
                                 # Absent for non-import events → standalone job.

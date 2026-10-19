@@ -196,8 +196,9 @@ class MyModule(Module):
         return kpis
 
     @on_event("log.imported")
+    @job(progress=True, title="My Module – precompute")
     async def precompute(self, ctx: ModuleContext, payload: dict) -> None:
-        await self._compute(ctx)
+        await ctx.cache.set("kpis", await self._compute(ctx))
 
     @route.post("/recompute")
     @job(progress=True, title="My Module – recompute")
@@ -332,7 +333,7 @@ if not await ctx.cache.exists("kpis"):
 return await ctx.cache.get("kpis")
 ```
 
-Caches are invalidated automatically when the log changes (re-import) or when the module config changes.
+What the platform clears for you: when the log's data changes (reimport/remap, a committed filter, a cell edit) it empties this module's cache **before re-running its precompute** – but only for modules that have a precompute and were already computed on the log (see *Precompute* below). It does **not** watch the module config, and a module that computes inline on a cache miss gets no clearing at all, so put everything your result depends on (config values, filter, granularity…) into the cache *key*. Keys starting with `__` are reserved for the platform (the stored AI guidance) – never write them.
 
 ### `ctx.config`
 
@@ -356,19 +357,36 @@ await ctx.progress.update(current=processed_so_far)
 
 A `float` `current` in `[0, 1]` with no `total` is read as a fraction (mapped to 0–100); an `int` `current` is always a running counter (`update(current=1)` is "1 processed", not "100%"). Progress is **optional and never enforced** — omit it and the job still runs, just with an indeterminate "Working…" bar (and a stall hint if it stays silent past ~3 min). But for long jobs you *should* **emit *something* live** – never leave the bar silent for minutes.
 
-### Precompute ordering (running after another module)
+### Precompute – when your module runs
 
-A module precomputes on import by stacking `@on_event("log.imported")` (or `ocel.imported`) + `@job`; all such jobs for one import run **in parallel**. To run *after* another module, subscribe to its reserved `<module_id>.completed` event — the platform auto-emits it when that module's precompute job succeeds, so the producer does nothing special:
+Modules compute **lazily**. A log is `ready` the moment it is parsed, and your module's precompute – an `@on_event("log.imported")` (or `ocel.imported`) handler stacked with `@job` – runs for it only when something asks: the user opens the module page, a dashboard card shows it, or an MCP tool reads it. The platform starts the job, shows live progress with a Cancel, and mounts your panel only once it has finished, so a panel can assume its cache is filled; opening it again is instant.
+
+Say whether it should *also* run in the background after every import with the manifest field `precompute`:
+
+```yaml
+precompute: lazy    # default – computes the first time a log opens it
+precompute: eager   # also warm it right after every import
+```
+
+`eager` costs CPU on every import of every user, so reserve it for the one module whose output people open first (Discovery is the only bundled one). It is a recommendation: an admin can override it per module in **Admin → Modules**. Neither setting changes what your handler does.
+
+After the log's data changes (committed filter, reimport/remap, cell edits) the platform re-runs only the modules *already computed* on that log, with their cache emptied first; modules nobody opened stay lazy. So a precompute handler must:
+
+- rebuild everything from `ctx.event_log` – the payload only carries `log_id` and counts, and has **no `import_job_id`** when the run is on demand;
+- be idempotent: it runs on demand, again after data changes, and again after an API restart that interrupted it;
+- write its results to `ctx.cache` under keys derived from its inputs.
+
+**Ordering.** To run *after* another module, subscribe to its reserved `<module_id>.completed` event (the platform auto-emits it when that module's precompute succeeds, so the producer does nothing special) and/or list it under `requirements.modules`:
 
 ```python
-@on_event("discovery.completed")   # runs only after `discovery` precompute succeeds
+@on_event("discovery.completed")   # runs only after `discovery` has computed for the log
 @job(progress=True, title="My overlay")
 async def precompute(self, ctx, payload): ...
 ```
 
-Declare the edge so it validates and shows up in the jobs UI: `consumes: [discovery.completed]` (+ `optional_modules: [discovery]`). The log stays in `processing` until the **whole** chain finishes; if an upstream fails the platform **skips** your job instead of stranding the log. A `@on_event` *without* `@job` (e.g. a cheap cache refresh) is fire-and-forget: it never gates a log, and it never appears in the plan or the jobs UI either — only job-backed handlers enter the precompute closure.
+Declare the edge so it validates: `consumes: [discovery.completed]` (+ `optional_modules: [discovery]`). Opening your module first runs the producer, then your job; if the producer fails or is cancelled, your module shows that error with a Retry instead of waiting forever. A module with **no precompute of its own but a hard `requirements.modules` dependency that has one** (Concept Drift Explainer → CV4CDD) is gated on that dependency the same way. A `@on_event` *without* `@job` (e.g. a cheap cache refresh) is fire-and-forget: never tracked, never shown, never part of any of this.
 
-The plan the jobs UI renders is emitted in **execution order** (topological; alphabetical by module id within a layer), so your step is always listed after the upstream it waits on. Rely on that order when writing progress copy — don't re-sort it client-side.
+When a run is part of an import (an eager module), the jobs UI shows it in the import's step list in **execution order** (topological; alphabetical by module id within a layer) – rely on that order when writing progress copy.
 
 ### `ctx.workdir`
 
@@ -724,7 +742,8 @@ Before submitting a module:
 - [ ] Every `ctx.registry.call(...)` target is in `consumes:` or `optional_modules:`.
 - [ ] No imports from `apps/api/*` or `apps/web/*` – only `mate.sdk` and `@mate/module-sdk-ts`.
 - [ ] Long operations use `@job(progress=True)` (progress is optional but recommended for long jobs).
-- [ ] Precompute that must run after another module subscribes to its `<module_id>.completed` event (not a phantom topic nobody emits), and the job-backed `@on_event` is what gates the log — a `@on_event` without `@job` never holds `processing`.
+- [ ] Precompute that must run after another module subscribes to its `<module_id>.completed` event (not a phantom topic nobody emits) and/or lists it in `requirements.modules`; the handler is job-backed (`@on_event` + `@job`) – a plain `@on_event` is never tracked.
+- [ ] A precompute handler is idempotent and rebuilds from `ctx.event_log` alone (it also runs on demand, after data changes, and again after an interrupted run is restarted); `precompute: eager` is set only if the module is the first thing people open.
 - [ ] Sync `def` handlers are fine – don't reach for `asyncio.run` or `loop.run_until_complete`. The SDK auto-wraps.
 - [ ] Tests run green against the platform's `inherit` versions.
 - [ ] Every graph/diagram view goes through `CanvasShell` (or `CanvasControlCluster` for a non-React-Flow viewer), with all its controls in the `settings` popover and no filter bar above the canvas.

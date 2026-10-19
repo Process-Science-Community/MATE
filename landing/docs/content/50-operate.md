@@ -302,7 +302,8 @@ Symptoms by area, with the cause that most often explains them.
 | `[consent_required]` | The user has not enabled external data access. |
 | `[scope_missing]` | The token lacks the scope; mint a new one. |
 | `[read_only]` on a write tool | Server-wide read-only. |
-| `[conflict]` "no precomputed results yet" | The module has not run for this log. |
+| `[conflict]` "… is computing for this process" | The read started the module; `wait_for_job` on the job id in the message, then repeat the call. |
+| `[conflict]` "… failed for this process" | The module's run failed; the message carries its error (CV4CDD, for example, needs a model). |
 | `404` on `/mcp` | The flag never reached the container, or the proxy route is missing. |
 | Output truncated | The 200 KB per-result cap — narrow the query or paginate. |
 
@@ -321,6 +322,6 @@ Symptoms by area, with the cause that most often explains them.
 1. Reproduce with a synthetic log of 200 cases — most module bugs show up immediately.
 2. Collect **Settings → About → Copy diagnostics** and the failing job's log tail.
 3. Read the module's raw manifest: `GET /api/v1/modules/{id}/manifest` shows what the platform actually parsed.
-4. Search the API log for the log id — ingest and precompute log both.
+4. Search the API log for the log id — ingest and module runs log both. `GET /api/v1/event-logs/{id}/module-runs` shows each module's state for the log.
 5. Still stuck? Open an issue with the diagnostics blob, the steps, and the version: [github.com/Process-Science-Community/MATE/issues](https://github.com/Process-Science-Community/MATE/issues).
 :::

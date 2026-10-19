@@ -85,7 +85,7 @@ export function Cv4cddPanel({ logId }: { logId: string; moduleId: string }) {
         <EmptyState
           icon={Sparkles}
           title="No drifts detected yet"
-          description="A fine-tuned computer-vision model scans a similarity-matrix encoding of the log for sudden, gradual, incremental, and recurring concept drifts. Detection runs automatically as a background job – the module tile greys out on the process page while it's in flight."
+          description="A fine-tuned computer-vision model scans a similarity-matrix encoding of the log for sudden, gradual, incremental, and recurring concept drifts. Detection starts automatically when you open this module and re-runs after the log's data changes; you can follow it from the Jobs panel."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.2fr]">
