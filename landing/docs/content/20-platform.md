@@ -226,6 +226,8 @@ The invariants that protect a deployment, and the controls on data leaving it.
 
 Login is mandatory and delegated to Keycloak. The web app keeps a JWT-only session (Auth.js v5) with token rotation; the API validates every Bearer token against the realm's JWKS endpoint and inserts a `users` row the first time it sees a subject. If the session cookie outgrows the browser's 4 KB limit, `SESSION_STORE_DIR` moves session state server-side.
 
+Signing out ends the Keycloak session, not just the web app's: `/logout` redeems the session's refresh token at Keycloak, which revokes every token of it and kills the single-sign-on cookie in the browser. Every sign-in also forces a credentials prompt (`prompt=login`, passed on to the university IdP), so a second person on the same browser is never signed in as the first. A university session that outlives the logout is outside MATE's reach; whether it re-prompts depends on the IdP honouring `prompt=login`.
+
 | Role | Grants |
 | --- | --- |
 | default realm roles | Normal use. |
