@@ -29,17 +29,16 @@ export default async function LoginPage({
   // in the platform layout) keeps returning it and bouncing back to /login – and
   // a server `redirect()` can't delete the cookie, so it never recovers (the
   // lock-in). Break it: /login/start wipes the stale cookie before a fresh
-  // OAuth round-trip, and `prompt=login` forces Keycloak → the university IdP to
-  // re-authenticate rather than silently reissue a session tied to the dead one.
+  // OAuth round-trip, which (like every sign-in) forces Keycloak → the
+  // university IdP to re-authenticate rather than silently reissue a session
+  // tied to the dead one.
   //
   // The CTA is a plain link (GET /login/start), not a server action: after
   // hydration a server action submits over fetch(), which dies under the same
   // fetch-layer interception (content blocker / stale service worker) that
   // strands Safari in the login loop. A navigation always works.
   const staleSession = session?.error === "RefreshAccessTokenError";
-  const startUrl = `/login/start?callbackUrl=${encodeURIComponent(callbackUrl)}${
-    staleSession ? "&prompt=login" : ""
-  }`;
+  const startUrl = `/login/start?callbackUrl=${encodeURIComponent(callbackUrl)}`;
   // With a brokered IdP configured, the CTA above jumps straight to it and
   // Keycloak's own form is unreachable - so accounts that live in the realm
   // itself (service/test accounts, external collaborators, break-glass admin)
