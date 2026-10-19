@@ -7,28 +7,26 @@
  *   (see lib/session-store) and the cookie carries only an opaque session id –
  *   so the cookie stays tiny and can't overflow the upstream proxy's buffer.
  * - The `jwt` callback rotates the access token via Keycloak's `/token`
-// Auth.js still encrypts its local demo cookie, even though the demo provider
-// does not contact Keycloak. Keep the secret internal so a fresh local clone
-// can start without making the user configure an auth secret. Real deployments
-// must provide AUTH_SECRET explicitly.
-const AUTH_SECRET =
-  process.env.AUTH_SECRET ||
-  (DEMO_MODE ? "mate-local-demo-auth-secret-change-for-shared-use" : undefined);
  *   endpoint when it's within 30 s of expiry. On refresh failure we set
  *   `token.error = "RefreshAccessTokenError"`; the api wrapper picks that up
  *   and triggers a fresh sign-in.
- * - Logout is local-only (clears our cookie). We deliberately do NOT store the
- *   id_token in the session – it would bloat the cookie past the upstream
- *   reverse proxy's header buffer (502 on the callback). The trade-off: the
- *   Keycloak SSO session is not killed on logout, so re-login is silent until
- *   the IdP session times out.
+ * - Logout (GET /logout) ends the Keycloak SSO session too: it redeems the
+ *   stored refresh token at Keycloak's `/logout` endpoint (endKeycloakSession),
+ *   so a returning browser isn't signed straight back in, as the previous user,
+ *   from the surviving SSO cookie. That needs no id_token (which is what would
+ *   bloat the cookie past the upstream reverse proxy's header buffer – 502 on
+ *   the callback) and no browser round-trip. Every sign-in also sends
+ *   prompt=login (see /login/start), so a failed Keycloak call – or the
+ *   university IdP's own session – still can't skip the credentials prompt.
  */
 
 import { randomBytes } from "node:crypto";
 import NextAuth, { type DefaultSession } from "next-auth";
 import KeycloakProvider from "next-auth/providers/keycloak";
 import CredentialsProvider from "next-auth/providers/credentials";
-import type { JWT, JWTEncodeParams, JWTDecodeParams } from "next-auth/jwt";
+import { getToken, type JWT, type JWTEncodeParams, type JWTDecodeParams } from "next-auth/jwt";
+import type { NextRequest } from "next/server";
+import { SESSION_COOKIE_NAMES } from "@/lib/clear-session";
 import * as sessionStore from "@/lib/session-store";
 
 declare module "next-auth" {
@@ -152,6 +150,14 @@ const AUTH_SECRET =
   process.env.AUTH_SECRET ||
   (DEMO_MODE ? "mate-local-demo-auth-secret-change-for-shared-use" : undefined);
 
+/** Keycloak's OIDC endpoint for the SERVER-SIDE calls (token refresh, logout):
+ * the internal back-channel when configured (see KEYCLOAK_INTERNAL_URL),
+ * otherwise the public issuer – the same route the provider's own token
+ * endpoint takes. */
+function keycloakEndpoint(name: "token" | "logout"): string {
+  return `${KEYCLOAK_INTERNAL_URL || KEYCLOAK_ISSUER}/protocol/openid-connect/${name}`;
+}
+
 // Single-flight guard: several modules (`lib/api`, `lib/ws`, the analytics
 // client) each call `getSession()` independently, so after the access token
 // expires a burst of activity can fire multiple `jwt` callbacks at once – all
@@ -177,14 +183,8 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
 async function doRefreshAccessToken(token: JWT): Promise<JWT> {
   const refreshToken = token.refreshToken;
   if (!refreshToken) return { ...token, error: "RefreshAccessTokenError" };
-  // Use the internal back-channel when configured (see KEYCLOAK_INTERNAL_URL),
-  // otherwise the public issuer. This is a server-side call, so it follows the
-  // same back-channel as the provider's token endpoint.
-  const tokenUrl = KEYCLOAK_INTERNAL_URL
-    ? `${KEYCLOAK_INTERNAL_URL}/protocol/openid-connect/token`
-    : `${KEYCLOAK_ISSUER}/protocol/openid-connect/token`;
   try {
-    const resp = await fetch(tokenUrl, {
+    const resp = await fetch(keycloakEndpoint("token"), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -215,6 +215,70 @@ async function doRefreshAccessToken(token: JWT): Promise<JWT> {
   } catch {
     return { ...token, error: "RefreshAccessTokenError" };
   }
+}
+
+// Logout waits on Keycloak, so a hung one mustn't hold the user on a blank page.
+const KEYCLOAK_LOGOUT_TIMEOUT_MS = 3000;
+
+/**
+ * End the Keycloak SSO session a refresh token belongs to (direct, back-channel
+ * logout). Keycloak then revokes the whole user session: the browser's SSO
+ * cookie goes dead – the next authorize shows a login form instead of silently
+ * issuing a code – and so does every token of it, this refresh token included.
+ *
+ * Only HTTP 204 means the session ended. Without a valid refresh token Keycloak
+ * answers 200 + an HTML page (or 400) and leaves the session alive, so `resp.ok`
+ * would report success for a no-op. 400 is also the normal answer for a session
+ * that is already gone (expired, logged out in another tab), so it isn't logged.
+ *
+ * Never throws: logout must always go on to clear the local session. When this
+ * returns false, prompt=login on every sign-in (see /login/start) is the second
+ * layer that still forces a credentials prompt.
+ */
+export async function endKeycloakSession(refreshToken: string): Promise<boolean> {
+  try {
+    const resp = await fetch(keycloakEndpoint("logout"), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: KEYCLOAK_CLIENT_ID,
+        client_secret: KEYCLOAK_CLIENT_SECRET,
+        refresh_token: refreshToken,
+      }),
+      signal: AbortSignal.timeout(KEYCLOAK_LOGOUT_TIMEOUT_MS),
+    });
+    await resp.body?.cancel();
+    if (resp.status === 204) return true;
+    if (resp.status !== 400) console.warn(`[auth] Keycloak logout answered HTTP ${resp.status}`);
+    return false;
+  } catch (err) {
+    console.warn("[auth] Keycloak logout failed:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+/**
+ * The Keycloak refresh token(s) behind the session cookie(s) of a request – what
+ * /logout redeems (endKeycloakSession) before it drops the local session. Covers
+ * both storage modes: the server-side store (the cookie is an opaque sid) and the
+ * default encrypted cookie JWT. Never throws; a session that can't be read just
+ * yields no token.
+ */
+export async function readRefreshTokens(req: NextRequest): Promise<string[]> {
+  const tokens: Array<JWT | null> = [];
+  try {
+    if (sessionStore.sessionStoreEnabled) {
+      for (const name of SESSION_COOKIE_NAMES) {
+        const sid = req.cookies.get(name)?.value;
+        if (sid) tokens.push(await sessionStore.readSession(sid));
+      }
+    } else {
+      tokens.push(await getToken({ req, secret: AUTH_SECRET, secureCookie: USE_SECURE_COOKIES }));
+    }
+  } catch {
+    // Unreadable session → nothing to redeem.
+  }
+  return [...new Set(tokens.flatMap((t) => (t?.refreshToken ? [t.refreshToken] : [])))];
 }
 
 // Cookie/session TTL. The effective ceiling is Keycloak's online-session cap
