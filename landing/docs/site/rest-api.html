@@ -1087,7 +1087,21 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <span class="j-key">&quot;row_index&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
   <span class="j-key">&quot;new_row_index&quot;</span><span class="j-pun">:</span> <span class="j-num">25</span><span class="j-pun">,</span>
   <span class="j-key">&quot;header&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
-<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/reimport</code></td><td>—</td><td><code>202</code> <pre class="jblock"><span class="j-pun">{</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-get">GET</span><code>/event-logs/{log_id}/module-runs</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;module_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;idle&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;precompute&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;eager&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/module-runs/{module_id}</code></td><td><code>{&quot;force&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+  <span class="j-pun">{</span>
+    <span class="j-key">&quot;module_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;status&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;idle&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+    <span class="j-key">&quot;precompute&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;eager&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+  <span class="j-pun">}</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/reimport</code></td><td>—</td><td><code>202</code> <pre class="jblock"><span class="j-pun">{</span>
   <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;job_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span>
 <span class="j-pun">}</span></pre></td></tr><tr><td>Log data</td><td><span class="mchip m-post">POST</span><code>/event-logs/{log_id}/remap</code></td><td><pre class="jblock"><span class="j-pun">{</span>
@@ -1722,7 +1736,12 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
-<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/modules/{module_id}/installs/{user_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/modules/{module_id}/withhold</code></td><td><code>{&quot;withheld&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-delete">DELETE</span><code>/admin/modules/{module_id}/installs/{user_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/modules/{module_id}/precompute</code></td><td><code>{&quot;mode&quot;:&quot;eager&quot;}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;category&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Admin</td><td><span class="mchip m-put">PUT</span><code>/admin/modules/{module_id}/withhold</code></td><td><code>{&quot;withheld&quot;:false}</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
   <span class="j-key">&quot;id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;nightly import&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;version&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
@@ -1816,8 +1835,15 @@ log_id = created[&quot;log_id&quot;]
 job = wait_for_job(created[&quot;job_id&quot;])
 assert job[&quot;status&quot;] == &quot;completed&quot;, job.get(&quot;error&quot;)
 
-<span class="t-note"># 2. wait for the module precompute chain to settle</span>
+<span class="t-note"># 2. the log is ready once it is parsed; modules compute on demand, so ask for the one you need</span>
 while client.get(f&quot;/event-logs/{log_id}&quot;).json()[&quot;status&quot;] != &quot;ready&quot;:
+    time.sleep(2)
+while True:
+    states = client.post(f&quot;/event-logs/{log_id}/module-runs/performance_java&quot;).raise_for_status().json()
+    if all(s[&quot;status&quot;] == &quot;ready&quot; for s in states):  # [] when the module has nothing to precompute
+        break
+    if any(s[&quot;status&quot;] in (&quot;failed&quot;, &quot;cancelled&quot;, &quot;unavailable&quot;) for s in states):
+        raise RuntimeError(states)
     time.sleep(2)
 
 <span class="t-note"># 3. read a dataset a module publishes — rows live under `data` in the envelope</span>
@@ -1826,7 +1852,7 @@ rows = client.get(
 ).json()[&quot;data&quot;][&quot;rows&quot;]
 print(rows)</code></pre>
 </figure>
-<p>Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; treat <code>processing</code> as &quot;module results do not exist yet&quot;; the dataset endpoint takes only <code>log_id</code> (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.</p>
+<p>Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; ask <span class="mchip m-post">POST</span><code>/event-logs/{id}/module-runs/{module}</code> (idempotent) before reading a module's results, because they only exist once its run is <code>ready</code>; the dataset endpoint takes only <code>log_id</code> (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="testing-and-publishing.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Testing and publishing</b></a>

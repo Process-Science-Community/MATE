@@ -85,7 +85,7 @@ claude mcp add --transport http mate https://<host>/mcp
 
 - **Errors** carry a stable machine-readable prefix: `[not_found]` `[forbidden]` `[conflict]` `[invalid]` `[rate_limited]` `[timeout]` `[read_only]` `[consent_required]` `[scope_missing]` `[confirm_required]` `[internal]`. `404` semantics everywhere: a foreign user's resource is indistinguishable from a missing one.
 - **Destructive tools** (marked **D** below) take `confirm: bool`. Without `confirm=true` they mutate **nothing** and return a dry-run preview (`{"confirmed": false, "preview": {...}}`) describing exactly what would happen — inspect, then re-call with `confirm=true`.
-- **Long operations** (imports, remap, reimport, committed filters, retries) return `{"job_id": …}` immediately. Follow up with `get_job(job_id)` or block on `wait_for_job(job_id, timeout_seconds)` — hitting the timeout is not an error, you get the current state with `"timed_out": true`; call it again to keep waiting. Imported logs stay `processing` until every module's precompute finishes, then flip `ready`.
+- **Long operations** (imports, remap, reimport, committed filters, retries) return `{"job_id": …}` immediately. Follow up with `get_job(job_id)` or block on `wait_for_job(job_id, timeout_seconds)` — hitting the timeout is not an error, you get the current state with `"timed_out": true`; call it again to keep waiting. An imported log is `ready` as soon as it is parsed; module analyses compute lazily, the first time you read them (see **The data wall** below: a module's first read starts it).
 - **Pagination**: list tools take `cursor` + `limit` (max 200) and return `{"items": [...], "next_cursor": ..., "total": ...}`. Pass `next_cursor` back verbatim; it is opaque.
 - **Output cap**: a single result is bounded at ~200 KB; larger payloads come back `{"truncated": true, "preview": ...}` — narrow the query (filters, `limit`, a specific variant/module) instead.
 - **Read-only mode**: the operator can lock the server (`MCP_READ_ONLY` at boot hides write tools entirely; the live admin toggle makes them fail `[read_only]`).
@@ -102,7 +102,7 @@ MCP serves **aggregates and curated module outputs only**. Structurally unavaila
 - File downloads/exports of any kind (original uploads, XES/CSV exports, the metadata DB, analytics exports)
 - Simulated event rows (agentsimulator) and other row-shaped module artifacts
 
-Module outputs are computed under a restricted context that raises on any raw-log accessor — a module that hasn't precomputed yet fails with `[conflict] … run its analysis first`, never with data. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
+Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_dataset`, `get_module_results`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` never starts anything: modules that haven't run appear under `skipped`. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
 
 ## Tool catalog
 
@@ -132,7 +132,7 @@ Legend: **W** = write (needs the write scope; blocked in read-only mode) · **D*
 | **W** `import_process_from_url` | Import from a public http(s) URL (XES/CSV/XML/JSON/OCEL) → job |
 | **W** `update_process` | Rename / describe / move between folders |
 | **W** `duplicate_process` | Clone a ready log |
-| **WD** `set_committed_filter` | Commit the dataset filter — re-runs EVERY module's precompute → jobs |
+| **WD** `set_committed_filter` | Commit the dataset filter — re-runs the modules already computed for this process (the rest stay lazy) → jobs |
 | **WD** `remap_columns` | Force column-role mapping, re-import → job |
 | **WD** `reimport_process` | Re-run import from the retained original → job |
 | **WD** `delete_process` | Delete a log (jobs cancelled, data removed) |
@@ -141,9 +141,9 @@ Legend: **W** = write (needs the write scope; blocked in read-only mode) · **D*
 ### analysis (`modules:read` / `modules:write` / `modules:manage`)
 | Tool | |
 |---|---|
-| `list_modules` | Your installed modules + per-log availability + guidance capability |
-| `get_module_output` | One module's curated output for a log (the primary analysis read) |
-| `get_process_overview` | All guidance-capable modules' outputs for a log in one call |
+| `list_modules` | Your installed modules + per-log availability + guidance capability + `run_status` (`idle`/`queued`/`running`/`ready`/`stale`/`failed`/`cancelled`) |
+| `get_module_output` | One module's curated output for a log (the primary analysis read; starts the module if it hasn't run) |
+| `get_process_overview` | Outputs of every guidance-capable module that has already run, in one call (never starts a module) |
 | `get_module_results` | A module's cached JSON results, canonical view (keys + parsed entries) |
 | `list_datasets` / `get_dataset` | Typed module datasets (table/graph/kpi/tree) → canonical envelope |
 | `get_cached_guidance` | Stored AI guidance for a module or `"__platform__"` (never triggers an LLM call) |
@@ -194,7 +194,7 @@ Cross-user platform control: `admin_list_jobs`, `admin_get_job_logs`, `admin_can
 
 **Explore a process**: `list_processes` → `get_process` + `get_activities` + `get_variants` → `get_process_overview` (or targeted `get_bottlenecks` / `get_conformance` / `get_drifts`) → drill into `get_variant` / `get_variant_cases`.
 
-**Import and analyse**: `import_process_from_url` → `wait_for_job(job_id)` → log flips `ready` once module precompute finishes → read outputs. Same pattern after `set_committed_filter` / `remap_columns` / `reimport_process`.
+**Import and analyse**: `import_process_from_url` → `wait_for_job(job_id)` → log is `ready` once parsed → `get_module_output` (a module that hasn't run starts and answers `[conflict] … computing … wait_for_job('<id>')`; wait, then call again) → read outputs. Same pattern after `set_committed_filter` / `remap_columns` / `reimport_process`.
 
 **Build a dashboard**: `get_dashboard_card_catalog` + `list_datasets` → `create_dashboard(event_log_id=…, items=[…])` → `share_dashboard(target_team_id=…)`.
 
@@ -209,8 +209,9 @@ Cross-user platform control: `admin_list_jobs`, `admin_get_job_logs`, `admin_can
 | `[consent_required]` | Enable *External data access* in Settings → API & MCP |
 | `[scope_missing]` | Token lacks the named scope — mint a new PAT with it (scopes are fixed at mint) |
 | `[read_only]` | Server-wide write lock — admin toggle or `MCP_READ_ONLY` env |
-| `[conflict]` "no precomputed results yet" | Module hasn't run for this log — wait for `ready` / check `list_jobs` |
-| `[conflict]` "not ready" on aggregates | Log still `importing`/`processing` — `wait_for_job` on the import |
+| `[conflict]` "… is computing for this process" | The read started the module — `wait_for_job` on the job id in the message, then repeat the call |
+| `[conflict]` "… failed for this process" | The module's run failed (the message carries its error) — fix the cause (e.g. CV4CDD needs a model), then `get_module_output` again |
+| `[conflict]` "not ready" on aggregates | Log still `importing` — `wait_for_job` on the import |
 | `[confirm_required]` message in a preview | Expected: re-call the destructive tool with `confirm=true` |
 | `429` / `[rate_limited]` | Per-user bucket (writes have a tighter one) — honor the retry hint |
 | `403` "Origin not allowed" | Browser-origin request from a foreign origin — use a native/server client |

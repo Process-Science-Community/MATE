@@ -104,13 +104,20 @@ class EventLog(Base):
     status: Mapped[str] = mapped_column(String(16), default="importing", nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
 
-    # While `status == "processing"`, the log is held disabled until every
-    # subscribing module finishes precomputing against it. The import job whose
-    # children are the precompute jobs to wait on, and the module-id set frozen
-    # at import time (deterministic - avoids a "0/0 → flip early" race). Both are
-    # cleared the moment the log goes `ready`. See `mate.api.modules.processing`.
+    # Legacy readiness gate (migration 0005). Module processing is lazy now: a log
+    # is `ready` as soon as it is parsed and per-module state lives in
+    # `log_module_runs`. Both columns are no longer written; they stay so old
+    # rows and downgrades keep their shape.
     processing_import_job_id: Mapped[str | None] = mapped_column(String(36))
     expected_modules: Mapped[list[str] | None] = mapped_column(JSON)
+
+    # Monotonic counter bumped every time the log's data changes (import, reimport,
+    # remap, committed filter, cell edit). A `log_module_runs` row records the
+    # revision it computed against, so "stale" is just `row.data_revision !=
+    # log.data_revision`. See `mate.api.modules.processing`.
+    data_revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     events_count: Mapped[int | None] = mapped_column(Integer)
     # Case-centric counts - left NULL for object-centric logs (their NULLness is
@@ -351,6 +358,45 @@ class ModuleLayout(Base):
     layout_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
+class LogModuleRun(Base):
+    """Per-(log, module) precompute state - the lazy-processing ledger.
+
+    One row per module that has ever been asked to compute for a log. ``status``
+    is the state *for the data revision recorded on the row*; ``stale`` and
+    ``idle`` are derived at read time (``mate.api.modules.processing``) by
+    comparing ``data_revision`` / ``module_version`` against the log and module,
+    or by the row's absence. ``job_id`` is the latest precompute ``Job`` for the
+    row (``None`` while a chained module waits on its upstream); terminal-job
+    events are matched back to the row through it.
+    """
+
+    __tablename__ = "log_module_runs"
+
+    log_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("process_logs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    module_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    # queued | running | ready | failed | cancelled
+    status: Mapped[str] = mapped_column(String(16), default="queued", nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(36))
+    data_revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # NULL = unknown (a backfilled row), treated as matching the loaded version.
+    module_version: Mapped[str | None] = mapped_column(String(64))
+    error: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (
+        Index("ix_log_module_runs_job_id", "job_id"),
+        Index("ix_log_module_runs_user_module", "user_id", "module_id"),
     )
 
 

@@ -5,6 +5,7 @@ services:
   app-db:
     image: postgres:16-alpine
     container_name: mate-app-db
+    env_file: .env
     environment:
       POSTGRES_DB: mate
       POSTGRES_USER: mate
@@ -21,6 +22,7 @@ services:
   keycloak-db:
     image: postgres:16-alpine
     container_name: mate-keycloak-db
+    env_file: .env
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -37,6 +39,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: mate-keycloak
+    env_file: .env
     command: ["start", "--import-realm"]
     environment:
       KC_DB: postgres
@@ -60,6 +63,10 @@ services:
       - "8080:8080"
     volumes:
       - ./infra/keycloak/realm-export:/opt/keycloak/data/import:ro
+      # The login pages in the platform's own look (see infra/keycloak/themes/README.md).
+      # A mount rather than a COPY in the Dockerfile so it also ships when the prod
+      # overlay goes back to the upstream image. The realm selects it via `loginTheme`.
+      - ./infra/keycloak/themes/mate:/opt/keycloak/themes/mate:ro
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -79,6 +86,7 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: mate-api
+    env_file: .env
     # PID-1 init (tini) so SIGTERM is forwarded to uvicorn and orphaned
     # grandchildren (offload/forkserver workers) are reaped instead of zombied.
     init: true
@@ -100,6 +108,8 @@ services:
       # Usage-tracking default/policy: force | on | off. `force` keeps tracking
       # on for everyone and hides the privacy step + Settings → Privacy tab.
       USER_TRACKING_ONBOARDING: ${USER_TRACKING_ONBOARDING:-force}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      DEMO_ADMIN: ${DEMO_ADMIN:-false}
       # Allow the web container's browser-side origin (the host's port 3000).
       CORS_ORIGINS: '["http://localhost:3000"]'
       # Persist uv-managed Python runtimes to the data volume so they survive
@@ -181,6 +191,7 @@ services:
   neo4j:
     image: neo4j:5.26-community
     container_name: mate-neo4j
+    env_file: .env
     profiles: ["graph"]
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-mate-graph-dev}
@@ -224,6 +235,7 @@ services:
         # reach the api – for local docker-compose that's the host's port 8000.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: mate-web
+    env_file: .env
     volumes:
       # Same modules/ bind-mount as the api container so the entrypoint can
       # esbuild each module's panel into modules/<id>/.dist/ at container

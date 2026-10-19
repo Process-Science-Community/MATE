@@ -20,6 +20,7 @@ import { configWithoutWidgetFilter } from "@/components/dashboards/widget-filter
 import { CardVizScope, configWithoutRender } from "@/components/dashboards/card-viz-scope";
 import { GenericVizBody, VizSettings } from "@/components/dashboards/generic-viz-card";
 import { WidgetHelpBody, hasHelp } from "@/components/dashboards/kit/help";
+import { CardRunGate } from "@/components/dashboards/card-run-gate";
 import { useDashboardFilterOptional } from "@/components/dashboards/dashboard-filter";
 import type { DrillHandler } from "@/lib/dashboards/drill";
 import {
@@ -63,6 +64,7 @@ export const DashboardCard = memo(function DashboardCard({
   drillHref,
   drillLabel = "Open in module",
   onDrill,
+  isOwner = true,
   onUpdate,
   onRemove,
 }: {
@@ -83,6 +85,9 @@ export const DashboardCard = memo(function DashboardCard({
   drillLabel?: string;
   /** Handed to the widget so a clicked mark can navigate. */
   onDrill?: DrillHandler;
+  /** False on a board opened through a share: the viewer must not start module
+   * runs on the owner's log, so the card is not gated. */
+  isOwner?: boolean;
   onUpdate: (patch: CardPatch) => void;
   onRemove: () => void;
 }) {
@@ -254,21 +259,30 @@ export const DashboardCard = memo(function DashboardCard({
           refetching && "pointer-events-none opacity-60",
         )}
       >
-        {isViz ? (
-          <GenericVizBody item={item} logId={logId} />
-        ) : (
-          // Scoped so a widget that mounts its module's settings provider gets
-          // THIS card's bucket rather than the panel's — that is what lets one
-          // card differ from another, and from the panel.
-          <CardVizScope
-            cardId={item.i}
-            logId={logId}
-            config={item.config}
-            onConfigChange={(config) => onUpdate({ config })}
-          >
-            <WidgetBody item={item} logId={logId} onDrill={onDrill} />
-          </CardVizScope>
-        )}
+        {/* Modules compute lazily: a board is an explicit request to see this data,
+            so the card starts the run it needs and shows compact progress, then
+            its body mounts. The module is the widget's, or the viz card's dataset. */}
+        <CardRunGate
+          logId={logId}
+          moduleId={isViz ? item.dataset_ref?.module_id : item.module_id}
+          isOwner={isOwner}
+        >
+          {isViz ? (
+            <GenericVizBody item={item} logId={logId} />
+          ) : (
+            // Scoped so a widget that mounts its module's settings provider gets
+            // THIS card's bucket rather than the panel's — that is what lets one
+            // card differ from another, and from the panel.
+            <CardVizScope
+              cardId={item.i}
+              logId={logId}
+              config={item.config}
+              onConfigChange={(config) => onUpdate({ config })}
+            >
+              <WidgetBody item={item} logId={logId} onDrill={onDrill} />
+            </CardVizScope>
+          )}
+        </CardRunGate>
       </div>
     </div>
   );

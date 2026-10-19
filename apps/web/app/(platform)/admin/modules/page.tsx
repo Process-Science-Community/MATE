@@ -50,6 +50,7 @@ import {
   useForceInstallModule,
   useForceUninstallModule,
   useSetModuleDefault,
+  useSetModulePrecompute,
   useSetModuleWithheld,
 } from "@/lib/module-admin-queries";
 import { type AdminUser, useAdminUsers } from "@/lib/sharing-queries";
@@ -221,6 +222,7 @@ function ModuleRow({ m, users }: { m: AdminModuleRow; users: AdminUser[] }) {
 function ModuleDetail({ m, users }: { m: AdminModuleRow; users: AdminUser[] }) {
   const forceInstall = useForceInstallModule();
   const setWithheld = useSetModuleWithheld();
+  const setPrecompute = useSetModulePrecompute();
   const [pick, setPick] = useState("");
 
   const ownerIds = new Set(m.owners.map((o) => o.user_id));
@@ -228,6 +230,39 @@ function ModuleDetail({ m, users }: { m: AdminModuleRow; users: AdminUser[] }) {
 
   return (
     <div className="space-y-4 px-4 py-3">
+      {m.precompute && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-xs font-medium">Precompute on import</div>
+            <p className="text-[11px] text-muted-foreground">
+              Compute this module in the background right after every import, for every user.
+              Off, it computes the first time a log opens it. Applies to future imports —
+              existing logs aren&apos;t backfilled.{" "}
+              {m.precompute.overridden
+                ? `The module recommends ${m.precompute.manifest}; this overrides it.`
+                : `The module recommends ${m.precompute.manifest}.`}
+            </p>
+          </div>
+          <Switch
+            checked={m.precompute.effective === "eager"}
+            disabled={setPrecompute.isPending}
+            onCheckedChange={(v) =>
+              setPrecompute.mutate(
+                { moduleId: m.id, mode: v ? "eager" : "lazy" },
+                {
+                  onSuccess: () =>
+                    toast.success(
+                      v
+                        ? `"${m.name || m.id}" will now compute in the background on every import.`
+                        : `"${m.name || m.id}" will now compute when a log first opens it.`,
+                    ),
+                  onError: (e) => toastError(`Could not update: ${(e as Error).message}`),
+                },
+              )
+            }
+          />
+        </div>
+      )}
       {m.is_default && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background px-3 py-2">
           <div className="min-w-0">

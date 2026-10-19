@@ -599,9 +599,10 @@ async def set_committed_filter(
     filter: list[dict[str, Any]],
     confirm: bool = False,
 ) -> dict[str, Any]:
-    """Commit a dataset filter as the process's applied filter; EVERY module
-    then re-runs its precompute against the filtered rows (that's why this is
-    destructive). An empty list clears the filter.
+    """Commit a dataset filter as the process's applied filter; every module
+    already computed for this process then re-runs against the filtered rows
+    (that's why this is destructive), while modules not yet computed stay lazy.
+    An empty list clears the filter.
 
     Entries are {field, op, value?}; ops: contains | equals | gte | lte |
     is_null | is_not_null | in. Without confirm=true returns a dry-run preview
@@ -633,7 +634,9 @@ async def set_committed_filter(
                         "name": row.name,
                         "current_filter": row.active_filter or [],
                         "new_filter": entries,
-                        "warning": ("Committing re-runs every module's precompute for this log."),
+                        "warning": (
+                            "Committing re-runs the modules already computed for this log."
+                        ),
                     },
                 )
             try:

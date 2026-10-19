@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install preflight dev dev-api dev-web up up-dev down build test typecheck fmt clean codegen docs deploy
+.PHONY: help install check-env preflight dev dev-api dev-web up up-dev down build test typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -13,7 +13,11 @@ install: ## Resolve all deps (uv + pnpm)
 	uv sync --extra dev
 	pnpm install
 
-preflight: ## Free $(PORT) + reap stale API / orphaned offload workers from a prior run
+check-env: ## Validate the root environment file before starting Docker
+	@sh ./scripts/check-local-env.sh true
+
+preflight: ## Validate local env, free $(PORT), and reap stale workers
+	@sh ./scripts/check-local-env.sh
 	@pids=$$(lsof -nP -tiTCP:$(PORT) -sTCP:LISTEN 2>/dev/null); \
 	if [ -n "$$pids" ]; then echo "preflight: freeing :$(PORT) (pids $$pids)"; kill -9 $$pids 2>/dev/null || true; fi
 	@pkill -9 -f "uvicorn mate.api.main" 2>/dev/null || true
@@ -22,7 +26,8 @@ preflight: ## Free $(PORT) + reap stale API / orphaned offload workers from a pr
 
 dev: preflight ## Run the API and the web dev server together (no docker)
 	uv run alembic -c apps/api/alembic.ini upgrade head
-	@trap 'kill 0' INT; \
+	@set -a; . ./.env; set +a; \
+	trap 'kill 0' INT; \
 	(uv run uvicorn mate.api.main:app --reload --reload-dir apps/api/src --reload-dir packages/module-sdk-py/src --app-dir apps/api/src --host 127.0.0.1 --port $(PORT) --timeout-graceful-shutdown 3) & \
 	(cd apps/web && pnpm dev) & \
 	wait
@@ -31,13 +36,13 @@ dev-api: preflight ## Run only the API (with --reload)
 	uv run alembic -c apps/api/alembic.ini upgrade head
 	uv run uvicorn mate.api.main:app --reload --reload-dir apps/api/src --reload-dir packages/module-sdk-py/src --app-dir apps/api/src --host 127.0.0.1 --port $(PORT) --timeout-graceful-shutdown 3
 
-dev-web: ## Run only the web dev server
-	cd apps/web && pnpm dev
+dev-web: preflight ## Run only the web dev server
+	set -a; . ./.env; set +a; cd apps/web && pnpm dev
 
-up: ## docker compose up (production-style images)
+up: check-env ## docker compose up (production-style images)
 	docker compose up -d --build
 
-up-dev: ## docker compose with the dev overlay (uvicorn --reload + next dev)
+up-dev: check-env ## docker compose with the dev overlay (uvicorn --reload + next dev)
 	docker compose -f docker-compose.yml -f compose.dev.yml up --build
 
 down: ## Stop the compose stack

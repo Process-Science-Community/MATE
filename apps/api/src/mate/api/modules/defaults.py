@@ -31,6 +31,13 @@ ADMIN_DEFAULTS_KEY = "modules.default_ids"
 # users who haven't been seeded yet.
 EXCLUDED_DEFAULTS_KEY = "modules.default_excluded_ids"
 
+# SystemSetting key holding admin overrides of a module's manifest `precompute`
+# mode, a JSON object ``{module_id: "eager" | "lazy"}``. Only deviations from the
+# manifest are stored. Platform-wide on purpose: whether a module warms on import
+# is a cost decision for whoever runs the box, not a per-user preference.
+PRECOMPUTE_OVERRIDES_KEY = "modules.precompute_overrides"
+PRECOMPUTE_MODES = ("eager", "lazy")
+
 # UserSetting key: per-user record of which default ids have already been
 # offered (a JSON list). Mirrors the constant the modules route uses for its
 # lazy reconcile; kept here so both the route and the admin toggle share one
@@ -72,6 +79,40 @@ async def set_excluded_default_ids(session: AsyncSession, ids: set[str]) -> None
         session.add(SystemSetting(key=EXCLUDED_DEFAULTS_KEY, value_json=value))
     else:
         row.value_json = value
+
+
+async def get_precompute_overrides(session: AsyncSession) -> dict[str, str]:
+    """Return the admin's per-module ``precompute`` overrides (empty if never set)."""
+    row = await session.get(SystemSetting, PRECOMPUTE_OVERRIDES_KEY)
+    if row is None or not isinstance(row.value_json, dict):
+        return {}
+    return {str(k): str(v) for k, v in row.value_json.items() if v in PRECOMPUTE_MODES}
+
+
+async def set_precompute_override(
+    session: AsyncSession, module_id: str, mode: str, *, manifest_mode: str
+) -> None:
+    """Persist one module's override (does not commit).
+
+    A mode equal to the manifest's drops the override instead of storing it, so
+    the row only ever lists real deviations and "overridden" stays derivable.
+    """
+    overrides = await get_precompute_overrides(session)
+    if mode == manifest_mode:
+        overrides.pop(module_id, None)
+    else:
+        overrides[module_id] = mode
+    row = await session.get(SystemSetting, PRECOMPUTE_OVERRIDES_KEY)
+    if row is None:
+        session.add(SystemSetting(key=PRECOMPUTE_OVERRIDES_KEY, value_json=overrides))
+    else:
+        # Reassign (never mutate in place): the JSON column has no mutation tracking.
+        row.value_json = overrides
+
+
+def resolve_precompute_mode(manifest_mode: str, overrides: dict[str, str], module_id: str) -> str:
+    """The effective ``precompute`` mode: the admin override, else the manifest's."""
+    return overrides.get(module_id, manifest_mode)
 
 
 async def mark_seeded_for_user(session: AsyncSession, user_id: str, module_id: str) -> None:

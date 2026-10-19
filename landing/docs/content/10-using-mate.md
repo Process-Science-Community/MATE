@@ -27,7 +27,7 @@ An archive holding several logs (`.zip`, `.tar`, `.tar.gz`, `.tgz` – a BPI Cha
 2. **Upload** — streams to a staging area with byte-level progress; nothing is parsed yet.
 3. **Probe** — the server samples a few hundred events and proposes column roles.
 4. **Map** — confirm the roles and the format-specific extras.
-5. **Import** — parse, normalise, write Parquet, dispatch module precompute.
+5. **Import** — parse, normalise, write Parquet. The process is ready as soon as it is saved; modules compute when first opened.
 :::
 
 Staged files live under `data/staging/{user}/{token}/` and are removed after two hours, so an abandoned wizard leaves nothing behind.
@@ -48,9 +48,9 @@ Format extras appear where they apply: CSV delimiter, XML event element, a JSON 
 
 ## Progress and repair
 
-The checklist mirrors the real job: *Uploading file*, *Reading columns*, *Reading data*, *Processing events*, *Saving*, then a *Preparing modules* step with one row per module (`Queued`, `Running`, `Waiting on <module>`, `Skipped`, `Done`).
+The checklist mirrors the real job: *Uploading file*, *Reading columns*, *Reading data*, *Processing events*, *Saving*. When *Saving* is done the process is open; there is no module step to wait for, because modules compute the first time you open them. The few *eager* ones (Discovery) warm up in the background and appear in the jobs drawer.
 
-Fixable problems are repaired rather than rejected — case-insensitive duplicate columns are merged, values are coerced to their column type, timestamps normalised — and the count of fixes is reported. A module that fails is marked and leaves the log importable.
+Fixable problems are repaired rather than rejected — case-insensitive duplicate columns are merged, values are coerced to their column type, timestamps normalised — and the count of fixes is reported. A module that fails is marked and never affects the log.
 
 ## After the import
 
@@ -70,7 +70,7 @@ Filtering, editing, and organising logs after the first import.
 
 | Level | Where | Scope | Effect |
 | --- | --- | --- | --- |
-| Column filter | Events tab | The log | Persisted, and **re-runs every module** on commit. |
+| Column filter | Events tab | The log | Persisted, and **re-runs the modules you have already opened** on commit; the rest compute when opened. |
 | Board filter | Dashboard filter bar | One board | Scopes every card without touching module caches. |
 | Card options | Card inspector | One card | Options the widget or dataset declares. |
 
@@ -239,7 +239,7 @@ Every long operation is a job, and the interface reports them consistently.
 | Toasts | Bottom-right | One per lifecycle event; failures stay until dismissed and offer *Details*. Rapid sequences collapse. |
 | Dock | Bottom-left pill | Active count and the top job's progress; hover expands the three most recent, with per-job cancel. Disappears 30 s after the last job completes. |
 | Drawer | The pill, or <kbd>j</kbd> <kbd>j</kbd> | Every job: *All / Running / Queued / Finished*, filter by title or id, cancel all running, pause or resume the queue. |
-| Plan checklist | Import groups and the wizard | The precompute plan: each module step as *waiting*, *running*, *skipped*, or *done*, with *Waiting on X* where an ordering edge was declared. |
+| Plan checklist | Import groups in the drawer | The modules an import started in the background (the eager ones, or those you had already opened on a re-import): each step as *waiting*, *running*, *skipped*, or *done*, with *Waiting on X* where an ordering edge was declared. |
 
 ## Job row fields
 

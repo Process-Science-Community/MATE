@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -30,8 +31,10 @@ from mate.api.modules.defaults import (
     mandate_default_for_all_users,
     set_admin_default_ids,
     set_excluded_default_ids,
+    set_precompute_override,
 )
 from mate.api.modules.installs import record_install, user_owns_module
+from mate.api.modules.processing import get_coordinator
 from mate.api.modules.uninstall import uninstall_for_user
 
 router = APIRouter(prefix="/admin/modules", tags=["admin"])
@@ -46,6 +49,17 @@ class AdminModuleOwner(BaseModel):
     # provenance, not an audit trail.
     source: str | None = None
     installed_at: datetime
+
+
+class AdminPrecompute(BaseModel):
+    """Whether a module also computes in the background right after every import."""
+
+    # What the module's manifest recommends, what applies now, and whether an admin
+    # has overridden the recommendation. `eager` costs CPU on every import of every
+    # user; `lazy` computes the first time a log opens the module.
+    manifest: Literal["eager", "lazy"]
+    effective: Literal["eager", "lazy"]
+    overridden: bool
 
 
 class AdminModuleRow(BaseModel):
@@ -69,6 +83,8 @@ class AdminModuleRow(BaseModel):
     # uploaded byte-identical code (content-addressed sharing).
     uploaded_by: AdminModuleOwner | None = None
     owners: list[AdminModuleOwner]
+    # Null when the module has no import-time precompute - nothing to switch.
+    precompute: AdminPrecompute | None = None
 
 
 class SetDefaultBody(BaseModel):
@@ -81,6 +97,10 @@ class SetWithholdBody(BaseModel):
 
 class ForceInstallBody(BaseModel):
     user_id: str
+
+
+class SetPrecomputeBody(BaseModel):
+    mode: Literal["eager", "lazy"]
 
 
 def _owner(inst: ModuleInstall, u: User) -> AdminModuleOwner:
@@ -100,6 +120,7 @@ def _make_row(
     fs_defaults: set[str],
     admin_ids: set[str],
     excluded_ids: set[str],
+    precompute: dict[str, str | bool] | None = None,
 ) -> AdminModuleRow:
     uploaded = [o for o in owners if o.source == "upload"]
     uploaded_by = min(uploaded, key=lambda o: o.installed_at) if uploaded else None
@@ -117,7 +138,15 @@ def _make_row(
         owner_count=len(owners),
         uploaded_by=uploaded_by,
         owners=owners,
+        precompute=AdminPrecompute.model_validate(precompute) if precompute else None,
     )
+
+
+async def _precompute_info(session: SessionDep) -> dict[str, dict[str, str | bool]]:
+    """``{module_id: {manifest, effective, overridden}}`` - empty before the
+    coordinator is wired (a bare-runtime test)."""
+    coordinator = get_coordinator()
+    return await coordinator.precompute_info(session) if coordinator is not None else {}
 
 
 async def _owners_for(session: SessionDep, module_id: str) -> list[AdminModuleOwner]:
@@ -139,8 +168,15 @@ async def _single_row(session: SessionDep, module_id: str) -> AdminModuleRow:
     loaded = loader.loaded.get(module_id)
     manifest = loaded.manifest if loaded else None
     owners = await _owners_for(session, module_id)
+    precompute = (await _precompute_info(session)).get(module_id)
     return _make_row(
-        module_id, manifest, owners, loader.default_module_ids, admin_ids, excluded_ids
+        module_id,
+        manifest,
+        owners,
+        loader.default_module_ids,
+        admin_ids,
+        excluded_ids,
+        precompute,
     )
 
 
@@ -169,6 +205,7 @@ async def list_admin_modules(session: SessionDep, user: AdminUserDep) -> list[Ad
     for inst, u in rows:
         owners_by_mod[inst.module_id].append(_owner(inst, u))
 
+    precompute = await _precompute_info(session)
     all_ids = set(owners_by_mod) | set(loaded)
     out: list[AdminModuleRow] = []
     for mid in sorted(all_ids):
@@ -176,7 +213,13 @@ async def list_admin_modules(session: SessionDep, user: AdminUserDep) -> list[Ad
         manifest = loaded_mod.manifest if loaded_mod else None
         out.append(
             _make_row(
-                mid, manifest, owners_by_mod.get(mid, []), fs_defaults, admin_ids, excluded_ids
+                mid,
+                manifest,
+                owners_by_mod.get(mid, []),
+                fs_defaults,
+                admin_ids,
+                excluded_ids,
+                precompute.get(mid),
             )
         )
     return out
@@ -251,6 +294,35 @@ async def set_module_withheld(
         await set_excluded_default_ids(session, excluded - {module_id})
         await session.commit()
 
+    return await _single_row(session, module_id)
+
+
+@router.put("/{module_id}/precompute", response_model=AdminModuleRow)
+async def set_module_precompute(
+    module_id: str, body: SetPrecomputeBody, session: SessionDep, user: AdminUserDep
+) -> AdminModuleRow:
+    """Override whether a module also computes in the background after every import.
+
+    Modules compute lazily by default - the first time a log opens them - and a
+    manifest can recommend `eager` for the one or two whose output is the first
+    thing people look at. This is the admin's say over that recommendation, since
+    eager work is paid on every import by every user. It applies to future imports
+    and refreshes; logs already imported are not backfilled. Choosing the manifest's
+    own value simply clears the override.
+    """
+    loader = get_module_loader()
+    loaded = loader.loaded.get(module_id)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail=f"Module {module_id!r} is not loaded.")
+    if module_id not in await _precompute_info(session):
+        raise HTTPException(
+            status_code=400,
+            detail="This module has no import-time precompute to configure.",
+        )
+    await set_precompute_override(
+        session, module_id, body.mode, manifest_mode=loaded.manifest.precompute
+    )
+    await session.commit()
     return await _single_row(session, module_id)
 
 

@@ -1,0 +1,29 @@
+id: eager_mod
+name: Eager Precompute Module
+version: 0.1.0
+category: foundation
+description: Test fixture – like precompute_mod, but its manifest declares eager precompute, so it also runs in the background right after every import.
+license: MIT
+
+# The author's recommendation: warm this module on import. Everything else in the
+# fixtures is lazy (the default) and only computes when something asks for it.
+precompute: eager
+
+requirements:
+  event_log:
+    required_columns:
+      - case_id
+      - activity
+      - timestamp
+    min_events: 1
+    min_cases: 1
+
+consumes:
+  - log.imported
+
+dependencies:
+  python:
+    inherit:
+      - duckdb
+      - pandas
+    isolation: in_process

@@ -7,9 +7,11 @@
 # patches the handful of hardening attributes directly, idempotently, on every
 # deploy — after Keycloak reports healthy.
 #
-# Scope is deliberately tiny: three realm attributes. It does NOT manage clients,
-# roles, users, or identity providers, so it can never clobber the brokered WWU
-# IdP (configure-university-idp.sh) or any other admin-console change. Re-running
+# Scope is deliberately tiny: three hardening attributes plus the login theme
+# (loginTheme=mate, infra/keycloak/themes - the same reason: the import-once JSON
+# can't set it on an existing DB). It does NOT manage clients, roles, users, or
+# identity providers, so it can never clobber the brokered WWU IdP
+# (configure-university-idp.sh) or any other admin-console change. Re-running
 # with the same values is a no-op.
 #
 # Safe failure: `set -e` makes the container exit non-zero on any kcadm error;
@@ -32,6 +34,7 @@ REALM=flows-funds
 "$KCADM" update "realms/$REALM" \
   -s sslRequired=EXTERNAL \
   -s ssoSessionIdleTimeout=28800 \
-  -s ssoSessionMaxLifespan=86400
+  -s ssoSessionMaxLifespan=86400 \
+  -s loginTheme=mate
 
-echo "realm '$REALM' hardening applied: sslRequired=EXTERNAL ssoSessionIdleTimeout=28800 ssoSessionMaxLifespan=86400"
+echo "realm '$REALM' hardening applied: sslRequired=EXTERNAL ssoSessionIdleTimeout=28800 ssoSessionMaxLifespan=86400 loginTheme=mate"

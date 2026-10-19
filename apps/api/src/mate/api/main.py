@@ -156,13 +156,13 @@ async def _job_event_recorder_loop(bus: EventBus) -> None:
 
 
 async def _module_processing_loop(bus: EventBus, coordinator: ModuleProcessingCoordinator) -> None:
-    """Un-gate a ``processing`` log once its module precompute jobs finish.
+    """Settle a module's per-log run when its precompute job finishes.
 
-    Subscribes to the terminal ``job.*`` topics and, for each finished job that
-    is a child of an ``event_log.import`` job, re-checks whether the bound log's
-    expected modules have all reached a terminal state - flipping it to ``ready``
-    when they have. Failures are swallowed so the bus keeps draining (a missed
-    tick is recovered by the boot reconcile on the next restart).
+    Subscribes to the terminal ``job.*`` topics and hands each one to the
+    coordinator, which updates the matching ``log_module_runs`` row, announces it
+    and wakes anything waiting on that module. Failures are swallowed so the bus
+    keeps draining (a missed tick is recovered by the boot reconcile on the next
+    restart).
     """
     proc_log = structlog.get_logger("modules.processing")
     async with bus.subscribe(("job.completed", "job.failed", "job.cancelled")) as stream:
@@ -344,18 +344,24 @@ async def lifespan(app: FastAPI):
         # skipped inside discovery and the loader; nothing routine lands here.
         structlog.get_logger("modules.loader").exception("modules.load_all_failed")
 
-    # Holds a freshly imported log disabled (`status="processing"`) until every
-    # subscribing module finishes precomputing against it. Wired after the loader
-    # loads so its event-subscriber index is populated, and exposed on app state
-    # + a module-level singleton so the ingest handler can freeze each log's
-    # expected-module set at import time.
+    # Lazy module processing: a log is `ready` as soon as it is parsed, and this
+    # coordinator tracks each module's precompute run per log (`log_module_runs`).
+    # Wired after the loader loads so its subscriber index is populated, and exposed
+    # on app state + a module-level singleton for the ingest handler, the module-run
+    # routes and cell edits.
     coordinator = ModuleProcessingCoordinator(loader, bus, get_sessionmaker())
     app.state.module_processing_coordinator = coordinator
     set_coordinator(coordinator)
-    # Re-derive completion for any log left `processing` by a previous process
-    # (jobs that finished while the API was down won't re-emit their events).
-    async with get_sessionmaker()() as session:
-        await coordinator.reconcile_boot(session)
+    # Job-backed `@on_event` runners ask the coordinator whether an event is worth a
+    # job (an eager module, or one already computed for the log) instead of
+    # submitting one for every module on every import.
+    loader.precompute_dispatcher = coordinator.dispatch
+    # Subscribe to terminal job events *before* anything can finish: the resume
+    # below restarts jobs immediately, and a `job.completed` published before this
+    # loop is listening would leave its run stuck in flight. The sleep lets the
+    # task reach its subscription.
+    processing_task = asyncio.create_task(_module_processing_loop(bus, coordinator))
+    await asyncio.sleep(0)
 
     # Re-enqueue precompute jobs a prior process left interrupted (its slow
     # modules were still running/queued at a `--reload` restart or crash). Runs
@@ -364,6 +370,9 @@ async def lifespan(app: FastAPI):
     # reruns and writes its output instead of leaving an empty result cache the
     # panel reads as "nothing happened".
     await runtime.resume_interrupted_precompute()
+    # Then settle the runs that process left in flight - after the resume, so the
+    # import children it just requeued are left to finish on their own.
+    await coordinator.reconcile_boot()
 
     # Sweep any `ff-mod-*` temp dirs older than 24h that earlier crashes left
     # behind (the per-invocation cleanup in `_invoke_handler` handles the
@@ -389,7 +398,6 @@ async def lifespan(app: FastAPI):
     # are queued in-memory on the request path and persisted here.
     usage_writer_task = asyncio.create_task(server_event_writer_loop())
     watch_poll_task = asyncio.create_task(_watched_folder_poll_loop(runtime))
-    processing_task = asyncio.create_task(_module_processing_loop(bus, coordinator))
     # S3-mode local-cache reaper: bounds the working set so the bucket can be the
     # authoritative copy. No-op in local mode or with no budget set.
     eviction_task = asyncio.create_task(eviction_loop())
@@ -458,6 +466,7 @@ async def lifespan(app: FastAPI):
             hot_reload.stop()
         await sampler.stop()
         set_resource_sampler(None)
+        coordinator.stop()
         set_coordinator(None)
         # Both teardowns are internally time-boxed (subprocess hosts fall back to
         # SIGKILL; runtime.stop drains are graced), but wrap them anyway: uvicorn

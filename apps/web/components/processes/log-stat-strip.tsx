@@ -14,7 +14,7 @@ import type { EventLogDetail } from "@/lib/api-types";
  *
  * Rendered for every status (not gated on `ready`) so its `data-tour` anchor
  * always exists. The counts are written in the same UPDATE that flips a log to
- * `processing`, so they are populated well before the modules finish.
+ * `ready`, so they are populated as soon as the file is parsed.
  */
 export function LogStatStrip({ log }: { log: EventLogDetail }) {
   return (

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { prefetchModulePanel } from "@/lib/module-panels";
-import { hasActiveModuleJob, useJobsStore } from "@/lib/stores/jobs";
+import { useModuleRuns } from "@/lib/module-run-queries";
 import type { ModuleSummary } from "@/lib/api-types";
 
 interface ModuleCardProps {
@@ -24,17 +24,22 @@ export function ModuleCard({ module, logId }: ModuleCardProps) {
   const status = module.availability?.status ?? "available";
   const reasons = module.availability?.reasons ?? [];
 
-  // Block opening while a job for this (log, module) is queued/running/paused.
-  const isJobRunning = useJobsStore((s) => hasActiveModuleJob(s, logId, module.id));
+  // Modules compute lazily, so a module can be mid-run (or have failed) for this
+  // log. It stays openable either way: the module page shows the live progress, or
+  // the error with a Retry. A module that only depends on others (it has no run of
+  // its own) reports theirs.
+  const { data: runs } = useModuleRuns(logId);
+  const deps = module.precompute_deps ?? [];
+  const depRuns = (runs ?? []).filter((r) => deps.includes(r.module_id));
+  const isComputing = depRuns.some((r) => r.status === "queued" || r.status === "running");
+  const hasFailed = !isComputing && depRuns.some((r) => r.status === "failed");
 
   const isDisabled = module.enabled === false;
-  const isAvailable = !isDisabled && !isJobRunning && status === "available";
-  const isDegraded = !isDisabled && !isJobRunning && status === "degraded";
-  const isUnavailable = !isDisabled && !isJobRunning && status === "unavailable";
+  const isAvailable = !isDisabled && status === "available";
+  const isDegraded = !isDisabled && status === "degraded";
+  const isUnavailable = !isDisabled && status === "unavailable";
 
-  const tooltipReasons = isJobRunning
-    ? ["A job for this module is currently running. Wait for it to finish before opening."]
-    : isDisabled
+  const tooltipReasons = isDisabled
     ? ["Disabled on the Modules page. Enable it there to open the module."]
     : reasons;
 
@@ -54,9 +59,9 @@ export function ModuleCard({ module, logId }: ModuleCardProps) {
         "group relative flex h-full flex-col gap-0 py-0 transition-all",
         isAvailable && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg",
         isDegraded && "cursor-pointer hover:shadow-lg",
-        (isUnavailable || isDisabled || isJobRunning) && "cursor-not-allowed opacity-60",
+        (isUnavailable || isDisabled) && "cursor-not-allowed opacity-60",
       )}
-      aria-disabled={isUnavailable || isDisabled || isJobRunning}
+      aria-disabled={isUnavailable || isDisabled}
     >
       <CardContent className="flex h-full flex-col gap-3 p-4">
         {/* Header: Name */}
@@ -66,23 +71,28 @@ export function ModuleCard({ module, logId }: ModuleCardProps) {
 
         {/* Status */}
         <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
-          {isJobRunning && (
+          {!isDisabled && isComputing && (
             <Badge className="h-5 gap-1 border-0 bg-primary/10 px-2 py-0 text-[9px] font-medium text-primary">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              Running
+              Computing
             </Badge>
           )}
-          {!isJobRunning && isDisabled && (
+          {!isDisabled && hasFailed && (
+            <Badge className="h-5 border-0 bg-destructive/10 px-2 py-0 text-[9px] font-medium text-destructive">
+              Failed
+            </Badge>
+          )}
+          {isDisabled && (
             <Badge className="h-5 border-0 bg-muted px-2 py-0 text-[9px] font-medium text-muted-foreground">
               Disabled
             </Badge>
           )}
-          {!isJobRunning && !isDisabled && isDegraded && (
+          {!isDisabled && isDegraded && (
             <Badge className="h-5 border-0 bg-amber-500/15 px-2 py-0 text-[9px] font-medium text-amber-700 dark:text-amber-400">
               Limited
             </Badge>
           )}
-          {!isJobRunning && !isDisabled && isUnavailable && (
+          {!isDisabled && isUnavailable && (
             <Badge className="h-5 border-0 bg-destructive/10 px-2 py-0 text-[9px] font-medium text-destructive">
               Unavailable
             </Badge>

@@ -20,6 +20,13 @@ modules/*/uv.lock
 # Local data – bind-mounted at runtime, never baked in.
 data
 
+# Local secrets and runtime configuration are injected by Compose, never copied
+# into an image build context.
+.env
+**/.env
+.env.*
+**/.env.*
+
 # Build / IDE / VCS noise.
 .git
 .next

@@ -206,6 +206,17 @@ Keycloak's own login page:
 Break-glass: the local `admin@flows-funds.local` user still works via the
 Keycloak admin console (`master` realm), which the redirect does not touch.
 
+### Login theme
+
+Keycloak's own pages (email & password sign-in, forgot password, update
+password, errors) render in the platform's look through the `mate` theme in
+`infra/keycloak/themes/mate/`. The base compose mounts it into the container and
+the realm selects it with `loginTheme`. The realm JSON only imports into an empty
+DB, so the `keycloak-config` one-shot re-applies `loginTheme=mate` on every deploy
+(§6, step 6). After changing the theme, `$DC restart keycloak`; returning browsers
+pick up new CSS within an hour (`KC_SPI_THEME_STATIC_MAX_AGE` in the prod overlay).
+How it is built and how to change it: `infra/keycloak/themes/README.md`.
+
 ## 3. cv4cdd model (optional)
 
 The base compose mounts a macOS-only path for the cv4cdd model; the prod
@@ -392,7 +403,8 @@ Then in a browser:
    WebSocket/streaming passthrough enabled for this alias – that's the first
    thing to raise with FB4 IT.
 6. **Confirm the realm-hardening one-shot ran.** The `keycloak-config` service
-   patches `sslRequired` + session lifetimes once per deploy, then exits:
+   patches `sslRequired`, the session lifetimes and the `mate` login theme once
+   per deploy, then exits:
    `$DC logs keycloak-config` → expect
    `realm 'flows-funds' hardening applied: sslRequired=EXTERNAL …`. A non-zero
    exit leaves Keycloak + app running but the realm unpatched — fix

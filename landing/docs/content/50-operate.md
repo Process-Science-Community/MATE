@@ -69,6 +69,7 @@ The realm JSON imports **only into an empty Keycloak database**; everything afte
 | Broker an institutional IdP | `./infra/keycloak/configure-university-idp.sh`, then set `KEYCLOAK_IDP_HINT` so users skip Keycloak's form. Keep the local form as break-glass. |
 | Admin REST client (user deletion) | `./infra/keycloak/configure-admin-client.sh` |
 | MCP OAuth client | `./infra/keycloak/configure-mcp-client.sh` |
+| Change how Keycloak's own pages look | Edit the `mate` theme in `infra/keycloak/themes/mate`. Every deploy re-applies `loginTheme=mate`, so do not switch it in the console. |
 
 Deleting a user from *Admin → Users* purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. This is intentionally irreversible.
 
@@ -87,6 +88,7 @@ make deploy      # pushes the branch, resets the server clone, rebuilds, health-
 | Any other environment variable | `up -d` — a **recreate**, not a restart |
 | Caddyfile | Restart of the `proxy` container |
 | A realm setting | A change in the Keycloak console, not the JSON |
+| The Keycloak login theme | Restart of the `keycloak` container; returning browsers pick up new CSS within an hour |
 | A module's dependency block | Nothing: the loader re-materialises on boot |
 
 Migrations run on API boot (`alembic upgrade head`), so a deploy migrates itself. There is no rolling deployment — a restart interrupts running jobs, which are marked failed at the next boot while logs left mid-import are reconciled.
@@ -311,7 +313,8 @@ Symptoms by area, with the cause that most often explains them.
 | `[consent_required]` | The user has not enabled external data access. |
 | `[scope_missing]` | The token lacks the scope; mint a new one. |
 | `[read_only]` on a write tool | Server-wide read-only. |
-| `[conflict]` "no precomputed results yet" | The module has not run for this log. |
+| `[conflict]` "… is computing for this process" | The read started the module; `wait_for_job` on the job id in the message, then repeat the call. |
+| `[conflict]` "… failed for this process" | The module's run failed; the message carries its error (CV4CDD, for example, needs a model). |
 | `404` on `/mcp` | The flag never reached the container, or the proxy route is missing. |
 | Output truncated | The 200 KB per-result cap — narrow the query or paginate. |
 
@@ -330,6 +333,6 @@ Symptoms by area, with the cause that most often explains them.
 1. Reproduce with a synthetic log of 200 cases — most module bugs show up immediately.
 2. Collect **Settings → About → Copy diagnostics** and the failing job's log tail.
 3. Read the module's raw manifest: `GET /api/v1/modules/{id}/manifest` shows what the platform actually parsed.
-4. Search the API log for the log id — ingest and precompute log both.
+4. Search the API log for the log id — ingest and module runs log both. `GET /api/v1/event-logs/{id}/module-runs` shows each module's state for the log.
 5. Still stuck? Open an issue with the diagnostics blob, the steps, and the version: [github.com/Process-Science-Community/MATE/issues](https://github.com/Process-Science-Community/MATE/issues).
 :::

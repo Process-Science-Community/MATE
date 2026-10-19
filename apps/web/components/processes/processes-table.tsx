@@ -102,7 +102,6 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 
 import { FormatBadge } from "./format-badge";
-import { precomputeProgressForLog, useJobsStore } from "@/lib/stores/jobs";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -494,31 +493,6 @@ function collectSiblings(
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
-/**
- * "Preparing modules… 3/17" under a `processing` row.
- *
- * Its own component so only this subtree re-renders on job ticks - subscribing
- * every row in the table to the jobs map would repaint the whole list several
- * times a second during an import. Falls back to the indeterminate bar when the
- * store has no import job for this log (e.g. a page opened after the fact).
- */
-function PrecomputeCaption({ logId }: { logId: string }) {
-  const byId = useJobsStore((s) => s.byId);
-  const progress = useMemo(() => precomputeProgressForLog(byId, logId), [byId, logId]);
-
-  return (
-    <div className="mt-1 max-w-xs">
-      <Progress
-        value={progress?.pct}
-        className={cn("h-1", progress === null && "animate-pulse")}
-      />
-      <div className="mt-1 text-xs tabular-nums text-muted-foreground">
-        {progress ? `Preparing modules… ${progress.done}/${progress.total}` : "Preparing modules…"}
-      </div>
-    </div>
-  );
-}
-
 function HeaderRow() {
   return (
     <div className="grid grid-cols-[1fr_70px_90px_80px_180px_120px_60px_40px] gap-2 px-4 py-2 text-xs font-medium text-muted-foreground">
@@ -827,13 +801,11 @@ function LogRow({
   const router = useProgressRouter();
   const qc = useQueryClient();
   const importing = row.status === "importing";
-  // Parsed but held until every subscribing module finishes precomputing. Shares
-  // the importing visuals (dimmed row + indeterminate bar) but with its own
-  // label; opening stays gated on `ready`.
-  const processing = row.status === "processing";
   const failed = row.status === "failed";
+  // Modules compute lazily, so a log is `ready` as soon as it is parsed: the only
+  // busy state left is the import itself.
   const ready = row.status === "ready";
-  const busy = importing || processing;
+  const busy = importing;
 
   const del = useDeleteEventLog();
   const rename = useRenameEventLog();
@@ -932,16 +904,12 @@ function LogRow({
           >
             <div className="min-w-0" style={{ paddingLeft: depth * 16 + 24 }}>
               <div className="truncate font-medium">{row.name}</div>
-              {processing ? (
-                <PrecomputeCaption logId={row.id} />
-              ) : (
-                importing && (
-                  <div className="mt-1 max-w-xs">
-                    {/* Indeterminate: the bar has to pulse or it reads as a stalled 0%. */}
-                    <Progress value={undefined} className="h-1 animate-pulse" />
-                    <div className="mt-1 text-xs text-muted-foreground">Reading the file…</div>
-                  </div>
-                )
+              {importing && (
+                <div className="mt-1 max-w-xs">
+                  {/* Indeterminate: the bar has to pulse or it reads as a stalled 0%. */}
+                  <Progress value={undefined} className="h-1 animate-pulse" />
+                  <div className="mt-1 text-xs text-muted-foreground">Reading the file…</div>
+                </div>
               )}
               {failed && (
                 <HoverCard>

@@ -16,12 +16,12 @@ MATE is a self-hosted platform for process mining: it turns event logs into proc
 
 ## How a log becomes a result
 
-:::stack title="One log, from upload to result" caption="An import normalises the file once. Every module precomputes from that cached result, and the interface reads the cache — never the raw upload."
+:::stack title="One log, from upload to result" caption="An import normalises the file once. A module computes from that cached result the first time you open it, and the interface reads the cache — never the raw upload."
 - `file` · XES, CSV, XML, or OCEL 2.0
 - `import job` · parse, normalise, write Parquet
 - `Parquet log` · the event table plus cached case aggregates
-  - `precompute jobs` · one per module, in parallel
-  - `filters & edits` · committing a filter re-runs the affected modules
+  - `module runs` · one per (log, module), started when a module is first opened
+  - `filters & edits` · committing a filter re-runs the modules you have already opened
 - `module results` · cached per (log, module)
   - panels, widgets, and datasets
   - `MATE AI` · aggregates only, behind the data wall
@@ -63,7 +63,7 @@ Process mining has its own vocabulary; MATE adds a few terms.
 | **OCEL** | Object-centric event log: events relate to many objects of different types, so there is no single case notion. |
 | **Module** | The unit of extension: a folder with a manifest, a handler class, and optionally a frontend. |
 | **Manifest** | `manifest.yaml` — identity, log requirements, dependencies, capabilities, frontend, citations. |
-| **Precompute** | Work a module runs automatically after an import, so its page opens with results ready. |
+| **Precompute** | The job a module runs for a log to fill its cache. It starts the first time the module is opened (or right after import, for the few *eager* modules), so every later open is instant. |
 | **Capability** | A named request/response function one module publishes for another. |
 | **Event bus** | In-process pub/sub; modules emit and subscribe to declared topics. |
 | **Job** | A persisted, observable long operation: import, precompute, install, re-import. |
@@ -159,7 +159,7 @@ One log from import to dashboard: import it, monitor the jobs, open a module, an
 2. Drop a file: `.xes`, `.xes.gz`, `.csv`, `.xml`, `.json`, `.jsonocel`, `.xmlocel`, `.sqlite`, and `.gz`/`.bz2`/`.xz`/`.zip` variants.
 3. The upload stages, then the server probes a few hundred events and proposes column roles.
 4. Confirm the mapping — the only step where a wrong answer costs a re-import.
-5. Submit. The wizard switches to a live checklist: reading, processing, saving, preparing modules.
+5. Submit. The wizard switches to a live checklist: reading, processing, saving. The process is ready the moment it is saved.
 :::
 
 | Role | Required | Unlocks |
@@ -174,13 +174,12 @@ Each row shows how the proposal was made — `user` → *Your choice*, `exact` �
 
 ## 2. Watch the jobs
 
-The checklist lists every module that precomputes on import, with a state per module: *Queued*, *Running*, *Waiting on X*, *Skipped*, *Done*. A module that fails never blocks the log — the log flips to **ready** once every precompute job has settled, and the failure is in the jobs drawer.
+The checklist ends when the file is saved, and the process is **ready** from that moment — nothing waits on modules. They compute lazily: each runs the first time you open it. The few marked *eager* (Discovery) also warm up in the background right after the import, and show in the jobs drawer; a module that fails never affects the log.
 
 | Status | Meaning |
 | --- | --- |
 | `importing` | The file is parsed and normalised. |
-| `processing` | Module precompute is running; the log is not open yet. |
-| `ready` | Everything settled. Modules are usable. |
+| `ready` | Saved and open. Each module computes the first time you open it. |
 | `failed` | The import failed; the row shows why, with a retry. |
 
 ## 3. Open the process
@@ -193,11 +192,12 @@ Click the row. The process page opens on the module grid, grouped by category.
 | Limited | An optional module dependency is missing; the module runs with less context. |
 | Unavailable | The log model, a required column, a minimum count, or a hard dependency does not match; the tooltip names the reason. |
 | Disabled | Turned off for your account. |
-| Running | Its precompute job is running right now. |
+| Computing | Its job is running right now. The card stays openable and shows the progress. |
+| Failed | Its last run failed. Open it to see why and retry. |
 
 ## 4. Read a module
 
-Open **Discovery** for the process as a directly-follows graph (and Petri net, process tree, heuristics net, or BPMN), **Performance** for throughput and bottlenecks, **Complexity v2** for a metric suite. Each page is the module's own panel inside the platform's frame: breadcrumb, version, **Configure** (a form generated from the module's schema, saved per user), and an info hint explaining the view.
+Open **Discovery** for the process as a directly-follows graph (and Petri net, process tree, heuristics net, or BPMN), **Performance** for throughput and bottlenecks, **Complexity v2** for a metric suite. The first time you open a module for a log it computes: you see live progress with a **Cancel**, and the page appears when it finishes. Later opens are instant, and the result refreshes by itself after the log's data changes. Each page is the module's own panel inside the platform's frame: breadcrumb, version, **Configure** (a form generated from the module's schema, saved per user), and an info hint explaining the view.
 
 ## 5. Compose a dashboard
 
@@ -221,6 +221,6 @@ The MATE AI panel attaches context from the current view — process, open modul
 | --- | --- |
 | Dropped a file | Staged, probed, parsed, normalised, written as Parquet under `data/users/{uid}/event_logs/{log_id}/`. |
 | Confirmed a mapping | Column roles stored on the log; a `log.imported` event dispatched. |
-| Watched a checklist | Each subscribing module's precompute job ran — in parallel, ordered by declared dependencies. |
-| Opened a module | Its panel called its own routes; the platform served the cached precompute result. |
-| Filtered the log | The filter was committed and the affected modules re-ran, so results match what you see. |
+| Watched a checklist | The file was saved and the process became ready; only eager modules (Discovery) started in the background. |
+| Opened a module | The first time, the platform ran its job (and any module it depends on) with live progress, then mounted its panel on the cached result. |
+| Filtered the log | The filter was committed and the modules you had already opened re-ran, so results match what you see; the rest compute when opened. |

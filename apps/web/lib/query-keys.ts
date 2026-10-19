@@ -75,6 +75,11 @@ export const queryKeys = {
   moduleManifest: (id: string) => ["modules", id, "manifest"] as const,
   moduleConfig: (id: string) => ["modules", id, "config"] as const,
   moduleModels: (id: string) => ["modules", id, "models"] as const,
+  // Per-log module compute state. Deliberately a top-level key: `["event-logs"]`
+  // is invalidated on every `job.completed`, which would refetch this for nothing.
+  moduleRuns: (logId: string) => ["module-runs", logId] as const,
+  moduleRunGate: (logId: string, moduleId: string) =>
+    ["module-runs", logId, "gate", moduleId] as const,
   jobs: (params?: Record<string, string>) => ["jobs", params ?? {}] as const,
   job: (id: string) => ["jobs", id] as const,
 };

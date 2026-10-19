@@ -13,8 +13,8 @@ const STYLES: Record<Variant, string> = {
 
 const STATUS_VARIANT: Record<string, Variant> = {
   importing: "info",
-  // Parsed, but still precomputing its modules - an in-flight state like
-  // `importing`, not the neutral fallthrough it used to get.
+  // Retired: modules compute lazily, so a log is `ready` once parsed. Kept so a row
+  // an old build left in this state still reads as in-flight, not as a neutral grey.
   processing: "info",
   ready: "success",
   failed: "error",

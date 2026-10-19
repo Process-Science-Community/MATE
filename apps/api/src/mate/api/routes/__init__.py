@@ -19,6 +19,7 @@ from mate.api.routes.events_sse import router as events_sse_router
 from mate.api.routes.folders import router as folders_router
 from mate.api.routes.jobs import router as jobs_router
 from mate.api.routes.mcp_admin import router as mcp_admin_router
+from mate.api.routes.module_runs import router as module_runs_router
 from mate.api.routes.modules import router as modules_router
 from mate.api.routes.ocel_data import router as ocel_data_router
 from mate.api.routes.onboarding import router as onboarding_router
@@ -38,6 +39,7 @@ v1.include_router(admin_users_router)
 v1.include_router(event_logs_router)
 v1.include_router(watched_folders_router)
 v1.include_router(event_log_data_router)
+v1.include_router(module_runs_router)
 v1.include_router(ocel_data_router)
 v1.include_router(folders_router)
 v1.include_router(jobs_router)

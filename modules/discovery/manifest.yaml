@@ -28,6 +28,9 @@ source:
     url: https://doi.org/10.1016/j.datak.2026.102601
 license: MIT
 default_enabled: true
+# The first thing people open after an import, so it is the one module warmed in
+# the background; every other module computes the first time it is opened.
+precompute: eager
 # Runs entirely locally – safe to use against confidential event logs.
 isConfidentialSafe: true
 

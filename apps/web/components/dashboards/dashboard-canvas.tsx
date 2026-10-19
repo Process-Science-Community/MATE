@@ -303,6 +303,7 @@ export function DashboardCanvas({
   selectedIds = EMPTY_SELECTION,
   onSelectionChange,
   historyApplying,
+  isOwner = true,
   onItemsChange,
 }: {
   items: DashboardItem[];
@@ -321,6 +322,9 @@ export function DashboardCanvas({
   onSelectionChange?: (ids: string[]) => void;
   /** True while an undo/redo is being applied — see `handleLayoutChange`. */
   historyApplying?: () => boolean;
+  /** False on a board opened through a share - its cards then never start module
+   * runs on the owner's log. */
+  isOwner?: boolean;
   /** Geometry changes. The second argument labels the edit for the undo stack. */
   onItemsChange: (items: DashboardItem[], label?: string) => void;
 }) {
@@ -1140,6 +1144,7 @@ export function DashboardCanvas({
                 drillHref={drillHrefFor(it)}
                 drillLabel={drillLabel(cardMetaFor(it)?.drill)}
                 onDrill={drillFor(it.i)}
+                isOwner={isOwner}
                 chrome={settings.chrome}
                 onUpdate={() => {}}
                 onRemove={() => {}}
@@ -1224,6 +1229,7 @@ export function DashboardCanvas({
                   drillHref={drillHrefFor(it)}
                   drillLabel={drillLabel(cardMetaFor(it)?.drill)}
                   onDrill={drillFor(it.i)}
+                  isOwner={isOwner}
                   chrome={settings.chrome}
                   onUpdate={h?.onUpdate ?? (() => {})}
                   onRemove={h?.onRemove ?? (() => {})}

@@ -381,13 +381,16 @@ Notes:
 `PerformanceModule` below is the actual class shipped under [modules/performance/](../modules/performance/); the second snippet (`ExtensionModule`) is a synthetic illustration of the `@job` decorator. Both show the SDK shape any module author writes.
 
 ```python
-from mate.sdk import Module, ModuleContext, on_event, route
+from mate.sdk import Module, ModuleContext, job, on_event, route
 
 class PerformanceModule(Module):
     id = "performance"
 
     @on_event("log.imported")
+    @job(progress=True, title="Performance – precompute")
     async def precompute(self, ctx: ModuleContext, payload):
+        # Lazy by default: this runs the first time a log opens the module (or, for a
+        # manifest with `precompute: eager`, right after import) – see §5.7(c).
         async with ctx.event_log as log:
             kpis = await self.compute_kpis(log)
         await ctx.cache.set("kpis", kpis)
@@ -473,17 +476,19 @@ else:
 
 Capabilities are declared in `provides:`. The platform validates at startup that callers only call capabilities listed in their `consumes:` or `optional_modules:` – missing-dep bugs surface at boot, not at runtime.
 
-**(c) Precompute ordering – run a precompute job after another module.**
+**(c) Precompute – when a module's job runs, and in what order.**
 
-A module precomputes on import by stacking `@on_event("log.imported")` (or `ocel.imported`) + `@job`; all such jobs for one import run **in parallel** up to worker concurrency. To run *after* another module, subscribe to its reserved `<module_id>.completed` event instead:
+Modules compute **lazily**: a log is `ready` the moment it is parsed, and a module's precompute – `@on_event("log.imported")` (or `ocel.imported`) + `@job` – runs for it only when something asks (the module page, a dashboard card, an MCP read), or at import if the manifest says `precompute: eager` (an admin can override that per module). The platform tracks one run per (log, module) in `log_module_runs`, deduplicates concurrent requests, shows live progress with a Cancel, and mounts the panel only once the run is ready. When the log's data changes (committed filter, reimport/remap, cell edits) it re-runs only the modules already computed on that log, with their cache emptied; the rest stay lazy.
+
+To run *after* another module, subscribe to its reserved `<module_id>.completed` event and/or list it in `requirements.modules`:
 
 ```python
-@on_event("discovery.completed")   # fires only after `discovery` precompute succeeds
+@on_event("discovery.completed")   # runs only after `discovery` has computed for the log
 @job(progress=True, title="Performance – overlays")
 async def precompute(self, ctx, payload): ...
 ```
 
-The producer does nothing special — the platform **auto-emits `<module_id>.completed`** (carrying `import_job_id`) when a module's precompute job succeeds. The consumer just `@on_event`-subscribes and declares the edge for discoverability/validation: `consumes: [discovery.completed]` + `optional_modules: [discovery]`. The platform freezes the **transitive precompute closure** at import time and holds the log in `processing` until every module in it reaches a terminal job; a failed/cancelled upstream emits nothing, so its dependents are **cascade-skipped** rather than stranding the log. Only **job-backed** subscriptions gate a log — a `@on_event` with no `@job` is a fire-and-forget hook (e.g. a cheap cache refresh) and never holds `processing`.
+The producer does nothing special — the platform **auto-emits `<module_id>.completed`** when a module's precompute job succeeds. The consumer `@on_event`-subscribes and declares the edge for validation: `consumes: [discovery.completed]` + `optional_modules: [discovery]`. Ordering is **pull-based**: asking for the consumer first runs its producers, then parks the consumer as a `queued` run with no job until they finish; if a producer fails or is cancelled the consumer is failed with that reason instead of waiting forever. Only **job-backed** subscriptions are tracked — a `@on_event` with no `@job` is a fire-and-forget hook (e.g. a cheap cache refresh) that is never gated, shown, or run on demand.
 
 ### 5.8 How dependency presence is surfaced to the user
 

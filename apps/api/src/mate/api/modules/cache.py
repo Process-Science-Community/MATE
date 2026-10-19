@@ -105,10 +105,29 @@ class ResultCache:
             if path.exists():
                 path.unlink()
 
-    def clear(self) -> None:
+    def clear(self, *, keep_reserved: bool = False) -> None:
+        """Drop every cached result in this namespace, filter variants included.
+
+        ``keep_reserved`` leaves the platform's own ``__*`` entries in place - the
+        stored AI guidance (``__ai_guidance``) shares this directory but is not a
+        module result, and it re-validates itself against a hash of the module's
+        output, so a recompute never needs to throw it away.
+        """
         if self.dir.exists():
-            shutil.rmtree(self.dir)
-            self.dir.mkdir(parents=True, exist_ok=True)
+            if keep_reserved:
+                for path in list(self.dir.iterdir()):
+                    if path.is_file() and path.name.startswith("__"):
+                        continue
+                    if path.is_dir():
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink()
+            else:
+                shutil.rmtree(self.dir)
+                self.dir.mkdir(parents=True, exist_ok=True)
         # Drop the mirrored outputs from S3 too, so a cold cache doesn't
-        # re-hydrate stale results (no-op in local mode).
+        # re-hydrate stale results (no-op in local mode). What was kept is
+        # re-uploaded so the mirror matches the local directory.
         storage_sync.delete_dir_remote_sync(self.dir)
+        if keep_reserved:
+            storage_sync.persist_dir_sync(self.dir)

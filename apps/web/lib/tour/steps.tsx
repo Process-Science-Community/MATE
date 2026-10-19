@@ -78,8 +78,8 @@ export function buildTourSteps(logId: string | null, opts?: { auto?: boolean }):
       placement: "bottom",
       title: logId ? "Your processes live in this list" : "Your processes will land here",
       body: logId
-        ? "Open one to analyse it. A row stays dimmed while it imports and while its modules precompute — the caption under the name tells you which, and how far along."
-        : "Every imported log becomes a row. It stays dimmed until the import and its module precompute finish, then it opens.",
+        ? "Open one to analyse it. A row stays dimmed only while the file is being read — as soon as it's parsed it opens."
+        : "Every imported log becomes a row. It stays dimmed while the file is read, then it opens right away.",
     },
     {
       id: "log-stats",
@@ -95,7 +95,7 @@ export function buildTourSteps(logId: string | null, opts?: { auto?: boolean }):
       selector: detailRoute ? '[data-tour="module-grid"]' : undefined,
       placement: "top",
       title: "Modules turn it into analysis",
-      body: "Every card below is one analysis of this log, precomputed the moment it was imported. Open whichever matches the question you have.",
+      body: "Every card below is one analysis of this log. Open whichever matches the question you have — it computes the first time you do, and is instant after that.",
     },
     {
       id: "done",

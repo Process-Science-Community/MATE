@@ -185,7 +185,7 @@ async def test_wall_module_output_blocks_raw_rows(client: AsyncClient) -> None:
                 _ctx(_principal()), log_id="mcpan-wall-log", module_id="mcpan_wall_mod"
             )
         assert ei.value.code == "conflict"
-        assert "no precomputed results" in str(ei.value)
+        assert "no computed results" in str(ei.value)
         assert "leaked_rows" not in str(ei.value)
 
 
@@ -266,7 +266,7 @@ async def test_get_process_overview_concurrent_skips_failures(client: AsyncClien
         out = await analysis.get_process_overview(_ctx(_principal()), log_id="mcpan-ov-log")
         assert out["modules"]["mcpan_ov_ok"] == {"kpi": 42}
         assert "mcpan_ov_raw" not in out["modules"]
-        assert "no precomputed results" in out["skipped"]["mcpan_ov_raw"]
+        assert "not computed yet" in out["skipped"]["mcpan_ov_raw"]
 
 
 async def test_get_module_results_canonical_public_keys_only(client: AsyncClient) -> None:

@@ -53,6 +53,47 @@ export function useSetModuleWithheld() {
   });
 }
 
+/**
+ * Override whether a module also computes in the background after every import.
+ * Optimistic (an edit of an existing row): flip the switch at once, roll back from
+ * the snapshot on error, reconcile with the server when settled.
+ */
+export function useSetModulePrecompute() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ moduleId, mode }: { moduleId: string; mode: "eager" | "lazy" }) =>
+      api<AdminModuleRow>(`/api/v1/admin/modules/${encodeURIComponent(moduleId)}/precompute`, {
+        method: "PUT",
+        json: { mode },
+      }),
+    onMutate: async ({ moduleId, mode }) => {
+      await qc.cancelQueries({ queryKey: moduleAdminKey });
+      const previous = qc.getQueryData<AdminModuleRow[]>(moduleAdminKey);
+      qc.setQueryData<AdminModuleRow[]>(moduleAdminKey, (old) =>
+        old?.map((m) =>
+          m.id === moduleId && m.precompute
+            ? {
+                ...m,
+                precompute: {
+                  ...m.precompute,
+                  effective: mode,
+                  overridden: mode !== m.precompute.manifest,
+                },
+              }
+            : m,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(moduleAdminKey, ctx.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: moduleAdminKey });
+    },
+  });
+}
+
 export function useForceInstallModule() {
   const patch = useRowUpdater();
   return useMutation({

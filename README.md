@@ -18,9 +18,19 @@ The user manual lives in [`landing/docs/`](./landing/docs/) — rebuild it with
 ```bash
 git clone <repo-url> mate
 cd mate
-cp .env.example .env   # then rotate AUTH_SECRET + KEYCLOAK_CLIENT_SECRET
+cp .env.example .env
 make up
 ```
+
+Startup refuses to run without the root `.env`. Host-mode development exports
+the same root configuration to both the API and Next.js, so no second web
+environment file is required.
+
+The default `.env.example` enables local plugin-development mode
+(`DEMO_MODE=true`). It bypasses Keycloak and signs into a fixed local demo
+workspace automatically; `AUTH_SECRET` may remain empty in this mode. Set
+`DEMO_MODE=false` and provide a strong `AUTH_SECRET` before any shared or
+public deployment.
 
 Then open <http://localhost:3000>. On first login use
 `admin@flows-funds.local` / `flowsfunds` – Keycloak forces a password reset.

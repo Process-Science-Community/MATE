@@ -108,7 +108,7 @@ Log ids and job ids are UUID v7: time-ordered, so they sort and index well witho
 | Probe | `ingest/probe.py` | A bounded sample proposes column roles. |
 | Parse | `ingest/{xes,csv_parser,xml_parser,json_parser,ocel}.py` | Format-specific parsing into one frame; XES streams. |
 | Map · coerce · aggregate | `mapping.py`, `parquet_coerce.py`, `aggregation.py` | Apply roles, type the columns, normalise timestamps, compute case aggregates. |
-| Store · dispatch | `storage.py`, `dispatch.py` | Write the Parquet set, emit `log.imported`, plan the precompute closure, flip the status. |
+| Store · dispatch | `storage.py`, `dispatch.py` | Write the Parquet set, bump the log's data revision, flip the status to `ready`, emit `log.imported`. |
 
 Automatic repairs (duplicate columns, text that should be numeric, mixed timestamp formats) are recorded and reported rather than rejected.
 
@@ -151,8 +151,9 @@ In-process pub/sub, with a bounded queue per subscriber: when one fills, the old
 | --- | --- |
 | `job.queued` · `job.started` · `job.progress` · `job.completed` · `job.failed` · `job.cancelled` | Job lifecycle |
 | `job.plan` · `job.snapshot` · `job.queue.paused` · `job.queue.resumed` | Plan published, client resync, queue control |
-| `log.imported` · `ocel.imported` · `log.ready` | Import normalised · precompute settled |
-| `<module_id>.completed` | A module's precompute succeeded |
+| `log.imported` · `ocel.imported` · `log.ready` | Import normalised (also re-sent when a committed filter changes the data) · the log is open |
+| `module_run.updated` | A module's compute state for a log changed |
+| `<module_id>.completed` | A module's precompute succeeded for a log |
 | `module.log.*` · `module.installed` | Module log line · install finished |
 
 `GET /api/v1/events?topic=…` is the platform stream, `GET /api/v1/jobs/{id}/stream` the per-job one; both are SSE with a Bearer header, and the client reconnects with backoff.
@@ -168,7 +169,9 @@ In-process pub/sub, with a bounded queue per subscriber: when one fills, the old
 | Gating | Per log: log model, required columns, `min_events`/`min_cases`, required modules, and the user's enable switch. |
 | Hot reload | Dev only: changed files reload in place; a changed dependency block triggers `uv sync` for that module. |
 
-**Precompute** is declared by stacking `@on_event("log.imported")` and `@job` on one handler. The closure — those handlers plus everything chained off `<module_id>.completed` — is frozen onto the log at import time. A module's precompute that succeeds publishes `<module_id>.completed`; if an upstream job fails or is cancelled, its dependents are **skipped**, so a log always reaches `ready` instead of hanging in `processing`. Skipped steps appear in the import's plan; no job row is created for them.
+**Precompute** is declared by stacking `@on_event("log.imported")` and `@job` on one handler, and it is **lazy**: a log is `ready` once parsed, and a module computes for it only when something asks — opening the module page, a dashboard card, or an MCP read — or at import for a manifest that says `precompute: eager` (an admin can override that per module). One row per (log, module) in `log_module_runs` records the state (`queued`, `running`, `ready`, `failed`, `cancelled`); `idle` and `stale` are derived by comparing the row with the log's data revision and the module's version, so a data change never has to touch a row. Requests are deduplicated per (log, module).
+
+A committed filter, a reimport or a cell edit bumps the data revision and re-runs only the modules already computed on the log, with their result cache emptied first (cell edits wait for a pause). Ordering is pull-based: asking for a module first runs what it depends on — the modules it chains off via `<module_id>.completed`, and its hard `requirements.modules` — and parks it until they finish. A module whose upstream fails or is cancelled is failed with that reason, never left waiting. A run lost to an API restart is resubmitted at boot.
 
 **Install** is a job: an uploaded archive (`POST /api/v1/modules/install`) lands in `data/uploaded_modules/{id}/`, the manifest is validated, dependencies materialised, the frontend bundled, and the module mounted — a failure rolls back. Git-URL and registry installs are specified in the design docs but not implemented; discovery separately picks up installed packages that expose the `mate.modules` entry point. Ownership is reference-counted per user, and shared artifacts are deleted at zero owners.
 

@@ -40,6 +40,7 @@ from mate.api.modules.event_filters import quote_ident as _quote_ident
 from mate.api.modules.event_filters import validate_filters
 from mate.api.modules.event_log_access import EventLogAccess, file_identity
 from mate.api.modules.object_centric_log_access import ObjectCentricLogAccess
+from mate.api.modules.processing import log_imported_payload
 from mate.api.schemas.common import utc_isoformat
 from mate.api.schemas.event_log_data import (
     ActivityCase,
@@ -718,37 +719,29 @@ async def commit_active_filter(
 ) -> bool:
     """Commit the Events-tab filter as the *applied* dataset filter.
 
-    Persists it on the log, then re-publishes ``log.imported`` so every
-    installed module re-runs its import/processing against the now-filtered
-    data (modules subscribe to that topic). An empty ``entries`` clears the
-    overlay - back to the full dataset - and likewise re-runs modules.
+    Persists it on the log and moves its ``data_revision`` on, so every module
+    result computed against the previous data now reads as stale. It then
+    re-publishes ``log.imported`` so the modules already used on this log re-run
+    against the now-filtered data; modules nobody has opened stay lazy and
+    compute the first time they are. An empty ``entries`` clears the overlay -
+    back to the full dataset - and likewise refreshes what was used.
     Returns whether the re-import signal was published (modules_retriggered).
     """
     await validate_committed_filter(log_row.id, user_id, entries)
 
     log_row.active_filter = entries or None
+    log_row.data_revision = int(log_row.data_revision or 0) + 1
     log_row.last_edited_at = _utcnow()
     await session.commit()
 
-    # Re-publish the import-completed signal so modules reprocess the filtered
-    # dataset - mirrors the payload the import pipeline emits (ingest/dispatch.py)
-    # plus a `reapplied` marker so handlers can distinguish a refilter from a
-    # first import if they care.
+    # Re-publish the import-completed signal so the working set reprocesses the
+    # filtered dataset - the same payload the import pipeline emits plus a
+    # `reapplied` marker, which tells the processing coordinator this is a refilter
+    # (refresh what was used) rather than a first import (also start eager modules).
     retriggered = False
     try:
         bus = get_event_bus()
-        await bus.publish(
-            "log.imported",
-            {
-                "log_id": log_row.id,
-                "user_id": user_id,
-                "events_count": int(log_row.events_count or 0),
-                "cases_count": int(log_row.cases_count or 0),
-                "detected_schema": log_row.detected_schema,
-                "fixed_columns": [],
-                "reapplied": True,
-            },
-        )
+        await bus.publish("log.imported", log_imported_payload(log_row, reapplied=True))
         retriggered = True
     except Exception:
         log.exception("active_filter.republish_failed", log_id=log_row.id)
