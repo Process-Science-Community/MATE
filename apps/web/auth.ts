@@ -7,6 +7,13 @@
  *   (see lib/session-store) and the cookie carries only an opaque session id –
  *   so the cookie stays tiny and can't overflow the upstream proxy's buffer.
  * - The `jwt` callback rotates the access token via Keycloak's `/token`
+// Auth.js still encrypts its local demo cookie, even though the demo provider
+// does not contact Keycloak. Keep the secret internal so a fresh local clone
+// can start without making the user configure an auth secret. Real deployments
+// must provide AUTH_SECRET explicitly.
+const AUTH_SECRET =
+  process.env.AUTH_SECRET ||
+  (DEMO_MODE ? "mate-local-demo-auth-secret-change-for-shared-use" : undefined);
  *   endpoint when it's within 30 s of expiry. On refresh failure we set
  *   `token.error = "RefreshAccessTokenError"`; the api wrapper picks that up
  *   and triggers a fresh sign-in.
@@ -138,6 +145,12 @@ export const DEMO_ADMIN = ["1", "true", "yes", "on"].includes(
 );
 const DEMO_ACCESS_TOKEN = "demo-access-token";
 const DEMO_USER = { id: "demo-user", name: "Demo User", email: "demo@mate.local" };
+// Auth.js still encrypts the local demo cookie. Keep a fixed local-only
+// fallback so plugin development does not require configuring a secret.
+// Production/non-demo deployments must provide AUTH_SECRET explicitly.
+const AUTH_SECRET =
+  process.env.AUTH_SECRET ||
+  (DEMO_MODE ? "mate-local-demo-auth-secret-change-for-shared-use" : undefined);
 
 // Single-flight guard: several modules (`lib/api`, `lib/ws`, the analytics
 // client) each call `getSession()` independently, so after the access token
@@ -233,6 +246,7 @@ const jwtOverride = sessionStore.sessionStoreEnabled
   : undefined;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: AUTH_SECRET,
   providers: [
     KeycloakProvider({
       // Label only (Auth.js's built-in pages list providers by it). The provider

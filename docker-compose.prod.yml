@@ -74,6 +74,9 @@ services:
         condition: service_healthy
 
   web:
+    # Production receives configuration from the deployment environment (or
+    # explicitly supplied Compose env files), never from the developer's .env.
+    env_file: !reset []
     mem_limit: 768m
     memswap_limit: 768m
     logging: *log
@@ -126,6 +129,7 @@ services:
     ports: !reset []
 
   api:
+    env_file: !reset []
     # 8 GiB of the VM's 15 GiB. Sized so the four capped services total
     # ~10.4 GiB, leaving headroom for the host and for `pnpm build` during
     # a deploy. Equal mem/memswap => no swap for this container.
@@ -187,10 +191,12 @@ services:
   # published; the api reaches it as bolt://neo4j:7687 on the compose network.
   # (Only merged when the "graph" profile is enabled, same as the base file.)
   neo4j:
+    env_file: !reset []
     profiles: ["graph"]
     ports: !reset []
 
   keycloak:
+    env_file: !reset []
     # Heap is already capped at -Xmx512m (our Temurin base gets kc.sh's
     # non-container default, not a %-of-RAM one); 1g covers heap + metaspace
     # + thread stacks. Verified with `jcmd 1 VM.flags`.
@@ -229,12 +235,14 @@ services:
     ports: !reset []
 
   app-db:
+    env_file: !reset []
     # Same envelope as keycloak-db: a handful of small tables, idles low.
     mem_limit: 512m
     memswap_limit: 512m
     logging: *log
 
   keycloak-db:
+    env_file: !reset []
     # Postgres for Keycloak only – a handful of tiny tables. Idles at ~30 MiB.
     mem_limit: 512m
     memswap_limit: 512m
