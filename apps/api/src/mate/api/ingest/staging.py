@@ -9,14 +9,21 @@ behind, which the TTL sweep below reclaims.
 Staging is intentionally not modelled in the database: nothing here is a log
 yet, and a crash between upload and confirm must not leave a half-created
 ``process_logs`` row.
+
+An archive holding several logs is staged as a whole (``kind: "archive"``,
+with its member listing in the manifest) and never imported itself: each
+member the user picks is unpacked into a staging slot of its own, which is
+then confirmed like any single upload.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import shutil
 import time
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +31,7 @@ from typing import Any
 import structlog
 
 from mate.api.config import get_settings
+from mate.api.ingest.archive import ArchiveListing
 
 log = structlog.get_logger(__name__)
 
@@ -62,6 +70,16 @@ class StagedUpload:
         return str(flavor) if flavor else None
 
     @property
+    def kind(self) -> str:
+        """``"log"`` for an importable upload, ``"archive"`` for a multi-log archive."""
+        return str(self.manifest.get("kind") or "log")
+
+    @property
+    def archive(self) -> ArchiveListing | None:
+        listing = self.manifest.get("archive")
+        return ArchiveListing.from_dict(listing) if isinstance(listing, dict) else None
+
+    @property
     def size_bytes(self) -> int:
         try:
             return self.file.stat().st_size
@@ -76,7 +94,7 @@ def write_manifest(root: Path, data: dict[str, Any]) -> None:
     (root / _MANIFEST_NAME).write_text(json.dumps(data, default=str))
 
 
-def _read_manifest(root: Path) -> dict[str, Any]:
+def read_manifest(root: Path) -> dict[str, Any]:
     path = root / _MANIFEST_NAME
     if not path.is_file():
         return {}
@@ -85,6 +103,22 @@ def _read_manifest(root: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return loaded if isinstance(loaded, dict) else {}
+
+
+# One lock per staged upload, held while an archive member is unpacked: the
+# members share the archive's budget, so their bookkeeping must not interleave.
+# In-process only - the API runs as a single worker (`cli.py`); with several,
+# concurrent unpacks of one archive could each overshoot by one member.
+_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+
+
+def lock_for(user_id: str, token: str) -> asyncio.Lock:
+    key = f"{user_id}/{token}"
+    lock = _locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[key] = lock
+    return lock
 
 
 def is_valid_token(token: str) -> bool:
@@ -113,7 +147,7 @@ def resolve_staged(user_id: str, token: str) -> StagedUpload | None:
     if not root.is_dir():
         return None
     for candidate in sorted(root.glob("original.*")):
-        return StagedUpload(token=token, root=root, file=candidate, manifest=_read_manifest(root))
+        return StagedUpload(token=token, root=root, file=candidate, manifest=read_manifest(root))
     return None
 
 
@@ -145,6 +179,8 @@ __all__ = [
     "StagedUpload",
     "create_staging_dir",
     "is_valid_token",
+    "lock_for",
+    "read_manifest",
     "resolve_staged",
     "staging_root",
     "sweep_staging",

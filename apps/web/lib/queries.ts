@@ -43,6 +43,7 @@ import type {
   OcelRelationsPage,
   RemapColumnRoles,
   ReorderItem,
+  StageResponse,
   VariantCasesPage,
   VariantDetail,
   VariantsPage,
@@ -162,18 +163,44 @@ export function useModuleNames(): (moduleId: string) => string {
  * This is the import wizard's *only* upload: the file goes up once, the server
  * samples it, and `useImportEventLog` later confirms it by token. Exposes
  * `progress` (0–100) for the upload-bytes phase via XHR; it holds at 100 while
- * the server sniffs + probes the staged file, then resets to `null` on settle. */
+ * the server sniffs + probes the staged file, then resets to `null` on settle.
+ *
+ * An archive holding several logs comes back as `kind: "archive"` instead – a
+ * member list to pick from with `useExtractArchiveMember`. */
 export function useStageUpload() {
   const [progress, setProgress] = useState<number | null>(null);
   const mutation = useMutation({
     mutationFn: (file: File) =>
-      apiUpload<LogProbeResponse>("/api/v1/event-logs/stage", file, {
+      apiUpload<StageResponse>("/api/v1/event-logs/stage", file, {
         onProgress: (pct) => setProgress(Math.round(pct)),
       }),
     onMutate: () => setProgress(0),
     onSettled: () => setProgress(null),
   });
   return Object.assign(mutation, { progress });
+}
+
+/** Unpack one member of a staged archive into a staged upload of its own and
+ * get its columns back – confirmed later like any single file. */
+export function useExtractArchiveMember() {
+  return useMutation({
+    mutationFn: (input: { stagingToken: string; member: string }) =>
+      api<LogProbeResponse>(
+        `/api/v1/event-logs/stage/${encodeURIComponent(input.stagingToken)}/extract`,
+        { method: "POST", json: { member: input.member } },
+      ),
+  });
+}
+
+/** Drop staged bytes the wizard won't import. Best-effort: anything missed is
+ * reclaimed by the server's staging TTL anyway. */
+export function useDiscardStaged() {
+  return useMutation({
+    mutationFn: (stagingToken: string) =>
+      api<void>(`/api/v1/event-logs/stage/${encodeURIComponent(stagingToken)}`, {
+        method: "DELETE",
+      }),
+  });
 }
 
 export function useImportEventLog() {

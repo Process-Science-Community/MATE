@@ -6,7 +6,7 @@ of {importing, processing, ready, failed}.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -121,6 +121,8 @@ class LogProbeResponse(BaseModel):
     for confirmation and then posts the token back to `POST /event-logs`.
     """
 
+    # Tells this apart from an `ArchiveProbeResponse` from the same endpoint.
+    kind: Literal["log"] = "log"
     staging_token: str
     # The *sniffed* format, not the extension: a .json that turned out to be
     # OCEL arrives here as "ocel".
@@ -139,6 +141,53 @@ class LogProbeResponse(BaseModel):
     delimiter: str | None = None
     event_element: str | None = None
     event_path: str | None = None
+
+
+class ArchiveMember(BaseModel):
+    """One file inside an uploaded archive, as the import wizard lists it."""
+
+    # Name inside the archive - what `POST .../extract` takes back.
+    path: str
+    name: str
+    # Unpacked size, as the archive declares it (enforced on extraction).
+    size_bytes: int
+    # Packed size; zip only (a tar is compressed as a whole).
+    compressed_bytes: int | None = None
+    # Coarse format from the file name; None when it isn't an event log.
+    format: str | None = None
+    importable: bool
+    # Why it can't be imported, for the greyed-out row.
+    reason: str | None = None
+    # Refused by a zip-bomb guard (too large, implausible ratio), not for
+    # being the wrong kind of file.
+    unsafe: bool = False
+
+
+class ArchiveProbeResponse(BaseModel):
+    """`POST /event-logs/stage` for an archive that holds several event logs.
+
+    Nothing is unpacked yet. The client picks members and stages each one with
+    `POST /event-logs/stage/{staging_token}/extract`, which answers with the
+    usual `LogProbeResponse` for that member.
+    """
+
+    kind: Literal["archive"] = "archive"
+    staging_token: str
+    filename: str
+    size_bytes: int
+    # "zip", "tar", "tar.gz", "tar.bz2" or "tar.xz".
+    archive_format: str
+    # Archive order; folders and OS junk (__MACOSX, dotfiles) left out.
+    members: list[ArchiveMember]
+    # What the members may unpack to, all of them together.
+    limit_bytes: int
+
+
+StageResponse = Annotated[LogProbeResponse | ArchiveProbeResponse, Field(discriminator="kind")]
+
+
+class ExtractMemberRequest(BaseModel):
+    member: str = Field(min_length=1, max_length=4096)
 
 
 class ImportPayload(BaseModel):

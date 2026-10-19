@@ -13,12 +13,19 @@ import { useAiConfig } from "@/lib/ai-queries";
 import { useImportColumnMapping } from "@/lib/ai-guidance";
 import { EV } from "@/lib/analytics/events";
 import { useTrack } from "@/lib/analytics/hooks";
-import type { LogProbeResponse } from "@/lib/api-types";
+import type { ArchiveProbeResponse, LogProbeResponse } from "@/lib/api-types";
 import { cn } from "@/lib/cn";
 import { EtaTracker } from "@/lib/eta";
 import { formatDuration } from "@/lib/format";
-import { useEventLog, useImportEventLog, useStageUpload } from "@/lib/queries";
+import {
+  useDiscardStaged,
+  useEventLog,
+  useImportEventLog,
+  useStageUpload,
+} from "@/lib/queries";
 import { toastError } from "@/lib/toast";
+import { aiMappingRequest, mergeAiSuggestions } from "@/components/processes/import/ai-mapping";
+import { ArchiveImport, type ArchiveStep } from "@/components/processes/import/archive-import";
 import {
   displayNameFor,
   DropZone,
@@ -31,9 +38,9 @@ import {
   initialMapping,
   MappingStep,
   missingRequiredRoles,
+  parserMappingFor,
   type MappingState,
 } from "@/components/processes/import/mapping-step";
-import { isLowConfidence, REQUIRED_ROLES } from "@/components/processes/import/role-card";
 import { useImportStages } from "@/components/processes/import/use-import-stages";
 
 /**
@@ -45,9 +52,13 @@ import { useImportStages } from "@/components/processes/import/use-import-stages
  * both a real byte-progress bar and a mapping step that works for formats the
  * browser can't read itself (XES, anything compressed). Confirming the mapping
  * hands the staging token back, which is when the log row and its job appear.
+ *
+ * An archive holding several logs (a BPI Challenge download, say) branches off
+ * into `ArchiveImport` after the upload: pick the logs, then the same mapping
+ * step once per log.
  */
 
-type Phase = "idle" | "uploading" | "mapping" | "running";
+type Phase = "idle" | "uploading" | "mapping" | "archive" | "running";
 
 const MOTION: Transition = { duration: 0.18, ease: [0.2, 0, 0, 1] };
 
@@ -62,6 +73,7 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
   const track = useTrack();
   const stage = useStageUpload();
   const importer = useImportEventLog();
+  const { mutate: discardStaged } = useDiscardStaged();
   const { data: aiConfig } = useAiConfig();
   const aiMapping = useImportColumnMapping();
   const aiConfigured = Boolean(aiConfig?.selected_provider && aiConfig?.selected_model);
@@ -77,6 +89,8 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiSuggested, setAiSuggested] = useState<Set<string>>(new Set());
+  const [archive, setArchive] = useState<ArchiveProbeResponse | null>(null);
+  const [archiveStep, setArchiveStep] = useState<ArchiveStep | null>(null);
 
   const etaRef = useRef(new EtaTracker());
 
@@ -104,6 +118,8 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
   }, [stage.progress]);
 
   const reset = useCallback(() => {
+    // Staged but never imported: drop the bytes now instead of at the TTL.
+    if (probe && !logId) discardStaged(probe.staging_token);
     setPhase("idle");
     setFile(null);
     setName("");
@@ -113,36 +129,25 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
     setLogId(null);
     setJobId(null);
     setError(null);
+    setArchive(null);
+    setArchiveStep(null);
     etaRef.current.reset();
-  }, []);
+  }, [discardStaged, logId, probe]);
 
   // Asks the configured AI provider about the roles the resolver guessed, using
   // the probe's own column samples as evidence. Only fills low-confidence roles,
   // never overwrites an exact match or a choice the user already made.
   const suggestWithAi = useCallback(
     async (result: LogProbeResponse, base: MappingState) => {
-      const headers = result.columns.map((c) => c.name);
-      const depth = Math.max(...result.columns.map((c) => c.samples.length), 0);
-      const sampleRows = Array.from({ length: depth }, (_, row) =>
-        result.columns.map((c) => c.samples[row] ?? ""),
-      );
+      const request = aiMappingRequest(result);
       try {
-        const res = await aiMapping.mutateAsync({ headers, sample_rows: sampleRows });
-        const filled = new Set<string>();
+        const res = await aiMapping.mutateAsync(request);
+        let filled = new Set<string>();
         setMapping((current) => {
           if (!current) return current;
-          const roles = { ...current.roles };
-          const quality = { ...current.quality };
-          for (const role of REQUIRED_ROLES) {
-            const suggestion = res.suggestions[role as keyof typeof res.suggestions];
-            if (!suggestion || !headers.includes(suggestion)) continue;
-            if (!isLowConfidence(base.quality[role])) continue;
-            if (roles[role] === suggestion) continue;
-            roles[role] = suggestion;
-            delete quality[role];
-            filled.add(role);
-          }
-          return filled.size > 0 ? { ...current, roles, quality } : current;
+          const merged = mergeAiSuggestions(current, base, request.headers, res.suggestions);
+          filled = merged.filled;
+          return merged.mapping;
         });
         if (filled.size > 0) setAiSuggested(filled);
       } catch {
@@ -162,6 +167,12 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
 
       try {
         const result = await stage.mutateAsync(picked);
+        if (result.kind === "archive") {
+          // Several logs inside: the archive step takes it from here.
+          setArchive(result);
+          setPhase("archive");
+          return;
+        }
         setProbe(result);
         const base = initialMapping(result);
         setMapping(base);
@@ -239,17 +250,35 @@ export function ImportFlow({ onSuccess }: ImportFlowProps = {}) {
 
   return (
     <div className="space-y-6">
-      {phase !== "running" && (
+      {phase !== "running" && archiveStep !== "running" && (
         <DropZone
           file={file}
           onDrop={onDrop}
           onClear={reset}
-          busy={phase === "uploading" || importer.isPending}
+          // The archive step has its own Cancel: it knows which bytes it staged.
+          busy={phase === "uploading" || phase === "archive" || importer.isPending}
         />
       )}
       {phase === "idle" && !file && <SampleDataHint />}
 
       <AnimatePresence mode="wait" initial={false}>
+        {phase === "archive" && archive && (
+          // Keyed per upload: a second archive dropped while the first one's
+          // exit animation still runs must not inherit its state.
+          <motion.div key={`archive-${archive.staging_token}`} {...enter}>
+            <Card>
+              <CardContent>
+                <ArchiveImport
+                  archive={archive}
+                  onStepChange={setArchiveStep}
+                  onExit={reset}
+                  onSuccess={onSuccess}
+                />
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {phase === "uploading" && (
           <motion.div key="uploading" {...enter}>
             <Card>
@@ -385,38 +414,3 @@ function UploadPanel({
   );
 }
 
-/**
- * Format-specific parser settings that a role mapping can't carry: the CSV
- * delimiter, the XML event element, the JSON array key, the timestamp format.
- * Roles themselves always travel as `column_roles` so the confirmed mapping is
- * recorded as the user's choice rather than a guess.
- */
-function parserMappingFor(probe: LogProbeResponse, mapping: MappingState) {
-  if (!probe.needs_mapping) return {};
-  const roles = mapping.roles;
-  const required = roles.case_id && roles.activity && roles.timestamp;
-  if (!required) return {};
-
-  const shared = {
-    case_id: roles.case_id,
-    activity: roles.activity,
-    timestamp: roles.timestamp,
-    end_timestamp: roles.end_timestamp || undefined,
-    resource: roles.resource || undefined,
-    cost: roles.cost || undefined,
-    timestamp_format: mapping.timestampFormat || undefined,
-  };
-
-  if (probe.source_format === "csv") {
-    return { csvMapping: { ...shared, delimiter: mapping.delimiter } };
-  }
-  if (probe.source_format === "xml" && mapping.eventElement) {
-    return { xmlMapping: { ...shared, event_element: mapping.eventElement } };
-  }
-  if (probe.source_format === "json") {
-    return { jsonMapping: { ...shared, event_path: mapping.eventPath || undefined } };
-  }
-  // XES (and XES-shaped XML) need no parser mapping at all - the parser knows
-  // its own canonical schema and `column_roles` covers the rest.
-  return {};
-}

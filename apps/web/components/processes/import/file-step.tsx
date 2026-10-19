@@ -8,7 +8,9 @@ import { cn } from "@/lib/cn";
 
 const ACCEPT =
   ".xes,.xes.gz,.csv,.xml,.json,.jsonocel,.xmlocel,.sqlite,.gz,.gzip,.bz2,.xz,.lzma,.zip," +
-  "application/xml,text/xml,text/csv,application/json,application/zip,application/gzip";
+  ".tar,.tgz,.tbz2,.tbz,.txz," +
+  "application/xml,text/xml,text/csv,application/json,application/zip,application/gzip," +
+  "application/x-tar";
 
 /** The drop target. Collapses into a one-line file chip once a file is picked. */
 export function DropZone({
@@ -73,6 +75,9 @@ export function DropZone({
       <div className="text-xs text-muted-foreground">
         Supports XES, CSV, XML, JSON, and OCEL - plain or compressed (.gz, .bz2, .xz, .zip)
       </div>
+      <div className="text-xs text-muted-foreground">
+        Archives with several logs (.zip, .tar.gz) let you pick which ones to import
+      </div>
       <input
         type="file"
         className="sr-only"
@@ -113,6 +118,7 @@ export function formatBytes(bytes: number): string {
 /** "log.csv.gz" → "log" – the default display name for an imported log. */
 export function displayNameFor(filename: string): string {
   return filename
+    .replace(/\.(tar\.(gz|bz2|xz)|tgz|tbz2?|txz|tar)$/i, "")
     .replace(/\.(gz|gzip|bz2|xz|lzma|zip)$/i, "")
     .replace(/\.(xes|csv|xml|json|jsonocel|xmlocel|sqlite)$/i, "");
 }

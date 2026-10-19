@@ -37,6 +37,8 @@ export const EV = {
   // Fired when the user confirms the column mapping. `changed_roles` > 0 means
   // the deliberate step actually caught something the resolver got wrong.
   PROCESS_IMPORT_MAPPING_CONFIRMED: "process_import_mapping_confirmed",
+  // An archive with several logs: how many it held vs how many were picked.
+  PROCESS_IMPORT_ARCHIVE_PICKED: "process_import_archive_picked",
   PROCESS_IMPORT_FINISHED: "process_import_finished",
   PROCESS_OPENED: "process_opened",
   PROCESS_DELETED: "process_deleted",

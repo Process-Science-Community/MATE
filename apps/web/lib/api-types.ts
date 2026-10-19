@@ -59,6 +59,7 @@ export interface ProbeColumn {
  * `staging_token`), described well enough to confirm the mapping before the
  * import job is queued. */
 export interface LogProbeResponse {
+  kind: "log";
   staging_token: string;
   /** The sniffed format – a `.json` that turned out to be OCEL reads "ocel". */
   source_format: string;
@@ -76,6 +77,41 @@ export interface LogProbeResponse {
   event_element: string | null;
   event_path: string | null;
 }
+
+/** One file inside an uploaded archive. */
+export interface ArchiveMember {
+  /** Name inside the archive – what `POST …/extract` takes back. */
+  path: string;
+  name: string;
+  /** Unpacked size as the archive declares it (enforced on extraction). */
+  size_bytes: number;
+  /** Zip only – a tar is compressed as a whole. */
+  compressed_bytes: number | null;
+  /** Coarse format from the file name; `null` when it isn't an event log. */
+  format: string | null;
+  importable: boolean;
+  /** Why it can't be imported, for the greyed-out row. */
+  reason: string | null;
+  /** Refused by a zip-bomb guard rather than for being the wrong kind of file. */
+  unsafe: boolean;
+}
+
+/** Staging an archive that holds several event logs: nothing is unpacked yet.
+ * Each member the user picks is staged on its own via
+ * `POST /event-logs/stage/{staging_token}/extract`. */
+export interface ArchiveProbeResponse {
+  kind: "archive";
+  staging_token: string;
+  filename: string;
+  size_bytes: number;
+  /** "zip" | "tar" | "tar.gz" | "tar.bz2" | "tar.xz" */
+  archive_format: string;
+  members: ArchiveMember[];
+  /** What the picked members may unpack to, all of them together. */
+  limit_bytes: number;
+}
+
+export type StageResponse = LogProbeResponse | ArchiveProbeResponse;
 
 // ── Object-centric (OCEL) data shapes (GET /event-logs/{id}/ocel/*) ──────────
 

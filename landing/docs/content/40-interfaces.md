@@ -38,7 +38,9 @@ The table is generated from that schema: after changing a route, a request model
 
 | Group | Endpoint | Request | Response |
 | --- | --- | --- | --- |
-| Import | `POST /event-logs/stage` | `{"file":"…"}` | `200` `{"staging_token":"…","source_format":"…","log_model":"case_centric","needs_mapping":true,…}` |
+| Import | `POST /event-logs/stage` | `{"file":"…"}` | `200` `{"kind":"…","staging_token":"…","source_format":"…","log_model":"case_centric",…}` |
+| Import | `POST /event-logs/stage/{token}/extract` | `{"member":"…"}` | `200` `{"kind":"…","staging_token":"…","source_format":"…","log_model":"case_centric",…}` |
+| Import | `DELETE /event-logs/stage/{token}` | — | `204` — |
 | Import | `POST /event-logs` | `{"file":"…","staging_token":"…","name":"nightly import","csv_mapping":"…",…}` | `202` `{"log_id":"018f2c9a…","job_id":"018f2c9a…"}` |
 | Import | `POST /event-logs/from-url` | `{"url":"https://example.com/log.xes","name":"nightly import","csv_mapping":"…",…}` | `202` `{"log_id":"018f2c9a…","job_id":"018f2c9a…"}` |
 | Import | `POST /event-logs/probe-xml` | `{"file":"…"}` | `200` `{"format_hint":"generic","event_element":"…","events_sampled":0,"fields":[{…}],…}` |
