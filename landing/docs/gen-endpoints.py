@@ -58,6 +58,8 @@ GROUP_ORDER = [
 
 IMPORT_ROUTES = {
     ("POST", "/event-logs/stage"),
+    ("POST", "/event-logs/stage/{token}/extract"),
+    ("DELETE", "/event-logs/stage/{token}"),
     ("POST", "/event-logs"),
     ("POST", "/event-logs/from-url"),
     ("POST", "/event-logs/probe-xml"),
@@ -68,6 +70,8 @@ IMPORT_ROUTES = {
 ORDER_OVERRIDES: dict[str, list[tuple[str, str]]] = {
     "Import": [
         ("POST", "/event-logs/stage"),
+        ("POST", "/event-logs/stage/{token}/extract"),
+        ("DELETE", "/event-logs/stage/{token}"),
         ("POST", "/event-logs"),
         ("POST", "/event-logs/from-url"),
         ("POST", "/event-logs/probe-xml"),
