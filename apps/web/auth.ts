@@ -252,7 +252,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Label only (Auth.js's built-in pages list providers by it). The provider
       // *id* stays "keycloak": it is part of the callback URL registered on the
       // Keycloak client, and users never see it.
-      name: "Email & password",
+      name: "Email",
       clientId: KEYCLOAK_CLIENT_ID,
       clientSecret: KEYCLOAK_CLIENT_SECRET,
       issuer: KEYCLOAK_ISSUER,

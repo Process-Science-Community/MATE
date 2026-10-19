@@ -46,7 +46,7 @@ export default async function LoginPage({
   // Name the *method*, not the server: Keycloak is only what both go through. The
   // two ways in are the university account and an email + password that lives in
   // the realm itself. Without a brokered IdP the single CTA lands on the latter.
-  const emailPasswordLabel = "Login with email & password";
+  const emailPasswordLabel = "Login with email";
 
   return (
     <div className="relative z-10 w-full max-w-sm space-y-6 rounded-2xl border border-white/15 [border-top-color:var(--glass-refraction-top)] bg-card/70 p-8 shadow-xl backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-card/60">
