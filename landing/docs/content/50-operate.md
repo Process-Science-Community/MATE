@@ -69,6 +69,7 @@ The realm JSON imports **only into an empty Keycloak database**; everything afte
 | Broker an institutional IdP | `./infra/keycloak/configure-university-idp.sh`, then set `KEYCLOAK_IDP_HINT` so users skip Keycloak's form. Keep the local form as break-glass. |
 | Admin REST client (user deletion) | `./infra/keycloak/configure-admin-client.sh` |
 | MCP OAuth client | `./infra/keycloak/configure-mcp-client.sh` |
+| Change how Keycloak's own pages look | Edit the `mate` theme in `infra/keycloak/themes/mate`. Every deploy re-applies `loginTheme=mate`, so do not switch it in the console. |
 
 Deleting a user from *Admin → Users* purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. This is intentionally irreversible.
 
@@ -87,6 +88,7 @@ make deploy      # pushes the branch, resets the server clone, rebuilds, health-
 | Any other environment variable | `up -d` — a **recreate**, not a restart |
 | Caddyfile | Restart of the `proxy` container |
 | A realm setting | A change in the Keycloak console, not the JSON |
+| The Keycloak login theme | Restart of the `keycloak` container; returning browsers pick up new CSS within an hour |
 | A module's dependency block | Nothing: the loader re-materialises on boot |
 
 Migrations run on API boot (`alembic upgrade head`), so a deploy migrates itself. There is no rolling deployment — a restart interrupts running jobs, which are marked failed at the next boot while logs left mid-import are reconciled.

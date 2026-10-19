@@ -1,6 +1,7 @@
 {
   "realm": "flows-funds",
   "displayName": "MATE",
+  "loginTheme": "mate",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

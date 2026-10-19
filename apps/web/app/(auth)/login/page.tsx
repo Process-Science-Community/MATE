@@ -11,7 +11,7 @@ import { RecoveryAutoRetry } from "./recovery-auto-retry";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   const session = await auth();
   const params = await searchParams;
@@ -43,6 +43,10 @@ export default async function LoginPage({
   // need this second door. `local=1` tells /login/start to drop kc_idp_hint.
   // Hidden when no IdP is brokered, since the CTA already lands on that form.
   const localLoginUrl = KEYCLOAK_IDP_HINT ? `${startUrl}&local=1` : null;
+  // Name the *method*, not the server: Keycloak is only what both go through. The
+  // two ways in are the university account and an email + password that lives in
+  // the realm itself. Without a brokered IdP the single CTA lands on the latter.
+  const emailPasswordLabel = "Login with email & password";
 
   return (
     <div className="relative z-10 w-full max-w-sm space-y-6 rounded-2xl border border-white/15 [border-top-color:var(--glass-refraction-top)] bg-card/70 p-8 shadow-xl backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-card/60">
@@ -51,12 +55,14 @@ export default async function LoginPage({
       <div className="space-y-2 text-center">
         <MateLogo className="mx-auto h-11 w-11 text-foreground" />
         <h1 className="text-2xl font-semibold">MATE</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-balance text-sm text-muted-foreground">
           {DEMO_MODE
             ? "Demo mode – signing you in…"
             : staleSession
               ? "Your session expired – signing you back in…"
-              : "Sign in with your workspace account to continue."}
+              : localLoginUrl
+                ? "Choose how you want to sign in."
+                : "Sign in with your email and password to continue."}
         </p>
       </div>
       {DEMO_MODE ? (
@@ -77,16 +83,33 @@ export default async function LoginPage({
               one-shot guard inside stops a failing OAuth from looping and leaves
               the manual link as the fallback. */}
           {staleSession ? <RecoveryAutoRetry href={startUrl} /> : null}
+          {/* Auth.js sends a failed sign-in here (`pages.signIn`) with ?error=…; say so
+              instead of silently showing the same buttons. Generic on purpose: the
+              error code is Auth.js internals, not something to show a user. */}
+          {params.error && !staleSession ? (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
+            >
+              Sign-in didn&apos;t complete. Please try again.
+            </p>
+          ) : null}
           <LoginCta
             href={startUrl}
-            label={staleSession ? "Sign in again" : "Login with university account"}
+            label={
+              staleSession
+                ? "Sign in again"
+                : localLoginUrl
+                  ? "Login with university account"
+                  : emailPasswordLabel
+            }
             pendingLabel="Signing in…"
           />
           {localLoginUrl ? (
             <LoginCta
               href={localLoginUrl}
               variant="ghost"
-              label="Sign in with a Mate account"
+              label={emailPasswordLabel}
               pendingLabel="Signing in…"
             />
           ) : null}

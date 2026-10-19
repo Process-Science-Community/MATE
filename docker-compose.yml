@@ -60,6 +60,10 @@ services:
       - "8080:8080"
     volumes:
       - ./infra/keycloak/realm-export:/opt/keycloak/data/import:ro
+      # The login pages in the platform's own look (see infra/keycloak/themes/README.md).
+      # A mount rather than a COPY in the Dockerfile so it also ships when the prod
+      # overlay goes back to the upstream image. The realm selects it via `loginTheme`.
+      - ./infra/keycloak/themes/mate:/opt/keycloak/themes/mate:ro
     depends_on:
       keycloak-db:
         condition: service_healthy

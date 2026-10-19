@@ -1,0 +1,1189 @@
+/* MATE login theme: the Keycloak-hosted pages in the platform's own look.
+ *
+ * Everything mirrors apps/web so the two read as one product:
+ *   - tokens:         copied from app/globals.css (same names, only what is used)
+ *   - card, toggle:   app/(auth)/login/page.tsx
+ *   - border beam:    components/glass/border-beam.tsx
+ *   - aurora:         components/glass/aurora-background.tsx
+ *   - inputs, buttons: components/ui/{input,button}.tsx
+ * Light/dark flips on the `dark` class on <html> (js/theme-init.js).
+ *
+ * Keycloak's stock templates reach this file through the kc* keys in
+ * theme.properties, which map their markup onto the .mate-* classes below.
+ */
+
+/* ── Tokens ────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+
+  --radius: 0.75rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --glass-refraction-top: rgb(255 255 255 / 0.4);
+
+  /* Status colours are mode-invariant, as in globals.css (--ff-status-*). */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --glass-refraction-top: rgb(255 255 255 / 0.15);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji";
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+hr {
+  margin: 0;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+.mate-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ── Page, aurora, card ────────────────────────────────────────────────── */
+
+.mate-page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 3rem 1.5rem;
+  overflow: hidden;
+  background: var(--background);
+}
+
+/* Three blurred, drifting blobs: blob size/position/delay are the component's
+   own formulas evaluated for blobCount=3, duration=8. */
+@keyframes aurora-shift {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  33% {
+    transform: translate(-38%, -62%) scale(1.18);
+  }
+  66% {
+    transform: translate(-62%, -44%) scale(0.9);
+  }
+}
+
+.mate-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.dark .mate-aurora {
+  opacity: 0.5;
+}
+
+.mate-aurora-layer {
+  position: absolute;
+  inset: 0;
+  filter: blur(80px);
+  opacity: 0.4;
+}
+
+.mate-aurora-layer i {
+  position: absolute;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  animation: aurora-shift 8s ease-in-out infinite;
+}
+
+.mate-aurora-layer i:nth-child(1) {
+  left: 20%;
+  top: 20%;
+  width: 40%;
+  height: 40%;
+  background: radial-gradient(circle, #a855f7, transparent 70%);
+}
+
+.mate-aurora-layer i:nth-child(2) {
+  left: 40%;
+  top: 60%;
+  width: 55%;
+  height: 55%;
+  background: radial-gradient(circle, #6366f1, transparent 70%);
+  animation-delay: -2.6667s;
+}
+
+.mate-aurora-layer i:nth-child(3) {
+  left: 60%;
+  top: 40%;
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(circle, #ec4899, transparent 70%);
+  animation-delay: -5.3333s;
+}
+
+.mate-card {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 24rem;
+  padding: 2rem;
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-top-color: var(--glass-refraction-top);
+  border-radius: 1rem;
+  background: color-mix(in oklab, var(--card) 70%, transparent);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  backdrop-filter: blur(40px) saturate(150%);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .mate-card {
+    background: color-mix(in oklab, var(--card) 60%, transparent);
+  }
+}
+
+/* A comet riding the card's border. The angle is a registered property so it
+   interpolates smoothly; the padding-box mask leaves only the 1.5px ring. */
+@property --border-beam-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes border-beam {
+  to {
+    --border-beam-angle: 360deg;
+  }
+}
+
+.mate-beam {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--border-beam-angle, 0deg),
+    transparent 0deg,
+    var(--primary) 100deg,
+    transparent 200deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: border-beam 6s linear infinite;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+
+.mate-card-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+.mate-logo {
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--foreground);
+}
+
+.mate-brand {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+}
+
+/* The page's own title sits where the platform's login page has its subtitle. */
+.mate-title {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  text-wrap: balance;
+}
+
+.mate-required {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.required {
+  color: var(--destructive);
+}
+
+/* The attempted username of a split sign-in, with its "restart login" icon. */
+.mate-username {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.125rem 0.125rem 0.125rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  font-size: 0.875rem;
+}
+
+#kc-attempted-username {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mate-username .mate-icon-btn {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+}
+
+/* ── Content ───────────────────────────────────────────────────────────── */
+
+#kc-content {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+#kc-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* The explanation of a forgot-password page reads first, not after the form.
+   Progressive: without :has() it simply stays below. */
+#kc-content-wrapper:has(#kc-reset-password-form) #kc-info {
+  order: -1;
+}
+
+/* Alerts: the platform's inline notice (login/page.tsx), one per message type. */
+.mate-alert {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in oklab, var(--accent) 50%, transparent);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.mate-alert.alert-error {
+  border-color: color-mix(in oklab, var(--destructive) 30%, transparent);
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+/* Mixed towards the foreground so the text keeps its contrast on the tint. */
+.mate-alert.alert-success {
+  border-color: color-mix(in oklab, var(--status-good) 30%, transparent);
+  background: color-mix(in oklab, var(--status-good) 10%, transparent);
+  color: color-mix(in oklab, var(--status-good) 55%, var(--foreground));
+}
+
+.mate-alert.alert-warning {
+  border-color: color-mix(in oklab, var(--status-warning) 40%, transparent);
+  background: color-mix(in oklab, var(--status-warning) 12%, transparent);
+  color: color-mix(in oklab, var(--status-warning) 40%, var(--foreground));
+}
+
+.mate-alert a {
+  color: inherit;
+}
+
+/* ── Forms ─────────────────────────────────────────────────────────────── */
+
+/* Every form stacks its groups. Not all stock forms carry kcFormClass (the
+   sign-in form has no class at all), hence the element selector. */
+.mate-form,
+:where(#kc-content) form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.mate-input-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* The label and its required-field asterisk sit side by side. */
+.mate-label-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.mate-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1;
+  font-weight: 500;
+  user-select: none;
+}
+
+/* Text inputs: components/ui/input.tsx. The :where() group catches stock markup
+   that forgets the class without raising specificity. */
+.mate-input,
+:where(#kc-content) :where(
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="number"],
+    input[type="tel"],
+    input[type="url"],
+    select,
+    textarea
+  ) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  font-size: 1rem;
+  line-height: 1.5;
+  outline: none;
+  transition: color 150ms, box-shadow 150ms;
+}
+
+.dark .mate-input,
+.dark :where(#kc-content) :where(
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="number"],
+    input[type="tel"],
+    input[type="url"],
+    select,
+    textarea
+  ) {
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+/* text-base below md (no iOS zoom on focus), text-sm from md up - as the platform. */
+@media (min-width: 48rem) {
+  .mate-input,
+  :where(#kc-content) :where(
+      input[type="text"],
+      input[type="password"],
+      input[type="email"],
+      input[type="number"],
+      input[type="tel"],
+      input[type="url"],
+      select,
+      textarea
+    ) {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}
+
+.mate-textarea,
+:where(#kc-content) textarea {
+  height: auto;
+  min-height: 4rem;
+  resize: vertical;
+}
+
+.mate-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.mate-input::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.mate-input:focus-visible {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.mate-input[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.mate-input[aria-invalid="true"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent);
+}
+
+.dark .mate-input[aria-invalid="true"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 40%, transparent);
+}
+
+.mate-input:disabled {
+  pointer-events: none;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Browsers paint autofilled fields with their own tint, which clashes in dark. */
+.mate-input:-webkit-autofill,
+.mate-input:-webkit-autofill:hover,
+.mate-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0 100px var(--card) inset;
+}
+
+/* A password field with its show/hide button inside the right edge. */
+.mate-input-group {
+  position: relative;
+  display: flex;
+}
+
+.mate-input-group > .mate-input {
+  padding-right: 2.5rem;
+}
+
+.mate-input-group > .mate-icon-btn {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.25rem;
+}
+
+.mate-help {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.mate-field-error {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--destructive);
+}
+
+/* The sign-in row: "remember me" on the left (when the realm enables it) and
+   "Forgot password?" on the right. Everywhere else the options stack, with the
+   action button first. */
+.mate-form-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+#kc-form-login .mate-form-settings {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  /* Tuck it up under the password field it belongs to. */
+  margin-top: -0.5rem;
+}
+
+.mate-form-settings #kc-form-buttons {
+  order: -1;
+}
+
+.mate-form-options {
+  display: flex;
+}
+
+/* "Back to sign in" sits centred under the button. */
+#kc-reset-password-form .mate-form-options {
+  justify-content: center;
+}
+
+.mate-form-options-item a {
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+
+.mate-form-options-item a:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.mate-form-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* A checkbox row ("Sign out from other devices") right above the action button. */
+.mate-field:not(.mate-form-settings) > #kc-form-options + #kc-form-buttons {
+  margin-top: 0.5rem;
+}
+
+/* A float helper some stock pages leave behind; empty, it would only add a gap. */
+:where(#kc-content) .clearfix {
+  display: none;
+}
+
+/* Check boxes and radios: components/ui/checkbox.tsx. */
+:where(#kc-content) :where(input[type="checkbox"], input[type="radio"]) {
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  border: 1px solid var(--input);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: box-shadow 150ms;
+}
+
+:where(#kc-content) input[type="radio"] {
+  border-radius: 9999px;
+}
+
+.dark :where(#kc-content) :where(input[type="checkbox"], input[type="radio"]) {
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+:where(#kc-content) :where(input[type="checkbox"], input[type="radio"]):checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+:where(#kc-content) input[type="checkbox"]:checked::after {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  background: var(--primary-foreground);
+  -webkit-mask: var(--mate-icon) center / contain no-repeat;
+  mask: var(--mate-icon) center / contain no-repeat;
+  --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
+:where(#kc-content) input[type="radio"]:checked::after {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: var(--primary-foreground);
+}
+
+:where(#kc-content) :where(input[type="checkbox"], input[type="radio"]):focus-visible {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+:where(#kc-content) :where(input[type="checkbox"], input[type="radio"]):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.checkbox label,
+.mate-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  cursor: pointer;
+}
+
+.mate-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mate-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+/* components/ui/button.tsx. A bare .mate-btn is the outline variant; only the
+   primary one is filled. */
+.mate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--background);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  outline: none;
+  cursor: pointer;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mate-btn:not(.mate-btn-primary):hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.dark .mate-btn:not(.mate-btn-primary) {
+  border-color: var(--input);
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+.dark .mate-btn:not(.mate-btn-primary):hover {
+  background: color-mix(in oklab, var(--input) 50%, transparent);
+}
+
+.mate-btn-primary {
+  border-color: transparent;
+  background: var(--primary);
+  box-shadow: none;
+  color: var(--primary-foreground);
+}
+
+.mate-btn-primary:hover {
+  background: color-mix(in oklab, var(--primary) 90%, transparent);
+}
+
+.mate-btn:focus-visible {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.mate-btn:active {
+  transform: scale(0.98);
+}
+
+.mate-btn:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.mate-btn-lg {
+  height: 2.5rem;
+  padding: 0.5rem 1.5rem;
+}
+
+.mate-btn-block {
+  width: 100%;
+}
+
+/* The ghost icon button: password toggle, theme toggle, restart-login. */
+.mate-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  outline: none;
+  cursor: pointer;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mate-icon-btn:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.dark .mate-icon-btn:hover {
+  background: color-mix(in oklab, var(--accent) 50%, transparent);
+}
+
+.mate-icon-btn:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.mate-theme-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
+.mate-theme-toggle svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Sun while light (the button switches to dark), moon while dark. */
+.mate-theme-moon,
+.dark .mate-theme-sun {
+  display: none;
+}
+
+.dark .mate-theme-moon {
+  display: block;
+}
+
+/* ── Text, links, lists ────────────────────────────────────────────────── */
+
+:where(#kc-content) :where(a) {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+:where(#kc-content) :where(a):focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The "info" message pages (email sent, expired page, errors, ...). */
+#kc-error-message,
+#kc-info-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+#kc-content p.instruction {
+  text-align: center;
+  line-height: 1.5;
+}
+
+#kc-info,
+#kc-info .instruction {
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+#kc-info a {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+#try-another-way {
+  display: block;
+  text-align: center;
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+
+#try-another-way:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+:where(#kc-content) :where(h2, h3) {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+}
+
+:where(#kc-content) :where(ol, ul) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+:where(#kc-content) hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+:where(#kc-content) :where(code, kbd, pre) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+}
+
+:where(#kc-content) pre {
+  padding: 0.75rem;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--muted);
+  overflow-x: auto;
+}
+
+/* ── Identity providers ("Or continue with ...") ───────────────────────── */
+
+.mate-social {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mate-social hr {
+  display: none;
+}
+
+.mate-social h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+.mate-social h2::before,
+.mate-social h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.mate-social-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+/* A long provider name wraps instead of overflowing the card. */
+.mate-social-list .mate-btn {
+  height: auto;
+  min-height: 2.5rem;
+  white-space: normal;
+  text-align: center;
+}
+
+/* Stock markup adds an empty brand-icon element for well-known providers; the
+   theme ships no brand icon font, so it would only add a stray gap before the name. */
+.mate-social-logo {
+  display: none;
+}
+
+/* ── Select authenticator, OTP picker, recovery codes ──────────────────── */
+
+.mate-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+.mate-select-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.mate-select-item:hover,
+.mate-select-item:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+.mate-select-icon,
+.mate-select-arrow {
+  display: flex;
+  color: var(--muted-foreground);
+}
+
+.mate-select-icon .mate-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.mate-select-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.mate-select-heading {
+  font-weight: 500;
+}
+
+.mate-select-desc {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--muted-foreground);
+}
+
+.mate-select-fill {
+  flex: 1;
+}
+
+/* The OTP device picker: a visually hidden radio, its label as a selectable tile. */
+.mate-tile-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mate-tile {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms, box-shadow 150ms;
+}
+
+.mate-tile:hover {
+  background: var(--accent);
+}
+
+.mate-tile-input:checked + .mate-tile {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.mate-tile-input:focus-visible + .mate-tile {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.mate-tile-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The stock markup wraps the icon in a bare span, which would sit on the text baseline. */
+.mate-tile-header > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mate-tile-title {
+  font-weight: 500;
+}
+
+.mate-recovery-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  list-style: none;
+}
+
+.mate-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ── Locale picker (only when the realm enables internationalization) ──── */
+
+.mate-locale {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+}
+
+#kc-locale-dropdown {
+  position: relative;
+}
+
+#kc-current-locale-link {
+  height: 2rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+#kc-current-locale-link:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+#kc-current-locale-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+/* menu-button-links.js shows the list by setting display:block inline. */
+.mate-locale-list {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 20;
+  min-width: 10rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--card);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  list-style: none;
+}
+
+.mate-locale-item {
+  display: block;
+  padding: 0.375rem 0.5rem;
+  border-radius: calc(var(--radius) - 4px);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.mate-locale-item:hover,
+.mate-locale-item:focus {
+  background: var(--accent);
+  outline: none;
+}
+
+/* ── Icons ─────────────────────────────────────────────────────────────── */
+
+/* lucide icons as masks, so they take the text colour. Inlined as data URIs:
+   no extra requests, and no icon popping in after first paint. */
+.mate-icon {
+  display: inline-block;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  background-color: currentColor;
+  -webkit-mask: var(--mate-icon) center / contain no-repeat;
+  mask: var(--mate-icon) center / contain no-repeat;
+}
+
+.mate-icon-eye { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E"); }
+.mate-icon-eye-off { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49'/%3E%3Cpath d='M14.084 14.158a3 3 0 0 1-4.242-4.242'/%3E%3Cpath d='M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143'/%3E%3Cpath d='m2 2 20 20'/%3E%3C/svg%3E"); }
+.mate-icon-chevron-right { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E"); }
+.mate-icon-lock { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='11' x='3' y='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E"); }
+.mate-icon-smartphone { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='14' height='20' x='5' y='2' rx='2' ry='2'/%3E%3Cpath d='M12 18h.01'/%3E%3C/svg%3E"); }
+.mate-icon-key { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4'/%3E%3Cpath d='m21 2-9.6 9.6'/%3E%3Ccircle cx='7.5' cy='15.5' r='5.5'/%3E%3C/svg%3E"); }
+.mate-icon-undo { --mate-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 14 4 9l5-5'/%3E%3Cpath d='M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11'/%3E%3C/svg%3E"); }
+
+/* ── Motion ────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .mate-beam {
+    display: none;
+  }
+
+  .mate-aurora-layer i {
+    animation: none;
+  }
+
+  .mate-btn,
+  .mate-icon-btn,
+  .mate-input,
+  .mate-select-item {
+    transition: none;
+  }
+
+  .mate-btn:active {
+    transform: none;
+  }
+}

@@ -221,6 +221,11 @@ services:
       # must NOT be set (Keycloak rejects an empty/conflicting value and exits).
       # Drop the base file's "8080" entirely from the merged config.
       KC_HOSTNAME_PORT: !reset null
+      # Theme assets (css/js) are served under a URL keyed to the Keycloak version,
+      # not to the theme's content, with a 30-day max-age by default - so an updated
+      # login theme would stay stale in returning browsers for weeks. An hour keeps
+      # a theme deploy from lingering and is nothing for ~15 KB of assets.
+      KC_SPI_THEME_STATIC_MAX_AGE: "3600"
     ports: !reset []
 
   app-db:

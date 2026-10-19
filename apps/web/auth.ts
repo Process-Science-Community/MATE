@@ -235,6 +235,10 @@ const jwtOverride = sessionStore.sessionStoreEnabled
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     KeycloakProvider({
+      // Label only (Auth.js's built-in pages list providers by it). The provider
+      // *id* stays "keycloak": it is part of the callback URL registered on the
+      // Keycloak client, and users never see it.
+      name: "Email & password",
       clientId: KEYCLOAK_CLIENT_ID,
       clientSecret: KEYCLOAK_CLIENT_SECRET,
       issuer: KEYCLOAK_ISSUER,
@@ -267,6 +271,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         ]
       : []),
   ],
+  // Our own login screen is the only sign-in page: without this Auth.js falls back
+  // to its built-in one (reachable at /api/auth/signin, which the middleware leaves
+  // public) and a failed sign-in lands there as "Sign in with <provider name>".
+  pages: { signIn: "/login" },
   // Self-hosted behind the uni edge proxy + Caddy: trust the forwarded Host so
   // Auth.js builds callback URLs and cookie flags from AUTH_URL rather than
   // re-deriving them from each raw request (prod compose didn't set

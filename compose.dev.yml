@@ -17,6 +17,15 @@ services:
           --reload-dir apps/api/src
           --reload-dir packages/module-sdk-py/src
 
+  keycloak:
+    # Keycloak caches themes (and serves their assets for 30 days) in `start` mode.
+    # Off here, so an edit to infra/keycloak/themes/mate shows on a browser reload
+    # instead of after a container restart.
+    environment:
+      KC_SPI_THEME_STATIC_MAX_AGE: "-1"
+      KC_SPI_THEME_CACHE_THEMES: "false"
+      KC_SPI_THEME_CACHE_TEMPLATES: "false"
+
   web:
     # Hot reload runs `next dev` against the mounted source. We bind-mount
     # apps/web but exclude node_modules / .next so the container's are used.
