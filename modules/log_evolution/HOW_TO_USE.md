@@ -1,6 +1,6 @@
 # How to use Log Evolution
 
-Log Evolution shows how your log grows and shifts over time. You get case arrivals against completions, work in progress, the changing mix of activities and a dotted chart of every event, so you can spot backlogs, seasonality and changes in behaviour.
+Log Evolution shows how your log grows and shifts over time. You get case arrivals against completions, work in progress, the changing mix of activities and a dotted chart of the events, so you can spot backlogs, seasonality and changes in behaviour.
 
 ## When to use it
 
@@ -41,7 +41,7 @@ A stacked area chart of the number of events per activity in each period. These 
 
 The classic dotted chart: one dot per event. The horizontal position is the time of the event, and the vertical position is the case, ordered by the time of its first event, with the earliest case at the top. The vertical axis shows each case's rank, starting at 0, not its case ID. The colour is the activity: the 12 most frequent activities of the log keep their own colour and all others share a grey called Other. All events of one case sit in one row, so a steady flow of cases typically forms a diagonal band whose width reflects how long cases take, and a vertical stripe means events of many cases at the same moments, which points to batch processing. Hovering a dot shows its date and its case rank.
 
-The **Activities** button in the legend row opens a checklist that hides activities from the chart. Once something is hidden, the button shows how many activities are visible, for example `7/13`. At the top of the list, **Hide all** hides every activity, and **Show all** appears while something is hidden. Hiding only changes what is drawn: the other colours stay the same and nothing is loaded again. The choice is not kept when you leave the page. When the log has more events than **Dotted-chart points**, a caption reads "Showing X of Y events (sampled)." and the sample is fixed, so the same picture appears each time. An empty chart reads "No events to chart for this log yet."
+The **Activities** button in the legend row opens a checklist that hides activities from the chart. Once something is hidden, the button shows how many activities are visible, for example `7/13`. The list starts with **Show all** and **Hide all** entries, each followed by the number of activities: **Show all** appears only while something is hidden, and **Hide all** only while something is visible. Hiding only changes what is drawn: the other colours stay the same and nothing is loaded again. The choice is not kept when you leave the page. When the log has more events than **Dotted-chart points**, a caption reads "Showing X of Y events (sampled)." and the sample is fixed, so the same picture appears each time. An empty chart reads "No events to chart for this log yet."
 
 ### Dashboard cards
 
@@ -57,7 +57,7 @@ Cards follow the filters of their dashboard. Each has an info icon with a short 
 - A case counts as completed in the period of its last recorded event. The module does not know about end activities, so a case that is still running when the log ends counts as completed in the period of its latest event.
 - The charts count cases and events and say nothing about duration. For cycle time or throughput per period, use Performance Over Time.
 - **Granularity** applies to the three time charts, **Activities shown** only to Activity mix over time, and **Dotted-chart points** only to the Dotted chart. A coarser period smooths out day-to-day noise, and a finer one shows exact peaks.
-- The dotted chart never draws more than 20,000 events, whatever the log size or the setting. Its vertical axis has one row per case, so on logs with many cases the rows overlap.
+- The dotted chart never draws more than 20,000 events, whatever the log size or the setting. Its vertical axis spans every case in a chart of fixed height, so on logs with many cases the rows are drawn on top of each other.
 - A filter bar above the panel (**Add filter** and a time range you confirm with **Apply**) narrows the log, and the module recomputes on the filtered events.
 - The module shows volumes over time, not a process model. Use Discovery for the structure of the process.
 
