@@ -69,7 +69,6 @@ _REF_DEF_RE = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*\S")
 _REF_USE_RE = re.compile(r"\[[A-Za-z][^\]]*\]\[[^\]]*\]")
 _FOOTNOTE_RE = re.compile(r"\[\^[^\]]+\]")
 _HTML_RE = re.compile(r"</?[A-Za-z]|<!")
-_ALLOWED_TAGS = frozenset({"<kbd>", "</kbd>"})
 _LIST_ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s+")
 _TASK_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\](?:\s|$)")
 _RULE_RE = re.compile(r"^\s{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
@@ -371,12 +370,10 @@ def _check_line(line: _Line) -> list[str]:
     for m in _HTML_RE.finditer(prose):
         close = prose.find(">", m.start())
         token = prose[m.start() : close + 1] if close != -1 else m.group(0)
-        if token.lower() in _ALLOWED_TAGS:
-            continue
         shown = token if len(token) <= 40 else token[:37] + "..."
         problems.append(
             f"line {line.no}: raw HTML or angle brackets ({shown}) are not supported - "
-            "put the text in backticks (`<kbd>` is the only tag allowed)."
+            "put the text in backticks (the app shows HTML as literal text)."
         )
     return problems
 

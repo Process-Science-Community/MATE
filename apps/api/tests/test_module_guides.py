@@ -83,7 +83,7 @@ def test_rich_markdown_the_renderers_share_is_accepted(tmp_path: Path) -> None:
         text,
         "- It is a fixture.\n",
         "- It is a **fixture**, with `inline <code>` and a "
-        "[link](https://example.org/a_(b)) plus <kbd>Esc</kbd> and mail "
+        "[link](https://example.org/a_(b)) plus **Esc** and mail "
         "[me](mailto:a@b.co).\n"
         "- A second item.\n"
         "\n"
@@ -335,6 +335,7 @@ def test_other_sections_may_use_any_table(tmp_path: Path) -> None:
         ("<div>raw</div>", "raw HTML or angle brackets (<div>)"),
         ("<!-- a comment -->", "raw HTML or angle brackets (<!-- a comment -->)"),
         ("<https://example.org>", "raw HTML or angle brackets (<https://example.org>)"),
+        ("press <kbd>Esc</kbd>", "raw HTML or angle brackets (<kbd>)"),
         ('<kbd class="x">Esc</kbd>', 'raw HTML or angle brackets (<kbd class="x">)'),
         ("a <module_id> placeholder", "raw HTML or angle brackets (<module_id>)"),
         ("see [ref][1] for more", "use inline links"),
