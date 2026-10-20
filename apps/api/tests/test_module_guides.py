@@ -9,6 +9,8 @@ serves the file safely.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -36,6 +38,10 @@ from tests.test_modules_per_user import (  # pyright: ignore[reportPrivateUsage]
 )
 
 NAME = "Sample Module"
+
+_REPO = Path(__file__).resolve().parents[3]
+_BUNDLED = sorted(p.parent for p in (_REPO / "modules").glob("*/manifest.yaml"))
+_SITE = _REPO / "landing" / "docs" / "site"
 
 
 def _write(folder: Path, text: str) -> Path:
@@ -479,6 +485,33 @@ def test_cli_reports_a_broken_manifest(tmp_path: Path, capsys: pytest.CaptureFix
     (mod / "manifest.yaml").write_text("id: broken\n", encoding="utf-8")
     assert main([str(tmp_path / "modules")]) == 1
     assert "manifest.yaml is invalid" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Every bundled module ships a valid guide, and the manual publishes it
+# ---------------------------------------------------------------------------
+
+
+def test_bundled_modules_are_found() -> None:
+    assert len(_BUNDLED) >= 18, [p.name for p in _BUNDLED]
+
+
+@pytest.mark.parametrize("folder", _BUNDLED, ids=lambda p: p.name)
+def test_bundled_module_guide_is_valid(folder: Path) -> None:
+    manifest = Manifest.load_yaml(folder / "manifest.yaml")
+    assert check_guide(folder, manifest.name) == []
+
+
+@pytest.mark.parametrize("folder", _BUNDLED, ids=lambda p: p.name)
+def test_bundled_module_guide_is_published_and_fresh(folder: Path) -> None:
+    """The manual builds one page per guide; `site/guides.json` records the hash of
+    the guide each page came from, so an edited guide with a stale page fails here."""
+    slug = f"guide-{folder.name.replace('_', '-')}"
+    hint = "run `make docs` and commit landing/docs/site/"
+    assert (_SITE / f"{slug}.html").is_file(), f"{slug}.html is missing: {hint}"
+    published: dict[str, str] = json.loads((_SITE / "guides.json").read_text(encoding="utf-8"))
+    current = hashlib.sha256((folder / GUIDE_FILENAME).read_bytes()).hexdigest()
+    assert published.get(slug) == current, f"{slug} is stale: {hint}"
 
 
 # ---------------------------------------------------------------------------
