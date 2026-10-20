@@ -11,7 +11,7 @@ Performance shows how fast your process runs and where cases lose time. You get 
 
 ## Before you start
 
-- The module needs a case-centric event log with `case_id`, `activity` and `timestamp` columns, at least 100 events and at least 5 cases. For a smaller log, or an object-centric one, the module page says it is not available for this process and gives the reason.
+- The module needs a case-centric event log with `case_id`, `activity` and `timestamp` columns, at least 100 events and at least 5 cases. For a smaller log, or an object-centric one, the module's card in the process's module list shows an **Unavailable** badge and cannot be opened; hover the card to read the reason.
 - Only those three columns are read. Every event has a single timestamp, so all durations are measured between event timestamps; the optional `resource` and `end_timestamp` columns are not used.
 - Nothing is precomputed and there is no run button. The page asks for its figures when you open it and keeps them for later visits; they are computed again when the log's data changes.
 - Discovery is an optional companion. Performance works without it, but its module card shows a **Limited** badge while Discovery is not installed.
@@ -24,7 +24,7 @@ This module has no settings.
 
 ### The log summary
 
-The top row has four tiles taken from the process itself, the same figures the process list shows: **Cases** (process instances), **Events** (recorded activities), **Variants** (distinct paths) and **Time span** (the dates of the first and last event, with the length of that span underneath).
+The top row has four tiles taken from the process itself: **Cases** (process instances), **Events** (recorded activities), **Variants** (distinct paths) and **Time span** (the dates of the first and last event, with the length of that span underneath).
 
 ### The KPI strip
 
@@ -62,7 +62,7 @@ Click a row to highlight it, and click it again to remove the highlight; nothing
 
 Cards follow the filters of their dashboard, so their figures can differ from this page, which has no filter bar. Each card has an info icon with a short explanation and an arrow (**Open in module**) that opens this page.
 
-- **Performance KPIs**: up to eight tiles: Cases, Events, Variants, Throughput, Avg cycle, Median cycle, P90 cycle and Lead time, defined as above. A new card shows all eight, and **Figures** in the card's settings chooses which it shows. Clicking a tile opens this page.
+- **Performance KPIs**: up to eight tiles: Cases, Events, Variants, Throughput, Avg cycle, Median cycle, P90 cycle and Lead time, defined as above. Until you choose, a card shows all eight. The **Figures** list in the card's settings has one checkbox per tile and starts with P90 cycle time and Lead time unticked, and once you change any box the card shows exactly the ticked tiles. Clicking a tile opens this page.
 - **Bottlenecks**: horizontal bars for the activities flagged as bottlenecks, longest average time spent first. Hover a bar for its **Avg time spent**. **Activities shown** (3 to 20, default 8) sets how many bars appear, and fewer appear when fewer activities are flagged. Clicking a bar opens that activity's view. An empty card reads "No bottlenecks detected."
 - **Activity throughput**: vertical bars for the most frequent activities, counted in events, so an activity that occurs several times in a case counts each time. **Activities shown** (3 to 25, default 10) sets how many. Clicking a bar opens that activity's view.
 
