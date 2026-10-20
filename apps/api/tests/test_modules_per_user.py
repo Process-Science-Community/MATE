@@ -19,18 +19,29 @@ from httpx import AsyncClient
 from sqlalchemy import delete
 
 from tests.conftest import TEST_USER_ID
+from tests.guide_text import GUIDE_FILENAME, minimal_guide
 
 _DEFAULTS_SEEDED_KEY = "modules_defaults_seeded"
 OTHER_USER_ID = "00000000-0000-7000-8000-0000000000ff"
 
 
-def _module_zip(module_id: str, *, body_marker: str = "") -> bytes:
+def _module_zip(
+    module_id: str,
+    *,
+    body_marker: str = "",
+    with_guide: bool = True,
+    guide_text: str | None = None,
+) -> bytes:
     """A minimal, valid uploadable module archive declaring *module_id*.
 
     ``body_marker`` injects a comment into ``module.py`` so callers can produce
     byte-*different* variants under the *same* id (distinct content hash) to
     exercise the collision/reject paths. The default (empty) always yields
     byte-identical content for a given id, so two calls hash the same.
+
+    The archive carries a valid ``HOW_TO_USE.md`` (compulsory for uploads);
+    ``with_guide=False`` omits it and ``guide_text`` replaces it, to exercise the
+    rejection paths.
     """
     marker = f"    # variant: {body_marker}\n" if body_marker else ""
     buf = io.BytesIO()
@@ -56,6 +67,11 @@ def _module_zip(module_id: str, *, body_marker: str = "") -> bytes:
                 '        return {"id": ctx.module_id}\n'
             ),
         )
+        if with_guide:
+            zf.writestr(
+                f"{module_id}/{GUIDE_FILENAME}",
+                minimal_guide(module_id) if guide_text is None else guide_text,
+            )
     return buf.getvalue()
 
 

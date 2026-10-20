@@ -37,6 +37,7 @@ from mate.api.modules.content_hash import (
 from mate.api.modules.installs import module_owned_by_other, record_install
 from mate.api.storage.module_archive import archive_module_sync
 from mate.sdk.errors import ModuleManifestError
+from mate.sdk.guide import require_guide
 from mate.sdk.manifest import Manifest
 
 if TYPE_CHECKING:
@@ -168,7 +169,8 @@ def _safe_extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
 
 
 def _read_staged_manifest(staging: Path) -> tuple[Path, Manifest]:
-    """Locate + parse the manifest in a staged extraction *without* moving it.
+    """Locate + parse the manifest in a staged extraction *without* moving it,
+    and require the module's ``HOW_TO_USE.md`` guide next to it.
 
     Many archives wrap their content in a single top-level folder (e.g.
     GitHub's tarball auto-names with a SHA). We unwrap one level if there's a
@@ -180,7 +182,12 @@ def _read_staged_manifest(staging: Path) -> tuple[Path, Manifest]:
         raise ModuleManifestError(
             f"Archive is missing manifest.yaml at the top level (looked in {inner})."
         )
-    return inner, Manifest.load_yaml(manifest_path)
+    manifest = Manifest.load_yaml(manifest_path)
+    # A new module must ship its how-to-use guide. This is the one hard gate:
+    # nothing has been written to disk yet, and modules already installed (which
+    # predate the rule) keep loading with only a warning (`modules.guides`).
+    require_guide(inner, manifest.name)
+    return inner, manifest
 
 
 async def _stage_validated_upload(

@@ -1,8 +1,10 @@
 """The compulsory per-module ``HOW_TO_USE.md`` guide.
 
-Covers the validator (``mate.sdk.guide``): one case per rule, each starting from
-a known-valid guide and breaking exactly one thing, so a regression names the
-rule that moved.
+Two halves. The validator (``mate.sdk.guide``): one case per rule, each starting
+from a known-valid guide and breaking exactly one thing, so a regression names
+the rule that moved. And the platform's policy around it: loading is lenient (a
+module already on disk keeps working), uploading is not, and the guide route
+serves the file safely.
 """
 
 from __future__ import annotations
@@ -10,7 +12,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from httpx import AsyncClient
+from structlog.testing import capture_logs
 
+from mate.api.modules.discovery import discover
+from mate.api.modules.guides import guide_path, has_guide, read_guide, warn_on_guide_problems
+from mate.api.modules.hot_reload import _is_ignored  # pyright: ignore[reportPrivateUsage]
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.guide import (
     GUIDE_FILENAME,
@@ -21,7 +28,12 @@ from mate.sdk.guide import (
     main,
     require_guide,
 )
+from mate.sdk.manifest import Manifest
 from tests.guide_text import minimal_guide
+from tests.test_modules_per_user import (  # pyright: ignore[reportPrivateUsage]
+    _reset_user_modules,
+    _upload,
+)
 
 NAME = "Sample Module"
 
@@ -453,3 +465,178 @@ def test_cli_reports_a_broken_manifest(tmp_path: Path, capsys: pytest.CaptureFix
     (mod / "manifest.yaml").write_text("id: broken\n", encoding="utf-8")
     assert main([str(tmp_path / "modules")]) == 1
     assert "manifest.yaml is invalid" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Platform behaviour: loading is lenient, uploading is not
+# ---------------------------------------------------------------------------
+
+
+def test_guide_path_rejects_a_symlink_that_leaves_the_folder(tmp_path: Path) -> None:
+    """The guide route must never become an arbitrary-file read."""
+    outside = tmp_path / "secret.md"
+    outside.write_text("secret", encoding="utf-8")
+    folder = tmp_path / "mod"
+    folder.mkdir()
+    (folder / GUIDE_FILENAME).symlink_to(outside)
+    assert guide_path(folder) is None
+    assert read_guide(folder) is None
+    assert not has_guide(folder)
+
+
+def test_guide_path_allows_a_symlink_inside_the_folder(tmp_path: Path) -> None:
+    folder = tmp_path / "mod"
+    folder.mkdir()
+    (folder / "docs.md").write_text(minimal_guide(NAME), encoding="utf-8")
+    (folder / GUIDE_FILENAME).symlink_to(folder / "docs.md")
+    assert has_guide(folder)
+    assert read_guide(folder) == minimal_guide(NAME)
+
+
+def test_read_guide_is_none_without_a_file(tmp_path: Path) -> None:
+    assert read_guide(tmp_path) is None
+    assert not has_guide(tmp_path)
+
+
+def test_read_guide_is_bounded_and_tolerates_bad_bytes(tmp_path: Path) -> None:
+    folder = tmp_path / "mod"
+    folder.mkdir()
+    (folder / GUIDE_FILENAME).write_bytes(b"ok \xff " + b"x" * (GUIDE_MAX_BYTES * 3))
+    text = read_guide(folder)
+    assert text is not None
+    assert text.startswith("ok � ")
+    assert len(text) <= GUIDE_MAX_BYTES * 2
+
+
+def test_a_missing_guide_only_warns_at_discovery(tmp_path: Path) -> None:
+    """Modules already on disk (uploads that predate the rule) must keep loading."""
+    root = tmp_path / "modules"
+    _module(root, "legacy", name="Legacy", guide=None)
+    _module(root, "guided", name="Guided", guide=minimal_guide("Guided"))
+    with capture_logs() as logs:
+        found = discover(root)
+    assert sorted(d.id for d in found) == ["guided", "legacy"]
+    warned = [e for e in logs if e["event"] == "modules.guide.invalid"]
+    assert [e["module_id"] for e in warned] == ["legacy"]
+    assert warned[0]["log_level"] == "warning"
+    assert "HOW_TO_USE.md is missing." in warned[0]["problems"]
+
+
+def test_warn_on_guide_problems_never_raises(tmp_path: Path) -> None:
+    _module(tmp_path, "broken_guide", name="Broken", guide="not a guide at all")
+    broken = Manifest.load_yaml(tmp_path / "broken_guide" / "manifest.yaml")
+    with capture_logs() as logs:
+        warn_on_guide_problems(tmp_path / "broken_guide", broken)
+    assert len(logs) == 1
+    assert logs[0]["module_id"] == "broken_guide"
+
+    _module(tmp_path, "fine", name="Fine", guide=minimal_guide("Fine"))
+    fine = Manifest.load_yaml(tmp_path / "fine" / "manifest.yaml")
+    with capture_logs() as logs:  # a valid guide logs nothing
+        warn_on_guide_problems(tmp_path / "fine", fine)
+    assert logs == []
+
+
+def test_editing_a_guide_does_not_hot_reload_the_module() -> None:
+    assert _is_ignored(Path("sample_mod") / GUIDE_FILENAME)
+    assert _is_ignored(Path("sample_mod") / "docs" / GUIDE_FILENAME)
+    assert not _is_ignored(Path("sample_mod") / "module.py")
+    assert not _is_ignored(Path("sample_mod") / "README.md")
+
+
+@pytest.mark.asyncio
+async def test_upload_without_a_guide_is_rejected(client_with_sample_mod: AsyncClient) -> None:
+    body = await _upload(client_with_sample_mod, "noguide_mod", with_guide=False)
+    assert body["status"] == "failed", body
+    message = (body.get("message") or "") + (body.get("error") or "")
+    assert "HOW_TO_USE.md is required" in message
+    assert "HOW_TO_USE.md is missing." in message
+
+    listed = (await client_with_sample_mod.get("/api/v1/modules")).json()
+    assert "noguide_mod" not in [m["id"] for m in listed]
+    assert (
+        await client_with_sample_mod.get("/api/v1/modules/noguide_mod/guide")
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_upload_with_an_invalid_guide_names_every_problem(
+    client_with_sample_mod: AsyncClient,
+) -> None:
+    body = await _upload(
+        client_with_sample_mod, "badguide_mod", guide_text="# How to use Wrong\n\nLead.\n"
+    )
+    assert body["status"] == "failed", body
+    message = (body.get("message") or "") + (body.get("error") or "")
+    assert "must read `# How to use badguide_mod`" in message
+    assert "missing section(s)" in message
+    listed = (await client_with_sample_mod.get("/api/v1/modules")).json()
+    assert "badguide_mod" not in [m["id"] for m in listed]
+
+
+@pytest.mark.asyncio
+async def test_uploaded_guide_is_listed_and_served(client_with_sample_mod: AsyncClient) -> None:
+    body = await _upload(client_with_sample_mod, "guided_mod")
+    assert body["status"] == "completed", body
+
+    listed = (await client_with_sample_mod.get("/api/v1/modules")).json()
+    assert next(m for m in listed if m["id"] == "guided_mod")["has_guide"] is True
+
+    resp = await client_with_sample_mod.get("/api/v1/modules/guided_mod/guide")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"module_id": "guided_mod", "markdown": minimal_guide("guided_mod")}
+
+
+@pytest.mark.asyncio
+async def test_bundled_fixture_guide_is_served(client_with_sample_mod: AsyncClient) -> None:
+    listed = (await client_with_sample_mod.get("/api/v1/modules")).json()
+    assert next(m for m in listed if m["id"] == "sample_mod")["has_guide"] is True
+    resp = await client_with_sample_mod.get("/api/v1/modules/sample_mod/guide")
+    assert resp.status_code == 200
+    assert resp.json()["markdown"].startswith("# How to use Sample Module\n")
+
+
+@pytest.mark.asyncio
+async def test_guide_is_read_from_disk_on_every_request(
+    client_with_sample_mod: AsyncClient,
+) -> None:
+    from mate.api.config import get_settings
+
+    guide = get_settings().modules_dir / "sample_mod" / GUIDE_FILENAME
+    original = guide.read_text(encoding="utf-8")
+    try:
+        guide.write_text(original + "\nEdited.\n", encoding="utf-8")
+        resp = await client_with_sample_mod.get("/api/v1/modules/sample_mod/guide")
+        assert resp.json()["markdown"].endswith("Edited.\n")
+    finally:
+        guide.write_text(original, encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_a_module_without_a_guide_has_none(
+    admin_client_with_sample_cards: AsyncClient,
+) -> None:
+    """`sample_cards` deliberately ships no guide: an installed module that predates
+    the rule keeps working and simply has nothing to show."""
+    client = admin_client_with_sample_cards
+    listed = (await client.get("/api/v1/modules")).json()
+    assert next(m for m in listed if m["id"] == "sample_cards")["has_guide"] is False
+    resp = await client.get("/api/v1/modules/sample_cards/guide")
+    assert resp.status_code == 404
+    assert "has no how-to-use guide" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_guide_route_is_owner_only(client_with_sample_mod_fresh: AsyncClient) -> None:
+    """Same rule as ``/manifest``: a module you haven't installed answers 404."""
+    # The metadata DB is shared across the session, so earlier tests may have
+    # granted this user the default modules - start from a clean slate.
+    await _reset_user_modules()
+    resp = await client_with_sample_mod_fresh.get("/api/v1/modules/sample_mod/guide")
+    assert resp.status_code == 404
+    assert "not installed" in resp.json()["detail"]
+
+    # Once the lazy default seeding hands the module over, the same call succeeds.
+    assert (await client_with_sample_mod_fresh.get("/api/v1/modules")).status_code == 200
+    resp = await client_with_sample_mod_fresh.get("/api/v1/modules/sample_mod/guide")
+    assert resp.status_code == 200

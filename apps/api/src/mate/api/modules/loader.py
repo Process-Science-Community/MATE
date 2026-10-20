@@ -48,6 +48,7 @@ from mate.api.modules.discovery import DiscoveredModule, discover, topo_sort
 from mate.api.modules.event_filters import FILTER_OPS
 from mate.api.modules.event_log_access import EventLogAccess
 from mate.api.modules.finder import get_finder, module_namespace, reset_finder
+from mate.api.modules.guides import warn_on_guide_problems
 from mate.api.modules.installer import ModuleInstallError, venv_site_packages
 from mate.api.modules.installs import user_module_ids, user_owns_module
 from mate.api.modules.job_logs import get_job_log_buffer
@@ -705,6 +706,9 @@ class ModuleLoader:
         """Load (or reload) a single module post-startup."""
         from mate.api.modules.discovery import DiscoveredModule
 
+        # Boot goes through `discover()`, which warns; this is the hot-reload
+        # path, which doesn't. A guide problem never blocks a load.
+        warn_on_guide_problems(folder, manifest)
         existing = self.loaded.get(manifest.id)
         if existing is not None:
             await self.unload_one(manifest.id)

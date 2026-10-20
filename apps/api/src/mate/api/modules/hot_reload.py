@@ -41,7 +41,9 @@ _DEBOUNCE_S = 0.5
 _IGNORED_DIR_PARTS = frozenset(
     {".venv", ".dist", "node_modules", "__pycache__", ".git", ".gradle", "build"}
 )
-_IGNORED_NAMES = frozenset({".installed-hash", "pyproject.toml", ".DS_Store"})
+# `HOW_TO_USE.md` is read from disk on every request by the guide route, so
+# editing it needs no module reload.
+_IGNORED_NAMES = frozenset({".installed-hash", "pyproject.toml", ".DS_Store", "HOW_TO_USE.md"})
 _IGNORED_SUFFIXES = frozenset({".pyc", ".pyo"})
 
 
