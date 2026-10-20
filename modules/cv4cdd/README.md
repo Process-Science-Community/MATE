@@ -6,6 +6,10 @@ Based on *Machine Learning-based Detection of Concept Drifts in Business Process
 
 > Licence: CC-BY-4.0 – see [LICENSE.txt](LICENSE.txt).
 
+## Using it
+
+The user guide is [`HOW_TO_USE.md`](HOW_TO_USE.md): the settings, how to install a detection model, and how to read the detected drifts and the drift map. The app shows it behind the **How to use** button on the module page. This README is the method specification, provenance and development notes.
+
 ---
 
 ## 1. What it does
@@ -41,14 +45,14 @@ modules/cv4cdd/
 ├── manifest.yaml             # platform registration: requirements, deps, config schema
 ├── module.py                 # entry point – Module subclass, routes, event hooks
 ├── cv4cdd_core.py            # the streamlined detection pipeline (encoding + inference)
-├── model/
-│   └── 20240922-233643_winsim_sgd_model_4d_v1/   # bundled TensorFlow SavedModel
+├── model/                    # shared store for uploaded TensorFlow SavedModels (nothing is committed)
 ├── panel/
 │   ├── index.tsx             # frontend panel (results table + overlay image)
 │   └── queries.ts            # React-Query bindings against the module routes
+├── widgets/                  # dashboard card (drift detections)
+├── tests/                    # trace-order tests
 ├── approaches/               # original Kraus & van der Aa reference repo (kept for parity)
-├── data/                     # sample logs used during development
-├── output/                   # local scratch directory
+├── HOW_TO_USE.md             # the user guide shown in the app and the manual
 ├── pyproject.toml            # optional – synthesised from manifest if absent
 └── LICENSE.txt
 ```
@@ -60,11 +64,10 @@ modules/cv4cdd/
 | | |
 |---|---|
 | **Architecture** | RetinaNet-style object detector from the [TensorFlow Model Garden](https://github.com/tensorflow/models), fine-tuned on synthetic event logs with known drifts. |
-| **Bundled snapshot** | `model/20240922-233643_winsim_sgd_model_4d_v1/` (SavedModel format – `saved_model.pb` + `variables/`). Loaded once per process and cached. |
+| **Model store** | No model is committed or bundled (about 0.5 GB each, see `model/.gitignore`). Models are uploaded as `.tar.zst` archives on the module's settings page, or pinned by an administrator, and extracted to `model/` (SavedModel format – `saved_model.pb` + `variables/`), shared platform-wide. Each account selects one in its module config (`model`); without a choice the module falls back to an installed model. Loaded once per process and cached. |
 | **Input** | A single `256 × 256` RGB image, JPEG-encoded from a viridis-coloured similarity matrix. |
 | **Training input pipeline** | Native `n_windows × n_windows` matrix → JPEG (quality 75, PIL default) → bilinear resize to 256². Keep this exact path: PNG or pre-resized inputs shift detections by 1–15 windows. |
 | **Output** | `detection_boxes`, `detection_classes` (1–4), `detection_scores` per region of interest. |
-| **Override** | Drop a different SavedModel under `model/` and set `CV4CDD_MODEL_DIR` to its absolute path. |
 | **Source / alternatives** | Additional fine-tuned snapshots and training datasets: [huggingface.co/datasets/pm-science/cv4cdd_4d](https://huggingface.co/datasets/pm-science/cv4cdd_4d/tree/main). |
 
 The model was trained at `n_windows = 200`. Change `n_windows` only if your log has far fewer cases than that – accuracy degrades away from the training distribution.
@@ -85,8 +88,8 @@ The module is registered via [manifest.yaml](manifest.yaml). The platform handle
 
 ### Triggers
 
-- **Auto-run on import** – the `log.imported` event runs detection automatically and surfaces progress as a dock job.
-- **Manual** – `POST /detect` re-runs on demand from the panel.
+- **On demand (lazy)** – the module has a job-backed `log.imported` handler but is not `precompute: eager`, so the platform runs it the first time the module is opened for a log, and again when the log's data has changed (the web app's run gate shows the progress and a **Cancel** button). Saving a different config does not start a run.
+- **Manual** – `POST /detect` re-runs it through the API. The panel has no run button; the gate offers **Retry** or **Run** after a failed or cancelled run.
 
 ### Routes (mounted under `/modules/cv4cdd/`)
 
@@ -99,7 +102,7 @@ The module is registered via [manifest.yaml](manifest.yaml). The platform handle
 
 ### Configuration
 
-Surfaced in the panel's settings drawer (driven by `config_schema` in the manifest):
+Set in the **Configuration** card of the module page (driven by `config_schema` in the manifest). New values apply the next time detection runs:
 
 | Key | Default | Range | Notes |
 |---|---|---|---|
@@ -124,7 +127,7 @@ Isolation mode: `in_process` (the module's venv is loaded into the platform's wo
 
 ## 5. Running it
 
-Import a log into Mate – detection auto-fires. To re-run manually, open the log's CV4CDD panel and click **Run detection**, or hit `POST /modules/cv4cdd/detect`.
+Detection runs on demand: open the module for a log and the platform starts it, or call `POST /modules/cv4cdd/detect`. It needs an installed model; without one the job fails with "No CV4CDD detection model is available."
 
 The detection pipeline (`cv4cdd_core.run_detection`) is the only entry point worth knowing about:
 
@@ -134,7 +137,7 @@ from pathlib import Path
 
 result = cv4cdd_core.run_detection(
     df=events_df,                                     # columns: case_id, activity, timestamp
-    model_path=Path("modules/cv4cdd/model/20240922-233643_winsim_sgd_model_4d_v1"),
+    model_path=Path("modules/cv4cdd/model/<an installed model folder>"),
     n_windows=200,
     threshold=0.5,
     progress=None,                                    # optional (fraction, message) callback
