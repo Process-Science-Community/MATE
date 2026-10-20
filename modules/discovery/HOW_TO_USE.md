@@ -120,7 +120,7 @@ Click an activity or a connection to open its details on the right; click the em
 - **Top transitions**: the incoming and outgoing connections ranked by count, five each, with **Show all** to expand the list.
 - **Explore**: **Open activity view**, **View performance metrics** and **Show variants with this activity** open the activity's page, the Performance module and the process's Variants tab for this activity.
 
-For a connection the details show **Path** (From and To), **Frequency** (**Transitions** with their share of all transitions, **Of source events** and **Of target events**) and, when the log allows it, **Duration** (**Mean transition time**).
+For a connection the details show **Path** (From and To), **Frequency** (**Transitions** with their share of all transitions, and **Of source events** and **Of target events**, each only when that end has an event count) and, when the log allows it, **Duration** (**Mean transition time**).
 
 ### Petri Net
 

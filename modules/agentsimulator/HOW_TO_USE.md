@@ -83,7 +83,7 @@ A card without a result reads "No simulation yet for this log". Its **Run simula
 
 - Use the scores to compare configurations on one log. The time measures are in hours, so their size depends on how long cases and periods are in your process, and values from different logs do not compare.
 - Raise **Simulated logs** for a steadier score, and expect a longer run. The automatic choice is the slowest, so try autonomous and orchestrated first if time is short.
-- The test log is the newest fifth of the events. If the process changed in that period, the model learned the old behaviour, and the distances grow.
+- The test log is roughly the newest fifth of the events. If the process changed in that period, the model learned the old behaviour, and the distances grow.
 - With a single timestamp per event, the simulated cases have realistic lengths, but the split of working and waiting time is not reliable.
 - The simulated logs contain no real cases, but they carry the real activity names and the behaviour learned from the log. Check them before you share them.
 - A run that fails reports the reason, and the end of the simulator's output is part of the message when it produced no logs.
@@ -93,6 +93,6 @@ A card without a result reads "No simulation yet for this log". Its **Run simula
 
 The module follows Kirchdorfer, Blümel, Kampik, van der Aa and Stuckenschmidt (2024). It first brings the log into one table of case, activity, resource, start and end. The events are ordered by their end time, the first 80% are the learning data and the last 20% are the test log. A case that straddles the cut is left out of both parts. The last fifth of the learning cases, in the order of their case IDs, is kept as a validation log.
 
-From the learning data it discovers one agent per resource, with roles and working calendars, the distribution of the duration of each activity per agent, the probabilities of the next activity and of the handover between agents, the activities that must come first, the largest number of repetitions of an activity in a case and the arrival process of cases. It then simulates the process with the agents, as a model with agents, over the period of the test log. A simulated log has as many cases as the test log, and the simulation is repeated for the chosen number of logs.
+From the learning data it discovers one agent per resource, with roles and working calendars, the distribution of the duration of each activity per agent, the probabilities of the next activity and of the handover between agents, the activities that must come first, the largest number of repetitions of an activity in a case and the arrival process of cases. It then simulates the process with these agents over the period of the test log. A simulated log has as many cases as the test log, and the simulation is repeated for the chosen number of logs.
 
 With the automatic choice, the module simulates the validation log in all four combinations and keeps the one with the smallest cycle-time distance. The five scores compare each simulated log with the test log, and the panel shows their mean and standard deviation. The formal citation is in the info popover next to the module name.

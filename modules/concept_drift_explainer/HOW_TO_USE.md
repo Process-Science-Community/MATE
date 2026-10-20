@@ -94,7 +94,7 @@ Each card has an info icon with a short explanation and an arrow (**Open in modu
 
 ## Tips and limits
 
-- Date each document with the day it took effect or was published. The search looks first at documents from 14 days before to 3 days after the start of the drift, and only when nothing falls in that window does it look at all documents. A document dated far from the drift is used only when nothing falls into that window, and it earns little or no date bonus in its confidence.
+- Date each document with the day it took effect or was published. The search looks first at documents from 14 days before to 3 days after the start of the drift, and only when nothing falls in that window does it look at all documents. A document dated far from the drift is therefore used only as that fallback, and it earns little or no date bonus in its confidence.
 - One matching document gives one cause with a score of 99%, whatever its quality. Add documents from the period for a ranked comparison.
 - Check every cause in the document it names. The model writes the description and the quoted passage, so it can misread or shorten the text.
 - The **Activities** column is only a hint. For each end of the drift, MATE takes the most frequent activity in the part of the stored event table that lies at the same relative position as the drift's first and last window. That table is ordered by case ID, not by time, so the two activities say little about what changed. The same two names go into the search for documents.
