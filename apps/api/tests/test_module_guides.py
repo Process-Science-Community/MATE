@@ -342,6 +342,9 @@ def test_other_sections_may_use_any_table(tmp_path: Path) -> None:
         ("[1]: https://example.org", "use inline links"),
         ("a footnote[^1] here", "footnotes are not supported"),
         ("this is ~~gone~~", "strikethrough is not supported"),
+        ("an _emphasised_ word", "emphasis with underscores is not supported"),
+        ("a __bold__ word", "emphasis with underscores is not supported"),
+        ("an identifier like __init__ in prose", "emphasis with underscores is not supported"),
         ("---", "horizontal rules are not supported"),
         ("***", "horizontal rules are not supported"),
         ("- [ ] a task", "task-list checkboxes are not supported"),
@@ -359,6 +362,16 @@ def test_nested_lists_are_rejected(tmp_path: Path) -> None:
     )
     joined = _joined(_problems(tmp_path, text))
     assert joined.count("nested or indented list items are not supported") == 2
+
+
+def test_underscores_inside_words_and_urls_are_fine(tmp_path: Path) -> None:
+    text = _replace(
+        minimal_guide(NAME),
+        "- It is a fixture.\n",
+        "- Columns such as case_id and start_timestamp, a snake_case_name, a 3 _ 4 gap, and "
+        "[a link](https://example.org/_next/a_b_/c) are fine; so is `_code_`.\n",
+    )
+    assert _problems(tmp_path, text) == []
 
 
 def test_backticked_text_is_never_flagged(tmp_path: Path) -> None:

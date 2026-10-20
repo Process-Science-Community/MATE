@@ -69,6 +69,10 @@ _REF_DEF_RE = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*\S")
 _REF_USE_RE = re.compile(r"\[[A-Za-z][^\]]*\]\[[^\]]*\]")
 _FOOTNOTE_RE = re.compile(r"\[\^[^\]]+\]")
 _HTML_RE = re.compile(r"</?[A-Za-z]|<!")
+_LINK_TARGET_RE = re.compile(r"\]\([^)]*\)")
+# `_x_` / `__x__`: markdown renders them as emphasis, the manual's builder does not.
+# Underscores inside a word (`case_id`) never match.
+_UNDERSCORE_EMPHASIS_RE = re.compile(r"(?<!\w)(_{1,2})(?=[^\s_])[^_]+?(?<=[^\s_])\1(?!\w)")
 _LIST_ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s+")
 _TASK_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\](?:\s|$)")
 _RULE_RE = re.compile(r"^\s{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
@@ -348,6 +352,11 @@ def _check_line(line: _Line) -> list[str]:
         problems.append(f"line {line.no}: footnotes are not supported.")
     if "~~" in prose:
         problems.append(f"line {line.no}: strikethrough is not supported.")
+    if _UNDERSCORE_EMPHASIS_RE.search(_LINK_TARGET_RE.sub("]", prose)):
+        problems.append(
+            f"line {line.no}: emphasis with underscores is not supported - use *asterisks* "
+            "(and put identifiers such as `case_id` in backticks)."
+        )
 
     list_match = _LIST_ITEM_RE.match(line.text)
     if list_match and list_match.group(1):
