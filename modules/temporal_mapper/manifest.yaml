@@ -19,6 +19,13 @@ source:
       in simulated and real neural dynamics," Netw. Neurosci., vol. 7, no. 2,
       pp. 431–460, 2023
     url: https://doi.org/10.1162/netn_a_00301
+  - title: "Visualizing Routine Dynamics in Outpatient Medical Clinics with Topological Data Analysis"
+    fullCitation: >-
+      L. Zhang, J. R. Wolf, A. P. Pentland, and B. T. Pentland, "Visualizing Routine Dynamics in
+      Outpatient Medical Clinics with Topological Data Analysis," in Business Process Management
+      Workshops (BPM 2024), Lecture Notes in Business Information Processing, vol. 534. Springer,
+      2025, pp. 338-349
+    url: https://doi.org/10.1007/978-3-031-78666-2_26
 artifacts:
   - name: GraphExplain Temporal Mapper adaptation
     url: https://github.com/atancredi/graphexplain
