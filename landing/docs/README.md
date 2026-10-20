@@ -1,6 +1,6 @@
 # MATE documentation site
 
-The published manual: 29 chapters in two-column pages that follow the landing page's design system, generated from markdown with zero dependencies.
+The published manual: 47 chapters in two-column pages that follow the landing page's design system, generated from markdown with zero dependencies.
 
 ```bash
 make docs                                # or: node landing/docs/build.mjs
@@ -11,9 +11,10 @@ python3 -m http.server -d landing 8081   # preview → http://localhost:8081/doc
 
 | Path | What it is |
 | --- | --- |
-| `content/NN-*.md` | The source: six numbered files, one per sidebar group, concatenated in filename order. |
+| `content/NN-*.md` | The source: seven numbered files, one per sidebar group, concatenated in filename order. |
+| `../../modules/*/HOW_TO_USE.md` | Also source: every module's user guide, filed by the generator as the *Module guides* group (see below). Edit the guide, not the page. |
 | `build.mjs` | The generator: parses the markdown, renders the components below, writes `site/`. |
-| `site/` | Generated output — one page per chapter, plus `search-index.json` (Ctrl+K search) and `llms.txt` (the chapter list with a one-line summary each, for AI tools). Never edit by hand. |
+| `site/` | Generated output — one page per chapter, plus `search-index.json` (Ctrl+K search), `llms.txt` (the chapter list with a one-line summary each, for AI tools) and `guides.json` (a SHA-256 per module guide, so the test suite can tell a stale page from a fresh one). Never edit by hand. |
 | `index.html` | Redirect stub for the bare `/docs/` URL. The entry chapter is `site/introduction.html`. |
 
 ## Groups and chapters
@@ -22,11 +23,23 @@ python3 -m http.server -d landing 8081   # preview → http://localhost:8081/doc
 | --- | --- | --- |
 | `content/00-getting-started.md` | Getting started | Introduction (incl. vocabulary and where-to-start) · Install and start · Your first analysis |
 | `content/10-using-mate.md` | Using MATE | Importing event logs · Working with logs · Exploring a process · Modules (incl. the bundled catalogue) · Jobs and the interface · Dashboards · MATE AI · Settings and admin |
+| `modules/*/HOW_TO_USE.md` | Module guides | One chapter per module, sorted by name · see *Module guides* below |
 | `content/20-platform.md` | Platform | Architecture and data · Jobs, modules and isolation · Security and privacy |
 | `content/30-module-development.md` | Module development | Your first module · The manifest · Handlers and the context · Logs, jobs and results · Module communication · Frontend: panels, widgets and datasets · Dependencies, isolation and runtimes · Testing and publishing |
 | `content/40-interfaces.md` | Interfaces | REST API · MCP server |
 | `content/50-operate.md` | Operate | Deployment · Configuration · Backup, storage and limits · Troubleshooting |
 | `content/60-project.md` | Project | Contributing and development |
+
+## Module guides
+
+Each module's `modules/<id>/HOW_TO_USE.md` is the same file the app shows behind the module page's **How to use** button, so the guides are written once. `build.mjs` (`readModuleGuides`) splices them in as a virtual `15-module-guides.md`, between *Using MATE* and *Platform*:
+
+- One chapter per module, titled with the module name (the guide's own `# How to use <name>` title is rewritten, since the group heading already says it) and sorted by name.
+- The slug is pinned to `guide-<id>` with underscores turned into hyphens (`guide-process-comparison`), so a rename never breaks a link. The *Bundled modules* table in *Modules* links to these pages.
+- The guide's lead paragraph becomes the page lead, the meta description and the `llms.txt` summary.
+- Guides stay inside the markdown subset this builder renders; `python -m mate.sdk.guide` enforces it (absolute links, no images, no HTML, no nested lists). See [`modules/README.md`](../../modules/README.md) §2.
+
+A guide edit changes a published page, so run `make docs` and commit `site/` with it. `apps/api/tests/test_module_guides.py` fails for a bundled module whose page is missing or whose `guides.json` hash no longer matches its guide. A new module's guide appears in the manual on the next build.
 
 ## Editorial rules
 

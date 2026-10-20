@@ -197,7 +197,7 @@ Click the row. The process page opens on the module grid, grouped by category.
 
 ## 4. Read a module
 
-Open **Discovery** for the process as a directly-follows graph (and Petri net, process tree, heuristics net, or BPMN), **Performance** for throughput and bottlenecks, **Complexity v2** for a metric suite. The first time you open a module for a log it computes: you see live progress with a **Cancel**, and the page appears when it finishes. Later opens are instant, and the result refreshes by itself after the log's data changes. Each page is the module's own panel inside the platform's frame: breadcrumb, version, **Configure** (a form generated from the module's schema, saved per user), and an info hint explaining the view.
+Open **Discovery** for the process as a directly-follows graph (and Petri net, process tree, heuristics net, or BPMN), **Performance** for throughput and bottlenecks, **Complexity v2** for a metric suite. The first time you open a module for a log it computes: you see live progress with a **Cancel**, and the page appears when it finishes. Later opens are instant, and the result refreshes by itself after the log's data changes. Each page is the module's own panel inside the platform's frame: breadcrumb, version, **Configure** (a form generated from the module's schema, saved per user), an info hint with the module's description and citations, and a **How to use** button that opens the module's guide beside the page: what the module needs, every setting, and how to read each view.
 
 ## 5. Compose a dashboard
 

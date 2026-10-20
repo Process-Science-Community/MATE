@@ -188,6 +188,12 @@ Installation runs as a job: unpack, validate the manifest, `uv sync`, bundle the
 
 The module detail page shows an About popover (description, longer *about*, cited works, artifacts), the *Provides*/*Consumes* lists, the configuration forms, a live tail of that module's log lines, and the *Uninstall* action in its danger zone.
 
+## How to use
+
+Every module ships a guide: when to use it, what it needs, every setting, how to read each view, its limits and its method. On a module page (and on the module's detail page) the **How to use** button in the top bar, beside **MATE AI**, opens it in a panel that stays next to the page, so you can read it while you work. The panel shares that column with MATE AI (opening one closes the other), follows you from one module to the next, and closes on pages that have no guide. The same text is published here under *Module guides*, one page per bundled module.
+
+A module installed before guides became compulsory may have none; it works as before and simply shows no button.
+
 ## Availability
 
 A module is offered for a log only when all of these hold:
@@ -202,25 +208,28 @@ A missing `optional_modules` entry does not block it; the card is marked **Limit
 
 ## Bundled modules
 
+Each module name links to its guide, the same text the app shows behind the module page's **How to use** button.
+
 | Module | Id | Category | Needs | Produces |
 | --- | --- | --- | --- | --- |
-| Discovery | `discovery` | foundation | `case_id`, `activity`, `timestamp`; ≥50 events, ≥2 cases | DFG, Petri nets, process tree, heuristics net, BPMN; datasets + 3 widgets |
-| Performance | `performance` | foundation | case, activity, timestamp | Throughput, cycle and lead times, P90, bottleneck ranking; 3 widgets |
-| OCEL discovery | `ocel_discovery` | foundation | object-centric log | OC-DFG, object-centric Petri net, per-type summaries; 4 widgets |
-| Performance (JVM) | `performance_java` | foundation | case, activity, timestamp; a JRE | Timing metrics computed in Java; 3 datasets |
-| Complexity | `complexity` | advanced | ≥50 events, ≥2 cases | Entropy, Lempel-Ziv, affinity, structure, Pentland metrics; 2 widgets |
-| Complexity v2 | `complexity_v2` | advanced | ≥50 events, ≥2 cases | A 28-metric suite plus a transition-probability matrix |
-| Complexity over time | `complexity_over_time` | advanced | ≥50 events, ≥2 cases | Complexity metrics per time slice |
-| Complexity v2 over time | `complexity_v2_over_time` | advanced | ≥50 events, ≥2 cases | The 28-metric suite per time slice |
-| Conformance | `conformance` | advanced | a reference BPMN; ≥50 events | Fitness, precision, ranked deviations; 2 widgets |
-| CV4CDD | `cv4cdd` | advanced | ≥200 events, ≥20 cases, model upload | CNN-based concept-drift detections |
-| Concept drift explainer | `concept_drift_explainer` | advanced | `cv4cdd`; ≥200 events, ≥20 cases; OpenAI + Pinecone | Ranked, citation-backed explanations for each drift |
-| Log evolution | `log_evolution` | advanced | case, activity, timestamp | Arrivals vs completions, WIP, activity mix, dotted chart; 4 widgets |
-| Performance over time | `performance_over_time` | advanced | case, activity, timestamp | Performance KPIs per time slice |
-| Actor performance | `actor_performance` | advanced | `resource`; ≥100 events, ≥5 cases; Neo4j sidecar | Waiting-time decomposition per actor behaviour |
-| Agent simulator | `agentsimulator` | advanced | case, activity, timestamp, `resource`; ≥200 events, ≥20 cases | Agent-based simulation plus a fidelity score; 3 widgets |
-| PComp | `pcomp` | comparison | two logs | Two-sample hypothesis test on Earth Mover's Distance |
-| Process comparison | `process_comparison` | comparison | two logs | Side-by-side DFG diff, variant differences, EMD similarity |
+| [Discovery](guide-discovery.html) | `discovery` | foundation | `case_id`, `activity`, `timestamp`; ≥50 events, ≥2 cases | DFG, Petri nets, process tree, heuristics net, BPMN; datasets + 3 widgets |
+| [Performance](guide-performance.html) | `performance` | foundation | case, activity, timestamp | Throughput, cycle and lead times, P90, bottleneck ranking; 3 widgets |
+| [OCEL discovery](guide-ocel-discovery.html) | `ocel_discovery` | foundation | object-centric log | OC-DFG, object-centric Petri net, per-type summaries; 4 widgets |
+| [Performance (JVM)](guide-performance-java.html) | `performance_java` | foundation | case, activity, timestamp; a JRE | Timing metrics computed in Java; 3 datasets |
+| [Complexity](guide-complexity.html) | `complexity` | advanced | ≥50 events, ≥2 cases | Entropy, Lempel-Ziv, affinity, structure, Pentland metrics; 2 widgets |
+| [Complexity v2](guide-complexity-v2.html) | `complexity_v2` | advanced | ≥50 events, ≥2 cases | A 28-metric suite plus a transition-probability matrix |
+| [Complexity over time](guide-complexity-over-time.html) | `complexity_over_time` | advanced | ≥50 events, ≥2 cases | Complexity metrics per time slice |
+| [Complexity v2 over time](guide-complexity-v2-over-time.html) | `complexity_v2_over_time` | advanced | ≥50 events, ≥2 cases | The 28-metric suite per time slice |
+| [Conformance](guide-conformance.html) | `conformance` | advanced | a reference BPMN; ≥50 events | Fitness, precision, ranked deviations; 2 widgets |
+| [CV4CDD](guide-cv4cdd.html) | `cv4cdd` | advanced | ≥200 events, ≥20 cases, model upload | CNN-based concept-drift detections |
+| [Concept drift explainer](guide-concept-drift-explainer.html) | `concept_drift_explainer` | advanced | `cv4cdd`; ≥200 events, ≥20 cases; OpenAI + Pinecone | Ranked, citation-backed explanations for each drift |
+| [Log evolution](guide-log-evolution.html) | `log_evolution` | advanced | case, activity, timestamp | Arrivals vs completions, WIP, activity mix, dotted chart; 4 widgets |
+| [Performance over time](guide-performance-over-time.html) | `performance_over_time` | advanced | case, activity, timestamp | Performance KPIs per time slice |
+| [Temporal mapper](guide-temporal-mapper.html) | `temporal_mapper` | advanced | case, activity, timestamp; ≥50 events, ≥2 cases | States of similar calendar periods, their directed transitions, a time-to-time distance heatmap |
+| [Actor performance](guide-actor-performance.html) | `actor_performance` | advanced | `resource`; ≥100 events, ≥5 cases; Neo4j sidecar | Waiting-time decomposition per actor behaviour |
+| [Agent simulator](guide-agentsimulator.html) | `agentsimulator` | advanced | case, activity, timestamp, `resource`; ≥200 events, ≥20 cases | Agent-based simulation plus a fidelity score; 3 widgets |
+| [PComp](guide-pcomp.html) | `pcomp` | comparison | two logs | Two-sample hypothesis test on Earth Mover's Distance |
+| [Process comparison](guide-process-comparison.html) | `process_comparison` | comparison | two logs | Side-by-side DFG diff, variant differences, EMD similarity |
 
 Three modules have notable behaviour: **Discovery** can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as datasets other modules can render. **Performance** declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. **Concept drift explainer** is the reference for a module with an external dependency chain and an `ai_models` block that renders its own model pickers.
 
