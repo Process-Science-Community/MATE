@@ -264,6 +264,10 @@ export interface ModuleSummary {
   provides: string[];
   consumes: string[];
   has_frontend: boolean;
+  /** The module ships a `HOW_TO_USE.md` (compulsory for new modules); the topbar
+   *  offers it as the "How to use" panel. False only for a module installed
+   *  before the rule. `GET /modules/{id}/guide` serves the markdown. */
+  has_guide: boolean;
   /** Whether the module page renders the log-scoped filter bar above the panel
    *  (manifest `frontend.log_filter`); false for panel-less modules. */
   supports_log_filter: boolean;

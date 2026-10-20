@@ -73,6 +73,7 @@ export const queryKeys = {
     ["event-logs", logId, "edits", offset, limit] as const,
   modules: (logId?: string | null) => ["modules", logId ?? null] as const,
   moduleManifest: (id: string) => ["modules", id, "manifest"] as const,
+  moduleGuide: (id: string) => ["modules", id, "guide"] as const,
   moduleConfig: (id: string) => ["modules", id, "config"] as const,
   moduleModels: (id: string) => ["modules", id, "models"] as const,
   // Per-log module compute state. Deliberately a top-level key: `["event-logs"]`
@@ -120,6 +121,10 @@ export function modulesListPath(logId?: string | null): string {
 
 export function moduleManifestPath(id: string): string {
   return `/api/v1/modules/${id}/manifest`;
+}
+
+export function moduleGuidePath(id: string): string {
+  return `/api/v1/modules/${encodeURIComponent(id)}/guide`;
 }
 
 export function moduleConfigPath(id: string): string {

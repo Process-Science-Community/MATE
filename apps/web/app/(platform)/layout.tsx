@@ -11,6 +11,7 @@ import { JobsDrawer } from "@/components/jobs/jobs-drawer";
 import { OnboardingOverlay } from "@/components/onboarding";
 import { TourOverlay } from "@/components/tour/tour-overlay";
 import { MateAiSidebar } from "@/components/mate-ai/mate-ai-sidebar";
+import { ModuleGuidePanel } from "@/components/modules/module-guide";
 import { RouteProgress } from "@/components/route-progress";
 import { SessionGuard } from "@/components/session-guard";
 import { AppSplash } from "@/components/app-splash";
@@ -80,6 +81,7 @@ export default async function PlatformLayout({
         <main className="min-h-0 flex-1 overflow-auto">{children}</main>
       </div>
       <MateAiSidebar />
+      <ModuleGuidePanel />
       <JobsProvider />
       <JobsDock />
       <JobsDrawer />
