@@ -169,6 +169,7 @@ Below the diagram a note points to Conformance Checking for your own reference m
 - Changing the **Noise threshold** or the **Frequency filter** mines the model again. The previous model stays on screen with a short "Working…" or "Re-mining…" notice.
 - If the ILP Miner is refused, the error replaces the net, and the settings button disappears with it. Switch to another view and back to return to the Inductive Miner.
 - Algorithm choices, noise thresholds and the BPMN controls are forgotten when you leave a view. Everything else under **Graph settings**, and the nodes you moved, is remembered per log for your account.
+- An activity's count on the DFG, its **Events** figure in the details and the bars of the Activity frequency card come from the graph: they count the times another activity follows it, raised to the number of cases that start or end with it when that is higher. For an activity that both ends some cases and is followed by others, they are lower than its number of events. Performance counts events exactly.
 - Long activity names are cut at 32 characters on Petri net, process tree and heuristics net nodes. The DFG wraps them over two lines and shows the full name on hover.
 - A filter bar above the panel limits every view to the matching events (column filters and a time range). It is temporary: reloading the page clears it.
 - The first BPMN run on a large log can take a minute; the result is cached afterwards.
