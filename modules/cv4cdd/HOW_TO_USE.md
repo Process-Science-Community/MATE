@@ -60,7 +60,7 @@ Blocks of bright pixels along the diagonal are stretches of similar behaviour, a
 
 ### Dashboard cards
 
-Cards follow the filters of their dashboard. Each has an info icon with a short explanation and an arrow (**Open in module**) that opens this page.
+Each card has an info icon with a short explanation and an arrow (**Open in module**) that opens this page.
 
 - **CV drift detections**: the number of detections across the run's windows, and one row per detection with its type, its window numbers and its confidence. **Min confidence** (0 to 1, default 0) hides detections below that value on the card only. A card without results asks you to run detection in the module.
 
