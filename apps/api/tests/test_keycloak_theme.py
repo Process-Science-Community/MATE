@@ -84,6 +84,28 @@ def test_messages_double_their_apostrophes() -> None:
     assert not bad, f"messages with a lone apostrophe (write ''): {bad}"
 
 
+def test_every_provider_logo_mapping_is_drawn() -> None:
+    """`kcLogoIdP-<alias>=mate-idp-<name>` makes Keycloak emit the logo element; the class must
+    set `--mate-logo`, or the button gets an empty box in front of the name."""
+    login = _login_dir()
+    css = (login / "resources" / "css" / "mate.css").read_text(encoding="utf-8")
+    mappings = {
+        k: v for k, v in _property_lines(login / "theme.properties") if k.startswith("kcLogoIdP-")
+    }
+    assert mappings, "theme.properties maps no provider logo"
+    for key, cls in mappings.items():
+        assert re.search(rf"\.{re.escape(cls)}\s*\{{\s*--mate-logo:\s*url\(", css), (
+            f"{key} -> .{cls} has no `--mate-logo: url(...)` rule in mate.css"
+        )
+
+
+def test_provider_exists_message_keeps_its_placeholders() -> None:
+    """{0} is "email" or "username", {1} its value - the page names what collided."""
+    messages = dict(_property_lines(_login_dir() / "messages" / "messages_en.properties"))
+    text = messages.get("federatedIdentityExistsMessage", "")
+    assert "{0}" in text and "{1}" in text, "federatedIdentityExistsMessage lost a placeholder"
+
+
 def test_meta_entries_are_name_content_pairs() -> None:
     """template.ftl splits `meta` on spaces, then each token on `==`, and indexes [1]."""
     meta = dict(_property_lines(_login_dir() / "theme.properties")).get("meta", "")

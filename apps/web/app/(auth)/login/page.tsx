@@ -1,10 +1,19 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { auth, signIn, DEMO_MODE, KEYCLOAK_IDP_HINT } from "@/auth";
+import { auth, signIn, DEMO_MODE, KEYCLOAK_IDP_HINT, SOCIAL_IDPS_ENABLED } from "@/auth";
+import { SocialIcon } from "@/components/brand-icons";
 import { ThemeToggleButton } from "@/components/theme-toggle-button";
 import { MateLogo } from "@/components/mate-logo";
 import { BorderBeam } from "@/components/glass/border-beam";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
+import {
+  LAST_DOOR_COOKIE,
+  SOCIAL_IDPS,
+  doorQuery,
+  isLoginDoor,
+  type LoginDoor,
+} from "@/lib/social-idps";
 import { DemoAutoSignIn } from "./demo-auto-signin";
 import { LoginCta, DemoSubmitButton } from "./login-cta";
 import { RecoveryAutoRetry } from "./recovery-auto-retry";
@@ -49,6 +58,23 @@ export default async function LoginPage({
   // two ways in are the university account and an email + password that lives in
   // the realm itself. Without a brokered IdP the single CTA lands on the latter.
   const emailPasswordLabel = "Login with email";
+  // Google / Microsoft / GitHub, when the deployment configured them (see
+  // infra/keycloak/configure-social-idps.sh). Each is one more plain link to
+  // /login/start, with the provider as the Keycloak hint.
+  const showSocial = SOCIAL_IDPS_ENABLED.length > 0;
+  // The door used last (cookie set by /login/start). Offered again as "Last used" – people
+  // who forget which provider they picked end up with a second account – and what the
+  // hands-free recovery goes through, instead of always the default (university) door.
+  const remembered = (await cookies()).get(LAST_DOOR_COOKIE)?.value;
+  const lastDoor: LoginDoor | null =
+    isLoginDoor(remembered) &&
+    (remembered === "email" ||
+      (remembered === "university" ? Boolean(KEYCLOAK_IDP_HINT) : SOCIAL_IDPS_ENABLED.includes(remembered)))
+      ? remembered
+      : null;
+  const signInAgainUrl = lastDoor ? `${startUrl}${doorQuery(lastDoor)}` : startUrl;
+  // Only with providers on offer: a deployment without them keeps its two plain buttons.
+  const lastUsed = (door: LoginDoor) => (showSocial && !staleSession && lastDoor === door ? "Last used" : undefined);
 
   return (
     <div className="relative z-10 w-full max-w-sm space-y-6 rounded-2xl border border-white/15 [border-top-color:var(--glass-refraction-top)] bg-card/70 p-8 shadow-xl backdrop-blur-2xl backdrop-saturate-150 supports-[backdrop-filter]:bg-card/60">
@@ -62,7 +88,7 @@ export default async function LoginPage({
             ? "Demo mode – signing you in…"
             : staleSession
               ? "Your session expired – signing you back in…"
-              : localLoginUrl
+              : localLoginUrl || showSocial
                 ? "Choose how you want to sign in."
                 : "Sign in with your email and password to continue."}
         </p>
@@ -84,7 +110,7 @@ export default async function LoginPage({
           {/* Dead refresh token → auto-navigate once to recover hands-free; the
               one-shot guard inside stops a failing OAuth from looping and leaves
               the manual link as the fallback. */}
-          {staleSession ? <RecoveryAutoRetry href={startUrl} /> : null}
+          {staleSession ? <RecoveryAutoRetry href={signInAgainUrl} /> : null}
           {/* Auth.js sends a failed sign-in here (`pages.signIn`) with ?error=…; say so
               instead of silently showing the same buttons. Generic on purpose: the
               error code is Auth.js internals, not something to show a user. */}
@@ -97,7 +123,7 @@ export default async function LoginPage({
             </p>
           ) : null}
           <LoginCta
-            href={startUrl}
+            href={staleSession ? signInAgainUrl : startUrl}
             label={
               staleSession
                 ? "Sign in again"
@@ -106,14 +132,43 @@ export default async function LoginPage({
                   : emailPasswordLabel
             }
             pendingLabel="Signing in…"
+            badge={lastUsed(localLoginUrl ? "university" : "email")}
           />
+          {showSocial ? (
+            <>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                <span>Or continue with</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <div className="space-y-3">
+                {SOCIAL_IDPS_ENABLED.map((id) => (
+                  <LoginCta
+                    key={id}
+                    href={`${startUrl}${doorQuery(id)}`}
+                    variant="outline"
+                    icon={<SocialIcon id={id} className="size-[18px]" />}
+                    label={SOCIAL_IDPS[id].label}
+                    pendingLabel="Signing in…"
+                    badge={lastUsed(id)}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
           {localLoginUrl ? (
             <LoginCta
               href={localLoginUrl}
               variant="ghost"
               label={emailPasswordLabel}
               pendingLabel="Signing in…"
+              badge={lastUsed("email")}
             />
+          ) : null}
+          {showSocial ? (
+            <p className="text-balance text-center text-xs text-muted-foreground">
+              Each way of signing in is its own account until you connect them under Profile → Sign-in methods.
+            </p>
           ) : null}
         </>
       )}

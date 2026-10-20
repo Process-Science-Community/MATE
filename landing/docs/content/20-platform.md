@@ -226,6 +226,8 @@ The invariants that protect a deployment, and the controls on data leaving it.
 
 Login is mandatory and delegated to Keycloak. The web app keeps a JWT-only session (Auth.js v5) with token rotation; the API validates every Bearer token against the realm's JWKS endpoint and inserts a `users` row the first time it sees a subject. If the session cookie outgrows the browser's 4 KB limit, `SESSION_STORE_DIR` moves session state server-side.
 
+The login page offers the university account, email and password and, when `KEYCLOAK_SOCIAL_IDPS` is set, Google, Microsoft and GitHub. Every sign-in identity is its own account. A provider whose email already belongs to an account stops with an explanation instead of attaching to it: a provider's email proves nothing about who owns the account behind it. One person connects several methods to one account under *Profile → Sign-in methods*; two accounts cannot be merged.
+
 Signing out ends the Keycloak session, not just the web app's: `/logout` redeems the session's refresh token at Keycloak, which revokes every token of it and kills the single-sign-on cookie in the browser. Every sign-in also forces a credentials prompt (`prompt=login`, passed on to the university IdP), so a second person on the same browser is never signed in as the first. A university session that outlives the logout is outside MATE's reach; whether it re-prompts depends on the IdP honouring `prompt=login`.
 
 | Role | Grants |
