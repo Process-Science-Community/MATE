@@ -28,6 +28,7 @@ import { getToken, type JWT, type JWTEncodeParams, type JWTDecodeParams } from "
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE_NAMES } from "@/lib/clear-session";
 import * as sessionStore from "@/lib/session-store";
+import { parseSocialIdps } from "@/lib/social-idps";
 
 declare module "next-auth" {
   interface Session {
@@ -83,7 +84,7 @@ function rolesFromAccessToken(accessToken: string | undefined): string[] {
 }
 
 const KEYCLOAK_ISSUER = process.env.KEYCLOAK_ISSUER ?? "http://localhost:8080/realms/flows-funds";
-const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "flows-funds-web";
+export const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "flows-funds-web";
 const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET ?? "";
 // When set to a brokered IdP alias (e.g. "keycloak-oidc"), kc_idp_hint is added
 // to the authorize request so Keycloak skips its own login form and redirects
@@ -95,6 +96,12 @@ const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET ?? "";
 // instead passed per sign-in by GET /login/start, which omits it for `?local=1`
 // (the "Sign in with a Mate account" link). Exported for that route.
 export const KEYCLOAK_IDP_HINT = process.env.KEYCLOAK_IDP_HINT ?? "";
+// Providers to offer next to the two doors above ("google,microsoft,github"): the
+// Keycloak IdP aliases infra/keycloak/configure-social-idps.sh created. Each is one more
+// value of the same per-sign-in kc_idp_hint, set by GET /login/start?idp=<id> – so, like
+// the hint, it is not a provider-level param and never locks the email form out. Unknown
+// ids are dropped (lib/social-idps).
+export const SOCIAL_IDPS_ENABLED = parseSocialIdps(process.env.KEYCLOAK_SOCIAL_IDPS);
 // Optional internal back-channel base URL for Keycloak, e.g.
 // "http://keycloak:8080/auth/realms/flows-funds". When set, the SERVER-SIDE
 // OIDC calls (discovery, code->token, userinfo, and the refresh in
@@ -156,6 +163,20 @@ const AUTH_SECRET =
  * endpoint takes. */
 function keycloakEndpoint(name: "token" | "logout"): string {
   return `${KEYCLOAK_INTERNAL_URL || KEYCLOAK_ISSUER}/protocol/openid-connect/${name}`;
+}
+
+/** Keycloak's Account REST API – the signed-in user's own account, here their linked
+ * sign-in methods – for SERVER-SIDE calls carrying the session's access token (it
+ * already has the `account` audience and `manage-account-links`). Routed like the
+ * token and logout calls above. See lib/sign-in-methods. */
+export function keycloakAccountEndpoint(path: string): string {
+  return `${KEYCLOAK_INTERNAL_URL || KEYCLOAK_ISSUER}/account${path}`;
+}
+
+/** Keycloak's broker link endpoint. The user's BROWSER is sent there, so it is always
+ * the public issuer – never the internal back-channel URL. */
+export function keycloakLinkEndpoint(alias: string): string {
+  return `${KEYCLOAK_ISSUER}/broker/${encodeURIComponent(alias)}/link`;
 }
 
 // Single-flight guard: several modules (`lib/api`, `lib/ws`, the analytics
