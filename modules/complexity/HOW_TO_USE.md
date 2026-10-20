@@ -49,7 +49,7 @@ One row per measure with its **Value** and a short **Description**.
 - **Structure**: 1 minus the distinct directly-follows connections divided by the square of the number of activities. Near 1 the behaviour is sparse and structured, near 0 almost any activity can follow any other.
 - **Affinity**: the average similarity of the directly-follows patterns of two cases, over all pairs. Homogeneous logs score high.
 - **Trace length**: the shortest, the average and the longest case, as `min / avg / max`.
-- **Distinct traces**: the share of cases, in percent, whose sequence of activities differs from every other case's. 100% means every case took its own path.
+- **Distinct traces**: the number of distinct variants, that is of different activity sequences, as a share of the number of cases, in percent. 100% means every case took its own path, and 25% means that each path is taken by four cases on average.
 - **Deviation from random**: 1 minus the distance between the shares of transitions and an even spread over all pairs of activities. Close to 1 the transitions are spread almost evenly, like random behaviour; lower, a few transitions dominate.
 - **Lempel-Ziv complexity**: the number of phrases needed to describe the stream of all events in time order without repetition. Repetitive behaviour needs few, random-looking behaviour many.
 - **Pentland's task complexity**: the sum of the frequencies of the leaf states of the prefix automaton. It has no info icon.
