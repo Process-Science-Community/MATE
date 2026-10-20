@@ -7,14 +7,14 @@ Discovery mines your event log into process models. It shows how cases actually 
 - You want to see how the process really runs: which activities occur, in which order and how often. The DFG is the place to start.
 - You need a formal model, such as a Petri net, a process tree or a BPMN file, for example as a reference model for Conformance Checking.
 - You want timing. Discovery only shows the mean time between two activities on the DFG; for cycle times and bottlenecks use Performance, and to compare two groups of cases use Process Comparison.
-- Your events refer to several object types at once (orders, items, invoices). Discovery does not appear for object-centric logs; use Object-Centric Discovery.
+- Your events refer to several object types at once (orders, items, invoices). On an object-centric log Discovery's card is greyed out as unavailable; use Object-Centric Discovery.
 
 ## Before you start
 
-- The log must be case-centric, with `case_id`, `activity` and `timestamp` columns, at least 50 events and at least 2 cases.
+- The log must be case-centric, with `case_id`, `activity` and `timestamp` columns, at least 50 events and at least 2 cases. Otherwise the module's card in the process's module list shows an **Unavailable** badge and cannot be opened; hover the card to read the reason.
 - Nothing else is needed: no model to upload, no API key and no external service. Every model is mined from your events inside MATE.
 - MATE computes Discovery in the background right after you import a log (an administrator can change this), so it is usually ready when you open it. If it is not, you see "Computing Discovery…" with a progress bar and a **Cancel** button. The run happens once; next time it is instant. A failed or cancelled run is reported on the page with a **Retry** or **Run** button.
-- Everything else is mined when you first choose it: the ILP Miner, IM Infrequent at a noise threshold other than 0.2, the BPMN **Frequency filter** above 0, and the Backbone and Layered DFG layouts. The ILP Miner is refused on logs with more than 30 distinct activities or more than 5,000 cases.
+- Everything else is mined when you first choose it: the ILP Miner, IM Infrequent at a noise threshold other than 0.2, the Heuristics Net at thresholds other than its defaults, the BPMN **Frequency filter** above 0, and the Backbone and Layered DFG layouts. The ILP Miner is refused on logs with more than 30 distinct activities or more than 5,000 cases.
 
 ## Settings
 
@@ -81,7 +81,7 @@ Cards you drag stay where you drop them until you press **Reset layout** and con
 
 ### On the module page
 
-Open Discovery on the Modules page, change the values in the **Configuration** card and press **Save configuration**. Changes apply to what is computed afterwards; results that already exist are not recomputed.
+Open **Module Settings** in the sidebar and choose Discovery, change the values in its **Configuration** card and press **Save configuration**. An administrator can lock the card, which makes it read-only. Changes apply to what is computed afterwards; results that already exist are not recomputed.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
@@ -142,7 +142,7 @@ Read the tree from the root down. Use **Max depth** to look at the top levels fi
 
 ### Prefix Tree
 
-The prefix tree shows how cases begin. The root, labelled **Start**, carries the number of cases. Every other node is an activity, and its number is how many cases begin with exactly the sequence of activities on the path from the root to that node. Branches show where cases diverge. Every distinct beginning gets its own node, so the tree widens quickly when the log has many variants.
+The prefix tree shows how cases begin. The root, labelled **Start**, carries the number of cases. Every other node is an activity, and its number is how many cases begin with the sequence of activities on the path from the root to that node. Branches show where cases diverge. Every distinct beginning gets its own node, so the tree widens quickly when the log has many variants.
 
 ### Heuristics Net
 
