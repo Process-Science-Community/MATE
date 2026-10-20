@@ -67,6 +67,7 @@ The realm JSON imports **only into an empty Keycloak database**; everything afte
 | Create accounts | Keycloak console → Users → Add user, then set a temporary password. The platform creates its own `users` row on first contact. |
 | Grant admin | Realm roles → `admin` → Assign role. The seeded account deliberately has no admin role. |
 | Broker an institutional IdP | `./infra/keycloak/configure-university-idp.sh`, then set `KEYCLOAK_IDP_HINT` so users skip Keycloak's form. Keep the local form as break-glass. |
+| Offer Google, Microsoft and GitHub | Register an OAuth app at each provider, run `./infra/keycloak/configure-social-idps.sh` with their client ids and secrets (and `MICROSOFT_TENANT`), then set `KEYCLOAK_SOCIAL_IDPS`. A provider never attaches to an existing account on a matching email; people connect methods themselves under *Profile → Sign-in methods*. See `docs/DEPLOY.md`. |
 | Admin REST client (user deletion) | `./infra/keycloak/configure-admin-client.sh` |
 | MCP OAuth client | `./infra/keycloak/configure-mcp-client.sh` |
 | Change how Keycloak's own pages look | Edit the `mate` theme in `infra/keycloak/themes/mate`. Every deploy re-applies `loginTheme=mate`, so do not switch it in the console. |
@@ -118,6 +119,7 @@ Every knob a running platform reads. The deployment variables — URLs, identity
 | `KEYCLOAK_CLIENT_ID` / `_SECRET` | seeded dev values | Must match the realm; rotate before any shared deployment. |
 | `KEYCLOAK_ADMIN` / `_PASSWORD` | `admin` / `admin` | The Keycloak console login. |
 | `KEYCLOAK_IDP_HINT` | empty | Jump straight to a brokered identity provider. |
+| `KEYCLOAK_SOCIAL_IDPS` | empty | Comma-separated `google,microsoft,github`: the providers `configure-social-idps.sh` set up. Adds their buttons to the login page and *Profile → Sign-in methods*. |
 | `SESSION_STORE_DIR` | unset | Server-side sessions; sidesteps the 4 KB cookie limit. |
 | `DEMO_MODE` / `DEMO_ADMIN` | `false` | Local-only login bypass. Never on a shared deployment. |
 
@@ -266,6 +268,11 @@ Symptoms by area, with the cause that most often explains them.
 | Every API call returns `401` after login | Issuer or JWKS mismatch — compare `KEYCLOAK_ISSUER` with the realm, and confirm the API can reach `KEYCLOAK_JWKS_URL`. |
 | Login redirects forever | The realm's valid redirect URIs do not match the deployment. |
 | Safari bounces between app and login | The session cookie exceeds 4 KB — set `SESSION_STORE_DIR`. |
+| A provider sign-in stops on "An account with this email already exists" | By design: a provider's email never attaches to an existing account. Sign in the way that account was made, then *Profile → Sign-in methods → Connect*. |
+| Someone lost their data after signing in with another provider | A different sign-in identity is a new, empty account. They sign in with the original method and connect the other one; two accounts cannot be merged. |
+| Google answers `redirect_uri_mismatch`, or GitHub or Microsoft show a redirect-URI error | The callback URL registered at the provider is not `…/auth/realms/flows-funds/broker/<alias>/endpoint`, with the alias `google`, `microsoft` or `github`. |
+| Microsoft answers `AADSTS50194` or `AADSTS700016` | `MICROSOFT_TENANT` does not match the app registration's *Supported account types* (or the client id is wrong); re-run the script. |
+| *Login with email* or a link from an MCP client lands on the university | The browser flow's Identity Provider Redirector has a default provider (`configure-university-idp.sh` sets one). Delete its config. |
 | `/admin` returns `403` | The account lacks the `admin` realm role. |
 | A role change has no effect | Roles come from the access token; wait for the next refresh or sign in again. |
 

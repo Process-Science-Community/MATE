@@ -206,10 +206,95 @@ Keycloak's own login page:
 Break-glass: the local `admin@flows-funds.local` user still works via the
 Keycloak admin console (`master` realm), which the redirect does not touch.
 
+### Google, Microsoft and GitHub sign-in
+
+Adds **Google**, **Microsoft** and **GitHub** to MATE's login page, next to the
+university account and the email form, and to Keycloak's own login page (in the
+platform's look: the `mate` theme maps their logos). Each provider needs an OAuth app
+of its own; `infra/keycloak/configure-social-idps.sh` does the Keycloak side.
+
+**1. Register an OAuth app per provider.** The callback is Keycloak's broker
+endpoint; its second-to-last segment is the IdP alias (`google`, `microsoft`,
+`github`) and must not change:
+
+| Provider | Where | Callback URL | Notes |
+| --- | --- | --- | --- |
+| Google | Cloud Console → APIs & Services → *OAuth consent screen*, then *Credentials* → OAuth client ID, type *Web application* | `https://mate.uni-muenster.de/auth/realms/flows-funds/broker/google/endpoint` | Consent screen *External*, scopes `openid email profile`; **publish it** – in *Testing* only listed test users can sign in. `GOOGLE_HOSTED_DOMAIN` limits sign-in to one Workspace domain. |
+| Microsoft | Entra admin center → App registrations → New registration, platform *Web* | `https://mate.uni-muenster.de/auth/realms/flows-funds/broker/microsoft/endpoint` | *Supported account types* must match `MICROSOFT_TENANT` (below). Client secrets expire (24 months at most): create a new one and re-run the script. The default delegated permission `User.Read` is enough. |
+| GitHub | Settings → Developer settings → OAuth Apps → New | `https://mate.uni-muenster.de/auth/realms/flows-funds/broker/github/endpoint` | An *OAuth App*, not a GitHub App. It takes one callback URL, so dev and prod need an app each. Keycloak reads the primary email through the `user:email` scope – do not narrow it. |
+
+**2. Provision Keycloak** on the VM. Idempotent; a provider without credentials is
+skipped, never deleted:
+
+```bash
+KC_SERVER=http://localhost:8080/auth WEB_URL=https://mate.uni-muenster.de \
+GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
+MICROSOFT_CLIENT_ID=... MICROSOFT_CLIENT_SECRET=... MICROSOFT_TENANT=... \
+GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... \
+  ./infra/keycloak/configure-social-idps.sh
+```
+
+`MICROSOFT_TENANT` has no default because it must equal what the app registration
+allows and because it is a trust decision: a tenant id or domain (one organisation,
+whose admins vouch for its emails), `organizations` (work/school accounts of any
+organisation), `consumers` (personal accounts) or `common` (both). With
+`organizations` and `common`, anyone who can create a tenant can make Microsoft assert
+**any** email address. Prefer one tenant or `consumers` where that fits.
+
+**3. Show the buttons.** Set `KEYCLOAK_SOCIAL_IDPS=google,microsoft,github` in `.env`
+(only the providers just provisioned) and `$DC up -d web`. Empty, the default, changes
+nothing: no buttons, no Profile card.
+
+**One person, several emails, one account.** MATE keys everything on the Keycloak
+subject, so every sign-in identity is its own account until they are connected.
+The setup keeps that safe and repairable:
+
+- A provider sign-in whose **email or username already belongs to an account** stops on
+  "An account with this email already exists" – it never attaches to it. A provider's
+  email is not proof of owning the account behind it (Microsoft tenants assert any
+  address), so linking on it would be an account takeover. The provider buttons use the
+  flow `mate-social-first-login`: Keycloak's "first broker login" with *Handle Existing
+  Account* disabled and *Create User If Unique* required.
+- People **connect** methods while signed in, under *Profile → Sign-in methods*:
+  *Connect* sends them through the provider and attaches that identity to this account,
+  whatever email it carries (the account keeps its own: `syncMode` is `IMPORT`), and
+  *Disconnect* removes one. Keycloak refuses an identity another account already uses,
+  and refuses to remove the last way in unless the account has a password.
+- Two existing accounts **cannot be merged**: logs, dashboards and settings belong to one
+  account. Whoever ended up with two keeps one, signs in to it and connects the
+  methods of the other; the other account's data stays with it (an admin can delete it
+  under *Admin → Users*).
+- The login page says it and remembers the last door used ("Last used"). The same cookie
+  makes the hands-free re-sign-in after a session ends go back through that door instead
+  of always the university.
+- The residual risk is Microsoft's multi-tenant email: a stranger can create a MATE account
+  carrying a colleague's address before the colleague ever signs in. Providers never merge
+  into it, but the university IdP keeps Keycloak's stock first-login flow, which offers *Add
+  to existing account* for a matching email – a colleague who accepts it would share that
+  account. One tenant or `consumers` removes it.
+- No SMTP is needed for any of this.
+
+Other things to know:
+
+- Every sign-in sends `prompt=login`, which Keycloak passes on. Microsoft re-asks for
+  credentials; for GitHub the script pins `select_account` (its only documented value),
+  which shows the account picker; Google accepts `login` but does not document it, so
+  check §6 step 9 once. A provider's own session is outside MATE's reach.
+- `configure-university-idp.sh` sets a default provider on the browser flow's *Identity
+  Provider Redirector*. With it, "Login with email" and every direct Keycloak sign-in
+  (an MCP client's) lands on the university whatever the hint says, and Keycloak's own
+  provider buttons never show. The new script warns when it finds one; clear it under
+  *Authentication → Flows → browser → Identity Provider Redirector → settings*.
+- Locally, GitHub is the easiest to try: its callback URL may be plain `http`. Google
+  and Microsoft accept `http` only for `localhost`, while the compose Keycloak pins its
+  hostname to `keycloak`: try those on the VM, or against a Keycloak served on
+  `localhost`.
+- Roles belong to the account, so a connected method signs in with the same `admin` role.
+
 ### Login theme
 
-Keycloak's own pages (email & password sign-in, forgot password, update
-password, errors) render in the platform's look through the `mate` theme in
+Keycloak's own pages (email & password sign-in, the provider buttons, forgot
+password, update password, errors) render in the platform's look through the `mate` theme in
 `infra/keycloak/themes/mate/`. The base compose mounts it into the container and
 the realm selects it with `loginTheme`. The realm JSON only imports into an empty
 DB, so the `keycloak-config` one-shot re-applies `loginTheme=mate` on every deploy
@@ -420,6 +505,14 @@ Then in a browser:
    session and every sign-in sends `prompt=login`). If the university signs you
    in silently, its IdP ignores `prompt=login` – raise it with the IdP's
    operators; MATE already sends it.
+9. **With Google / Microsoft / GitHub enabled** (`KEYCLOAK_SOCIAL_IDPS`): sign in with
+   each button – a first sign-in creates an account (a GitHub name of one word asks for
+   a last name), a later one returns to it – and sign out in between: none may let you
+   straight back in (Google, Microsoft: `prompt=login`; GitHub: its account picker; a
+   provider that signs you in silently ignores it). Then, signed in, *Profile → Sign-in
+   methods → Connect* a second provider, sign out and in with it: same account, same
+   data. Finally try a provider whose email an existing account already has: it must stop
+   on the "already exists" page, not sign in.
 
 > **Staged rollout — internal OIDC back-channel (removes the TLS bypass).** The
 > web container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to tolerate the cert-name

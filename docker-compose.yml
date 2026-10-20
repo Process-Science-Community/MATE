@@ -260,6 +260,9 @@ services:
       # Set to a brokered IdP alias (e.g. "keycloak-oidc") to skip Keycloak's
       # login page and redirect straight to that IdP. Empty = show the local form.
       KEYCLOAK_IDP_HINT: ${KEYCLOAK_IDP_HINT:-}
+      # Google / Microsoft / GitHub buttons on the login page: a comma-separated list
+      # of the providers infra/keycloak/configure-social-idps.sh set up. Empty = none.
+      KEYCLOAK_SOCIAL_IDPS: ${KEYCLOAK_SOCIAL_IDPS:-}
     ports:
       - "3000:3000"
     depends_on:

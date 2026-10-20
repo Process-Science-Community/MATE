@@ -1,10 +1,13 @@
 # Keycloak login theme: `mate`
 
-The Keycloak-hosted pages - email & password sign-in, forgot password, update
-password, errors - rendered in the platform's own look (glass card, aurora, border
-beam, light/dark), so signing in does not feel like leaving the product. Only the
-**login** theme exists; the account console, the admin console and emails stay
-Keycloak's own.
+The Keycloak-hosted pages - email & password sign-in, the "Or continue with" provider
+buttons (University, Google, Microsoft, GitHub), forgot password, update password,
+the steps a first provider sign-in can show (review profile, errors) - rendered in
+the platform's own look (glass card, aurora, border beam, light/dark), so signing in
+does not feel like leaving the product. Only the **login** theme exists; the account
+console, the admin console and emails stay Keycloak's own. What no theme can reach is
+the provider's own screen (Google's account chooser, Microsoft's sign-in, GitHub's
+authorize page): it is theirs, between the click on a MATE button and the return.
 
 ## How it is built
 
@@ -16,11 +19,12 @@ renders in the same look without a template of its own.
 
 ```
 mate/login/
-├── theme.properties        parent=base, the stylesheet, and the kc*Class -> .mate-* map
+├── theme.properties        parent=base, the stylesheet, the kc*Class -> .mate-* map,
+│                           and kcLogoIdP-<alias> -> .mate-idp-* (provider marks)
 ├── template.ftl            the layout: glass card, logo, title, alerts, theme toggle
 ├── messages/messages_en.properties   wording: "Email", "Sign in", ...
 └── resources/
-    ├── css/mate.css        everything visual
+    ├── css/mate.css        everything visual, the provider marks included
     ├── js/theme-init.js    blocking, in <head>: applies the saved light/dark theme
     ├── js/mate.js          the theme toggle (+ a back/forward-cache fix)
     └── img/favicon.svg     copy of apps/web/app/icon.svg
@@ -50,6 +54,23 @@ choice; in local dev they sit on different ports and each remembers its own.
   max-age by default - an updated theme would otherwise stay stale in browsers.
 - A theme name that does not exist falls back to Keycloak's stock theme (with a log
   warning), so a typo degrades the look, not the login.
+
+## Provider buttons
+
+Keycloak lists every enabled identity provider under "Or continue with", in `guiOrder`
+(`infra/keycloak/configure-social-idps.sh` sets Google 1, Microsoft 2, GitHub 3; the
+university IdP has none and follows). The mark in front of the name comes from
+`theme.properties`: Keycloak looks up `kcLogoIdP-<alias>` (then `-<provider type>`) and
+puts that class on an `<i class="mate-social-logo ...">`; `css/mate.css` draws it as an
+inlined SVG - Google and Microsoft in their own colours, GitHub as a mask in the text
+colour, so it flips with light/dark. A provider without a mapping is a plain text
+button (the university one). To add a mark: one `kcLogoIdP-<alias>=mate-idp-<name>`
+line, one `.mate-idp-<name> { --mate-logo: url(...) }` rule.
+
+A provider sign-in that hits an existing account's email or username stops on the
+stock error page, reworded in `messages_en.properties` (`federatedIdentityExistsMessage`)
+to point at Profile -> Sign-in methods. Why it does not link instead:
+`infra/keycloak/configure-social-idps.sh` and docs/DEPLOY.md.
 
 ## Working on it
 
