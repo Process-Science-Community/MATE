@@ -32,7 +32,7 @@ These controls sit in the bar above the chart. Number fields apply when you leav
 
 ### On the module page
 
-The **Configuration** card of the module page has two fields; save them with **Save configuration**.
+Open **Module Settings** in the sidebar and choose this module. Its **Configuration** card has two fields; save them with **Save configuration**. An administrator can lock the card, which makes it read-only.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ When CV4CDD has results for the process, each detected drift period is shaded be
 ## Tips and limits
 
 - Start with Calendar and Auto. A longer window in Sliding window mode gathers more cases per point, which makes the line less noisy, but neighbouring points then share cases.
-- A slice with only a few cases gives a noisy value, and the tooltip shows how many cases it holds. Raise **Minimum cases per slice**, or use a coarser granularity, fewer slices or a wider window. If no slice has enough cases for the chosen metrics, the chart says so and suggests exactly that.
+- A slice with only a few cases gives a noisy value, and the tooltip shows how many cases it holds. Raise **Minimum cases per slice** to hide such slices, or use a coarser granularity, fewer slices or a wider window to give each slice more cases. If no slice has enough cases for the chosen metrics, the chart says so and suggests the coarser granularity, fewer slices or a wider window.
 - Slices follow when cases started. If the log contains cases that are still running, they are measured up to their latest event, which can make the latest slices look faster than they will turn out to be.
 - All three modes cover the span from the earliest to the latest case start. Absolute mode builds at most 2000 slices. Sliding window mode stops after 2000 windows counted from the earliest case start, so a very small step on a long log ends the timeline early, without a warning. Calendar mode has no upper limit, so Daily on a log that spans years creates a very large number of slices and takes longer; Auto keeps the number of slices moderate.
 - Results for each combination of settings are kept after they are first computed.
