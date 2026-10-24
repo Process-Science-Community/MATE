@@ -12,7 +12,10 @@ import type { ManifestArtifact, ManifestSource } from "@/lib/api-types";
 
 /** Rich module "About" payload — manifest-sourced, rendered by the topbar ⓘ. */
 export interface ModuleAbout {
+  id: string;
   name: string;
+  /** The module ships a `HOW_TO_USE.md`, so the topbar offers the guide panel. */
+  hasGuide?: boolean;
   description?: string | null;
   about?: string | null;
   /** Cited works (max 20) — title + full citation + optional DOI link. */
@@ -132,6 +135,22 @@ function prettify(seg: string): string {
   if (UUID_RE.test(seg)) return seg;
   if (seg.toLowerCase() === "ai") return "AI";
   return seg.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * The module a path belongs to - `/modules/:id` or `/processes/:logId/modules/:id` -
+ * else null. Mirrors the two module branches of {@link resolvePageMeta}; the
+ * "How to use" panel follows whichever module the current page is about.
+ */
+export function moduleIdFromPath(pathname: string): string | null {
+  const clean = pathname.replace(/\/+$/, "") || "/";
+  if (STATIC[clean]) return null; // /modules, /modules/import
+  const parts = clean.split("/").filter(Boolean);
+  if (parts[0] === "processes" && UUID_RE.test(parts[1] ?? "") && parts[2] === "modules") {
+    return parts[3] ?? null;
+  }
+  if (parts[0] === "modules" && parts.length >= 2) return parts[1];
+  return null;
 }
 
 export function resolvePageMeta(pathname: string, ctx: ResolvePageCtx = {}): PageMeta {

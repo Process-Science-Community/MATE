@@ -19,13 +19,12 @@ This MATE module is a Python port of GraphExplain’s adaptation for process eve
 logs, with calendar aggregation and cosine similarity as described below.
 The original method and the process-mining adaptation have distinct provenance.
 
-## Try it
+## Using it
 
-Import `examples/recurring_process.csv` through MATE's normal event-log import.
-Map its columns to `case_id`, `activity`, and `timestamp`, open the imported
-process, choose **Temporal Mapper**, then **Build map**. The synthetic example
-has 54 cases over 18 weeks, with recurring approval, escalation, and automated
-workflows. Click a state to inspect its member periods and pattern counts.
+The user guide is [`HOW_TO_USE.md`](HOW_TO_USE.md): the settings, how to read the
+map and the heatmap, and a walkthrough with `examples/recurring_process.csv`. The
+app shows it behind the **How to use** button on the module page. This README is
+the method specification, provenance and development notes.
 
 Defaults: daily periods, average-linkage clustering, cosine threshold 0.85,
 consecutive temporal edges, loop size 2, PCA disabled. A loop size of 1 prevents collapsing.

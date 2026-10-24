@@ -24,6 +24,8 @@ To remove a module: delete the folder. Everything it added (its venv, its bundle
 modules/<folder>/
 ├── manifest.yaml           # required – registration, requirements, deps, frontend
 ├── module.py               # required – entry point: subclass of Module
+├── HOW_TO_USE.md           # required – the user guide (see "The how-to-use guide" below)
+├── README.md               # optional – developer notes: provenance, method spec, setup
 ├── pyproject.toml          # optional – synthesised from manifest if absent
 ├── package.json            # optional – synthesised from manifest if absent
 ├── events.py               # recommended – Pydantic schemas for emitted events
@@ -39,6 +41,53 @@ modules/<folder>/
 ```
 
 `<folder>` is arbitrary on disk; the manifest's `id` is authoritative.
+
+### The how-to-use guide
+
+`HOW_TO_USE.md` is **required**. It is the module's user guide, written for an analyst using the app rather than for a developer, and one file serves two places: the **How to use** button on the module page (a panel that stays beside the page) and the *Module guides* section of the published manual. `README.md` stays free for developer and provenance notes. Copy [`HOW_TO_USE.template.md`](HOW_TO_USE.template.md) and fill it in; [`temporal_mapper/HOW_TO_USE.md`](temporal_mapper/HOW_TO_USE.md) is a complete example.
+
+```text
+# How to use <manifest name>
+
+<Lead: one paragraph, 1-3 sentences – the question the module answers.>
+
+## When to use it
+## Before you start
+## Settings
+## Reading the results
+## Tips and limits
+## Method
+```
+
+| Part | What it holds |
+| --- | --- |
+| Title and lead | `# How to use` plus the manifest `name` exactly (this also catches a copied guide that was never edited), then one paragraph of at most 600 characters. The manual uses it as the page lead and summary. |
+| When to use it | The situations the module fits, and when another module is the better tool. |
+| Before you start | The log model, required columns and minimum size (`requirements.event_log`), other modules it needs (`requirements.modules`), and anything external: an uploaded model, a second log, an API key, a sidecar. |
+| Settings | Every control with its on-screen label, default and effect, as `Setting \| Default \| What it changes` tables (`### In the panel` and `### On the module page` are fine), or the sentence `This module has no settings.` |
+| Reading the results | One `###` per view, chart, table or tab, in the order the panel shows them; end with `### Dashboard cards` when the manifest declares widgets. |
+| Tips and limits | Sizes, run time, pitfalls, and what the module does not do. |
+| Method | How the result is computed. Name the method and its authors in prose; there is no reference list, because formal citations belong in `source:` and show in the module's info popover. |
+
+The checker enforces the shape, and a portable subset of markdown, because react-markdown (the app) and the manual's builder render differently outside it:
+
+- Exactly the six `##` sections above, in that order, none empty. `###` and `####` are allowed inside; nothing deeper.
+- Links are absolute `https://`, `http://` or `mailto:` only.
+- No images, raw HTML or HTML comments (put `<module_id>` in backticks), nested lists, horizontal rules, task lists, footnotes, reference-style links, strikethrough or `_underscore_` emphasis (use `*asterisks*`).
+- UTF-8, at most 64 KiB.
+
+What the checker cannot see is whether the guide is *true*: write each label, default and limit from the panel and the code, not from memory.
+
+```bash
+uv run python -m mate.sdk.guide modules/<folder>   # one module; lists every problem, exits 1 if any
+uv run python -m mate.sdk.guide modules            # every module under a root
+```
+
+Where it is enforced:
+
+- **Upload.** `POST /api/v1/modules/install` checks the guide before anything is written. A missing or invalid guide fails the install job, and its error lists every problem.
+- **Bundled modules.** `apps/api/tests/test_module_guides.py` checks each `modules/*/` folder and that the manual has its page. After editing a guide run `make docs` and commit `landing/docs/site/`.
+- **Modules already installed** without a guide keep loading: a `modules.guide.invalid` warning is logged and the module shows no **How to use** button.
 
 ---
 
@@ -723,7 +772,7 @@ The platform's CI also runs every module's tests against the platform's `inherit
 
 Three channels are supported by the *Settings → Modules → Import* flow:
 
-1. **Zip / tarball** – drop `modules/<folder>/` into a `.zip` or `.tar.gz`.
+1. **Zip / tarball** – drop `modules/<folder>/` into a `.zip` or `.tar.gz`. The archive must contain a valid `HOW_TO_USE.md`; an upload without one is rejected (see §2).
 2. **Git URL** – repo root must contain the module folder layout from §2.
 3. **PyPI / npm** – publish a Python package exposing the `mate.modules` entry point. The platform discovers it without copying files into `modules/`.
 
@@ -736,6 +785,8 @@ For the first two, the platform unpacks into `modules/<id>/`, runs `uv sync`, ru
 Before submitting a module:
 
 - [ ] `manifest.yaml` validates (run `uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/<folder>/manifest.yaml')"`).
+- [ ] `HOW_TO_USE.md` exists and passes `uv run python -m mate.sdk.guide modules/<folder>`; every label, default and limit in it was checked against the panel and the code (§2).
+- [ ] `README.md`, if you keep one, holds developer notes only; what users need to know lives in the guide.
 - [ ] `requirements.event_log.log_model` is set to the model the module targets (`case_centric` or `object_centric`).
 - [ ] `id` matches between `manifest.yaml` and `module.py`.
 - [ ] Every emitted bus topic is in `provides:`; every subscribed topic is in `consumes:`.

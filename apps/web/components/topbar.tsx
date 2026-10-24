@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ModuleAboutContent } from "@/components/modules/module-about";
+import { ModuleGuideTopbarButton } from "@/components/modules/module-guide";
 import { useEventLogs, useModules } from "@/lib/queries";
 import { useDashboards } from "@/lib/dashboard-queries";
 import { resolvePageMeta, type ModuleAbout, type PageMeta } from "@/lib/page-meta";
@@ -117,6 +118,8 @@ export function Topbar() {
     modules?.map((m) => [
       m.id,
       {
+        id: m.id,
+        hasGuide: m.has_guide,
         name: m.name,
         description: m.description,
         about: m.about,
@@ -169,8 +172,9 @@ export function Topbar() {
       {/* Center: animated breadcrumb trail (current page bold) + info */}
       <AnimatedCrumbs pathname={pathname} crumbs={crumbs} meta={meta} />
 
-      {/* Right: MATE AI */}
-      <div className="flex min-w-0 items-center justify-end">
+      {/* Right: the module's "How to use" guide (module pages that ship one) + MATE AI */}
+      <div className="flex min-w-0 items-center justify-end gap-1">
+        {meta.module?.hasGuide && <ModuleGuideTopbarButton moduleName={meta.module.name} />}
         <MateTopbarButton />
       </div>
     </header>

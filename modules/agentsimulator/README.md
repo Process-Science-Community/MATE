@@ -1,4 +1,10 @@
 # AgentSimulator
+
+> **In MATE:** the user guide is [`HOW_TO_USE.md`](HOW_TO_USE.md), shown behind the **How to use**
+> button on the module page. The rest of this file is the upstream repository's README. Its
+> command-line workflow is not used by the MATE module, which runs the pipeline in-process
+> through `adapter.py`.
+
 This is the supplementary GitHub repository of the paper: "AgentSimulator: An Agent-based Approach for Data-driven Business Process Simulation".
 
 ![](https://github.com/lukaskirchdorfer/AgentSimulator/blob/main/AgentSim.png)

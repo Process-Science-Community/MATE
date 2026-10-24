@@ -1,0 +1,20 @@
+{
+  "guide-actor-performance": "e5a10d58575999e7d9a067eac5af14579122f41e4c3be0659bd39f53354bb192",
+  "guide-agentsimulator": "a6b02ac338cecac65222eb2a8aefc39ab238391b7c6c0a04f16349181072e6b2",
+  "guide-complexity": "0b0d7822824fee688c69987644b8164bda4823498898218aeee1a4c80fd63211",
+  "guide-complexity-over-time": "e3b0d3fd8175ffcfd2245baa50de6e629a4382f67ae1348a59e04fda28c199b7",
+  "guide-complexity-v2": "c703f4f11a966b380dfc59514ebea4fcf1c6e8225c9f89cc14ac67c0d396caaa",
+  "guide-complexity-v2-over-time": "f77fc416bfca11205d1a23f1d6756da8d0ee67fe30dfb85d9aa60d76fa3eded9",
+  "guide-concept-drift-explainer": "c1f7a015dcfd7ce9653a73b4b6d16bd305e62c0bb4201d6d9edae626f16a824c",
+  "guide-conformance": "a19bc3611f82db2ce239922882b1c53cff25bb6b67025f59a8ec7196f4ac1943",
+  "guide-cv4cdd": "6c12c7bb0cd0275122777514202f5770f060a81e70e2d8e844fececaf4f65c58",
+  "guide-discovery": "bce1171d4d6b453a783ff499228677dd86c9e4f9fc067bbbe3b5fde917daeee3",
+  "guide-log-evolution": "6faa03bbbac2939ae04bb8caa90173e986adf377437217b29161f175e6996707",
+  "guide-ocel-discovery": "337033542c505b65a4faff366f34101487299067379daa74bea92feade93fb93",
+  "guide-pcomp": "a0974c6b2520c6780c1324797ca380842baefda8ed9480aea2791fe3a0a5ac08",
+  "guide-performance": "293e80486d8d8ed1af5605d8cd23f7dc9e17f869d62be38feb7d94d8cd0fba5d",
+  "guide-performance-java": "251e2506d8621e2a3e68da97429993c1ebc5e0537861f98c2cf8bdb7f3a4fc71",
+  "guide-performance-over-time": "0ae9ec70616ed5476e430c7fdf76f5b2fd286950f7b38e6c64aa01b36605894f",
+  "guide-process-comparison": "f2c68664ac5b621da1c48b0c7b91e727da80b1318ea6ac2bcaa48cb560d18386",
+  "guide-temporal-mapper": "3bb8fd8e57586e004b897a89fadeb6a0bec784d495abf8fc73ae077ddd2470e5"
+}

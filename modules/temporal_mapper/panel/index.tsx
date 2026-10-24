@@ -5,7 +5,6 @@ import { CanvasBusyChip, CanvasControlCluster, CanvasSettings, CanvasSettingsSwi
 import { useFullscreen } from "@/components/visualizations/canvases/shared/canvas-controls";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { networkLayout } from "./layouts";
-import UserGuide from "./UserGuide";
 import DistanceHeatmap from "./DistanceHeatmap";
 import { api } from "@/lib/api";
 
@@ -111,7 +110,7 @@ export default function TemporalMapperPanel({ logId }: { logId: string; moduleId
   const dateLabel = (fraction: number) => new Date(firstTime + fraction * (lastTime - firstTime)).toISOString().slice(0, 10);
   function clear() { setShowDistances(false); setSelected(null); }
   return <div className="space-y-5">
-    <div><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-semibold">Temporal Mapper</h2><UserGuide/></div><p className="mt-2 text-sm text-muted-foreground">Find recurring activity patterns across calendar periods. Each state contains one or more periods; arrows retain connections from the temporal and similarity graph.</p></div>
+    <div><h2 className="text-xl font-semibold">Temporal Mapper</h2><p className="mt-2 text-sm text-muted-foreground">Find recurring activity patterns across calendar periods. Each state contains one or more periods; arrows retain connections from the temporal and similarity graph.</p></div>
     <form className="flex flex-wrap items-end gap-4 rounded-xl border bg-card/40 p-4 shadow-sm" onSubmit={e => { e.preventDefault(); void run(); }}>
       <label className="grid min-w-32 gap-2 text-sm">Time unit<Select value={unit} disabled={busy} onValueChange={value => { setUnit(value); clear(); }}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent>{["day", "week", "month", "year"].map(v => <SelectItem key={v} value={v}>{v[0].toUpperCase() + v.slice(1)}</SelectItem>)}</SelectContent></Select></label>
       <label className="grid gap-2 text-sm">Similarity<input className={field + " w-28"} type="number" min="0" max="1" step="0.01" required value={similarity} disabled={busy} onChange={e => { setSimilarity(e.target.value); clear(); }}/></label>
@@ -122,7 +121,7 @@ export default function TemporalMapperPanel({ logId }: { logId: string; moduleId
       {pcaEnabled && <label className="grid gap-2 text-sm">Retained variance (%)<input className={field + " w-28"} type="number" min="0" max="100" step="0.1" required value={pcaVariance} disabled={busy} onChange={e => { setPcaVariance(e.target.value); clear(); }}/></label>}
       <button type="submit" disabled={busy} className="rounded-md bg-primary px-5 py-2.5 font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Building…" : "Build map"}</button>
     </form>
-    <p className="text-xs text-muted-foreground">Activity and transition counts are normalized separately before analysis. <a href="https://doi.org/10.1162/netn_a_00301" target="_blank" rel="noopener noreferrer" className="underline">Temporal Mapper: Zhang, Chowdhury &amp; Saggar (2023)</a>. See “How to use” for details.</p>
+    <p className="text-xs text-muted-foreground">Activity and transition counts are normalized separately before analysis. <a href="https://doi.org/10.1162/netn_a_00301" target="_blank" rel="noopener noreferrer" className="underline">Temporal Mapper: Zhang, Chowdhury &amp; Saggar (2023)</a>. See “How to use” in the top bar for details.</p>
     {error && <div role="alert" className="rounded-lg border border-red-400 p-4 text-red-600">{error}</div>}
     {!result && !busy && !error && <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">Choose your parameters and build a map from this event log.</div>}
     {result && <>

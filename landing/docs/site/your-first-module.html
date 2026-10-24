@@ -831,6 +831,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <a data-toc href="#_top">Overview</a>
         <a data-toc href="#module-folder">Module folder</a>
         <a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a>
+        <a data-toc href="#the-how-to-use-guide">The how-to-use guide</a>
         <a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a>
         <a data-toc href="#startup-sequence">Startup sequence</a>
         <a data-toc href="#development-loop">Development loop</a>
@@ -862,6 +863,29 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
       </ul>
     </details>
+    <details class="side-group" data-group="Module guides" open>
+      <summary><span>Module guides</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="guide-actor-performance.html">Actor Performance</a></li>
+        <li><a class="side-link" href="guide-agentsimulator.html">AgentSimulator</a></li>
+        <li><a class="side-link" href="guide-complexity.html">Complexity</a></li>
+        <li><a class="side-link" href="guide-complexity-over-time.html">Complexity Over Time</a></li>
+        <li><a class="side-link" href="guide-complexity-v2.html">Complexity V2</a></li>
+        <li><a class="side-link" href="guide-complexity-v2-over-time.html">Complexity V2 Over Time</a></li>
+        <li><a class="side-link" href="guide-concept-drift-explainer.html">Concept Drift Explainer</a></li>
+        <li><a class="side-link" href="guide-conformance.html">Conformance Checking</a></li>
+        <li><a class="side-link" href="guide-cv4cdd.html">CV4CDD - Concept Drift Detection</a></li>
+        <li><a class="side-link" href="guide-discovery.html">Discovery</a></li>
+        <li><a class="side-link" href="guide-log-evolution.html">Log Evolution</a></li>
+        <li><a class="side-link" href="guide-ocel-discovery.html">Object-Centric Discovery</a></li>
+        <li><a class="side-link" href="guide-pcomp.html">Pcomp</a></li>
+        <li><a class="side-link" href="guide-performance.html">Performance</a></li>
+        <li><a class="side-link" href="guide-performance-java.html">Performance Metrics (Java)</a></li>
+        <li><a class="side-link" href="guide-performance-over-time.html">Performance Over Time</a></li>
+        <li><a class="side-link" href="guide-process-comparison.html">Process Comparison</a></li>
+        <li><a class="side-link" href="guide-temporal-mapper.html">Temporal Mapper</a></li>
+      </ul>
+    </details>
     <details class="side-group" data-group="Platform" open>
       <summary><span>Platform</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
@@ -874,7 +898,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Module development</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="your-first-module.html" aria-current="page">Your first module</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#module-folder">Module folder</a></li><li><a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a></li><li><a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a></li><li><a data-toc href="#startup-sequence">Startup sequence</a></li><li><a data-toc href="#development-loop">Development loop</a></li><li><a data-toc href="#constraints">Constraints</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#module-folder">Module folder</a></li><li><a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a></li><li><a data-toc href="#the-how-to-use-guide">The how-to-use guide</a></li><li><a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a></li><li><a data-toc href="#startup-sequence">Startup sequence</a></li><li><a data-toc href="#development-loop">Development loop</a></li><li><a data-toc href="#constraints">Constraints</a></li></ul></li>
         <li><a class="side-link" href="the-manifest.html">The manifest</a></li>
         <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
         <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
@@ -930,22 +954,23 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <pre><code>modules/my_module/
 <span class="t-glyph">├──</span> manifest.yaml           <span class="t-note"># required – identity, requirements, dependencies, frontend</span>
 <span class="t-glyph">├──</span> module.py               <span class="t-note"># required – one Module subclass, instantiated once per process</span>
+<span class="t-glyph">├──</span> HOW_TO_USE.md           <span class="t-note"># required – the user guide, shown behind the &quot;How to use&quot; button</span>
 <span class="t-glyph">├──</span> events.py               <span class="t-note"># recommended – Pydantic payload shapes you emit</span>
 <span class="t-glyph">├──</span> tests/                  <span class="t-note"># pytest</span>
 <span class="t-glyph">├──</span> panel/index.tsx         <span class="t-note"># the module page entry</span>
 <span class="t-glyph">├──</span> widgets/*.tsx           <span class="t-note"># dashboard cards</span>
 <span class="t-glyph">├──</span> uv.lock                 <span class="t-note"># commit it – pins your Python dependencies</span>
 <span class="t-glyph">├──</span> .venv/ · .dist/ · node_modules/   <span class="t-note"># created by the platform, gitignored</span>
-<span class="t-glyph">└──</span> README.md               <span class="t-note"># rendered on the module detail page</span></code></pre>
+<span class="t-glyph">└──</span> README.md               <span class="t-note"># optional – developer notes (provenance, method, setup); not shown in the app</span></code></pre>
 </figure>
-<p>Commit the manifest, <code>module.py</code>, tests, frontend sources, and <code>uv.lock</code>. Everything else is rebuilt.</p>
+<p>Commit the manifest, <code>module.py</code>, <code>HOW_TO_USE.md</code>, tests, frontend sources, and <code>uv.lock</code>. Everything else is rebuilt.</p>
 <h2 id="create-a-module-in-five-steps">Create a module in five steps<a class="h-anchor" href="#create-a-module-in-five-steps" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p>Copy a small, complete example — <code>modules/performance_over_time</code> has a panel and a widget.</p><figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
   <pre><code>cp -r modules/performance_over_time modules/my_module</code></pre>
 </figure></div></li>
-    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p>Rewrite the identity in <code>manifest.yaml</code>: <code>id</code>, <code>name</code>, <code>version</code>, <code>description</code>, and shrink <code>requirements</code> to what you need. The <code>id</code> is lowercase snake_case and globally unique.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p>Rewrite the identity in <code>manifest.yaml</code>: <code>id</code>, <code>name</code>, <code>version</code>, <code>description</code>, and shrink <code>requirements</code> to what you need. The <code>id</code> is lowercase snake_case and globally unique. The copy also carries the example's <code>HOW_TO_USE.md</code>; rewrite it for your module as described under <a href="#the-how-to-use-guide">The how-to-use guide</a> below.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">3</span><div class="step-body"><p>Rewrite <code>module.py</code>: set <code>id = &quot;my_module&quot;</code> on the class (it must match the manifest), delete the handlers you do not need, keep one route.</p></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p>Start the platform with hot reload.</p><figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
@@ -953,6 +978,29 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 </figure></div></li>
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p>Import a log, open the module grid, click your module.</p></div></li>
   </ol>
+<h2 id="the-how-to-use-guide">The how-to-use guide<a class="h-anchor" href="#the-how-to-use-guide" aria-label="Link to this section">#</a></h2>
+<p>Every module ships <code>HOW_TO_USE.md</code> next to its manifest, in one fixed format. It is compulsory: an upload without a valid guide is rejected, and the test suite checks every bundled module. The platform shows that one file in two places: the <strong>How to use</strong> button on the module page, and the <em>Module guides</em> section of this manual.</p>
+<figure class="codeblock" data-lang="md">
+  <figcaption class="cb-head"><span class="cb-title">modules/my_module/HOW_TO_USE.md</span></figcaption>
+  <pre><code><span class="t-note"># How to use My Module</span>
+
+One short paragraph: the question the module answers and what you get back.
+
+<span class="t-note">## When to use it</span>
+<span class="t-note">## Before you start</span>
+<span class="t-note">## Settings</span>
+<span class="t-note">## Reading the results</span>
+<span class="t-note">## Tips and limits</span>
+<span class="t-note">## Method</span></code></pre>
+</figure>
+<p>Start from the template and check the result; the checker lists every problem with its line number and exits <code>1</code> if there is any.</p>
+<figure class="codeblock" data-lang="bash">
+  <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
+  <pre><code>cp modules/HOW_TO_USE.template.md modules/my_module/HOW_TO_USE.md
+uv run python -m mate.sdk.guide modules/my_module</code></pre>
+</figure>
+<p>The title must read <code># How to use &lt;the manifest name&gt;</code>, all six sections are required in this order, and <em>Settings</em> is a <code>Setting | Default | What it changes</code> table (or the sentence &quot;This module has no settings.&quot;). The same file renders in the app and here, so the format is a small markdown subset: absolute links only, no images, no HTML, no nested lists. <a href="https://github.com/Process-Science-Community/MATE/blob/main/modules/README.md"><code>modules/README.md</code></a> has the full rules and what belongs in each section.</p>
+<aside class="callout callout-note"><span class="callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></span><div class="callout-body"><span class="label">Note</span><p>Modules that were uploaded before guides became compulsory keep loading; they log a warning and show no <strong>How to use</strong> button until they are uploaded again with a guide.</p></div></aside>
 <h2 id="a-minimal-module-that-computes-a-result">A minimal module that computes a result<a class="h-anchor" href="#a-minimal-module-that-computes-a-result" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="python">
   <figcaption class="cb-head"><span class="cb-title">modules/my_module/module.py</span></figcaption>

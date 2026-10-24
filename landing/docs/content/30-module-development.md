@@ -12,16 +12,17 @@ A module is a folder with a manifest, a handler class, and optionally a frontend
 modules/my_module/
 ├── manifest.yaml           # required – identity, requirements, dependencies, frontend
 ├── module.py               # required – one Module subclass, instantiated once per process
+├── HOW_TO_USE.md           # required – the user guide, shown behind the "How to use" button
 ├── events.py               # recommended – Pydantic payload shapes you emit
 ├── tests/                  # pytest
 ├── panel/index.tsx         # the module page entry
 ├── widgets/*.tsx           # dashboard cards
 ├── uv.lock                 # commit it – pins your Python dependencies
 ├── .venv/ · .dist/ · node_modules/   # created by the platform, gitignored
-└── README.md               # rendered on the module detail page
+└── README.md               # optional – developer notes (provenance, method, setup); not shown in the app
 ```
 
-Commit the manifest, `module.py`, tests, frontend sources, and `uv.lock`. Everything else is rebuilt.
+Commit the manifest, `module.py`, `HOW_TO_USE.md`, tests, frontend sources, and `uv.lock`. Everything else is rebuilt.
 
 ## Create a module in five steps
 
@@ -32,7 +33,7 @@ Commit the manifest, `module.py`, tests, frontend sources, and `uv.lock`. Everyt
    cp -r modules/performance_over_time modules/my_module
    ```
 
-2. Rewrite the identity in `manifest.yaml`: `id`, `name`, `version`, `description`, and shrink `requirements` to what you need. The `id` is lowercase snake_case and globally unique.
+2. Rewrite the identity in `manifest.yaml`: `id`, `name`, `version`, `description`, and shrink `requirements` to what you need. The `id` is lowercase snake_case and globally unique. The copy also carries the example's `HOW_TO_USE.md`; rewrite it for your module as described under [The how-to-use guide](#the-how-to-use-guide) below.
 3. Rewrite `module.py`: set `id = "my_module"` on the class (it must match the manifest), delete the handlers you do not need, keep one route.
 4. Start the platform with hot reload.
 
@@ -42,6 +43,35 @@ Commit the manifest, `module.py`, tests, frontend sources, and `uv.lock`. Everyt
 
 5. Import a log, open the module grid, click your module.
 :::
+
+## The how-to-use guide
+
+Every module ships `HOW_TO_USE.md` next to its manifest, in one fixed format. It is compulsory: an upload without a valid guide is rejected, and the test suite checks every bundled module. The platform shows that one file in two places: the **How to use** button on the module page, and the *Module guides* section of this manual.
+
+```md title="modules/my_module/HOW_TO_USE.md"
+# How to use My Module
+
+One short paragraph: the question the module answers and what you get back.
+
+## When to use it
+## Before you start
+## Settings
+## Reading the results
+## Tips and limits
+## Method
+```
+
+Start from the template and check the result; the checker lists every problem with its line number and exits `1` if there is any.
+
+```bash title="Terminal"
+cp modules/HOW_TO_USE.template.md modules/my_module/HOW_TO_USE.md
+uv run python -m mate.sdk.guide modules/my_module
+```
+
+The title must read `# How to use <the manifest name>`, all six sections are required in this order, and *Settings* is a `Setting | Default | What it changes` table (or the sentence "This module has no settings."). The same file renders in the app and here, so the format is a small markdown subset: absolute links only, no images, no HTML, no nested lists. [`modules/README.md`](https://github.com/Process-Science-Community/MATE/blob/main/modules/README.md) has the full rules and what belongs in each section.
+
+> [!NOTE]
+> Modules that were uploaded before guides became compulsory keep loading; they log a warning and show no **How to use** button until they are uploaded again with a guide.
 
 ## A minimal module that computes a result
 
@@ -236,6 +266,7 @@ config_schema:                      # renders the per-user settings form
 ```bash title="Terminal"
 # validate before the platform does
 uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/my_module/manifest.yaml')"
+uv run python -m mate.sdk.guide modules/my_module        # the how-to-use guide
 ```
 
 # Handlers and the context
@@ -693,10 +724,11 @@ uv run pyright                                   # strict types
 - uses: astral-sh/setup-uv@v5
 - run: uv sync --extra dev
 - run: uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/my_module/manifest.yaml')"
+- run: uv run python -m mate.sdk.guide modules/my_module
 - run: uv run pytest modules/my_module/tests
 ```
 
-Validating the manifest first is deliberate: it is the cheapest check and the most common failure.
+Validating the manifest and the guide first is deliberate: they are the cheapest checks and the most common failures.
 
 ## Distribution channels
 
@@ -705,7 +737,7 @@ Validating the manifest first is deliberate: it is the cheapest check and the mo
 | Upload | A `.zip`, `.tar`, `.tar.gz`, or `.tgz` of the folder | Private modules, one-off installs, air-gapped hosts. |
 | Installed package | A package exposing the `mate.modules` entry point | Modules shipped through your own infrastructure — discovery picks it up at boot; the UI has no registry browser. |
 
-Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`).
+Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, `HOW_TO_USE.md`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`). An archive without a valid `HOW_TO_USE.md` is rejected before anything is written; the install job's error lists what is wrong.
 
 ## Versioning
 
@@ -722,6 +754,7 @@ Bump `version:` whenever results change, not only when code changes. A results-a
 - [ ] No imports from `apps/api/*` or `apps/web/*`.
 - [ ] Widgets use the shared kit and declare `min_px_w`/`min_px_h` measured in a browser.
 - [ ] `.venv/`, `.dist/`, `node_modules/` are gitignored; `uv.lock` is committed.
-- [ ] The README states what the module computes and any external dependency.
+- [ ] `HOW_TO_USE.md` passes `python -m mate.sdk.guide modules/my_module`, and every label, default and limit in it was checked against the panel and the code.
+- [ ] `README.md`, if you keep one, holds developer notes only (provenance, method, any external dependency); what users need to know lives in the guide.
 
 The symptoms and fixes for the failures that remain are in [Troubleshooting](troubleshooting.html).

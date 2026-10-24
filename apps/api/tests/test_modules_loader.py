@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 
+from tests.guide_text import GUIDE_FILENAME, minimal_guide
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -344,6 +346,7 @@ async def test_module_install_from_upload(client_with_sample_mod: AsyncClient) -
                 '        return {"id": ctx.module_id}\n'
             ),
         )
+        zf.writestr(f"uploaded_mod/{GUIDE_FILENAME}", minimal_guide("Uploaded"))
     buf.seek(0)
 
     resp = await client_with_sample_mod.post(

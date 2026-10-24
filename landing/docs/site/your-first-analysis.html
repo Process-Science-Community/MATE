@@ -864,6 +864,29 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
       </ul>
     </details>
+    <details class="side-group" data-group="Module guides" open>
+      <summary><span>Module guides</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
+      <ul>
+        <li><a class="side-link" href="guide-actor-performance.html">Actor Performance</a></li>
+        <li><a class="side-link" href="guide-agentsimulator.html">AgentSimulator</a></li>
+        <li><a class="side-link" href="guide-complexity.html">Complexity</a></li>
+        <li><a class="side-link" href="guide-complexity-over-time.html">Complexity Over Time</a></li>
+        <li><a class="side-link" href="guide-complexity-v2.html">Complexity V2</a></li>
+        <li><a class="side-link" href="guide-complexity-v2-over-time.html">Complexity V2 Over Time</a></li>
+        <li><a class="side-link" href="guide-concept-drift-explainer.html">Concept Drift Explainer</a></li>
+        <li><a class="side-link" href="guide-conformance.html">Conformance Checking</a></li>
+        <li><a class="side-link" href="guide-cv4cdd.html">CV4CDD - Concept Drift Detection</a></li>
+        <li><a class="side-link" href="guide-discovery.html">Discovery</a></li>
+        <li><a class="side-link" href="guide-log-evolution.html">Log Evolution</a></li>
+        <li><a class="side-link" href="guide-ocel-discovery.html">Object-Centric Discovery</a></li>
+        <li><a class="side-link" href="guide-pcomp.html">Pcomp</a></li>
+        <li><a class="side-link" href="guide-performance.html">Performance</a></li>
+        <li><a class="side-link" href="guide-performance-java.html">Performance Metrics (Java)</a></li>
+        <li><a class="side-link" href="guide-performance-over-time.html">Performance Over Time</a></li>
+        <li><a class="side-link" href="guide-process-comparison.html">Process Comparison</a></li>
+        <li><a class="side-link" href="guide-temporal-mapper.html">Temporal Mapper</a></li>
+      </ul>
+    </details>
     <details class="side-group" data-group="Platform" open>
       <summary><span>Platform</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
@@ -942,7 +965,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <p>Click the row. The process page opens on the module grid, grouped by category.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Card state</th><th>Meaning</th></tr></thead><tbody><tr><td>Available</td><td>Everything the module needs is present — shown without a badge.</td></tr><tr><td>Limited</td><td>An optional module dependency is missing; the module runs with less context.</td></tr><tr><td>Unavailable</td><td>The log model, a required column, a minimum count, or a hard dependency does not match; the tooltip names the reason.</td></tr><tr><td>Disabled</td><td>Turned off for your account.</td></tr><tr><td>Computing</td><td>Its job is running right now. The card stays openable and shows the progress.</td></tr><tr><td>Failed</td><td>Its last run failed. Open it to see why and retry.</td></tr></tbody></table></div></div>
 <h2 id="4-read-a-module">4. Read a module<a class="h-anchor" href="#4-read-a-module" aria-label="Link to this section">#</a></h2>
-<p>Open <strong>Discovery</strong> for the process as a directly-follows graph (and Petri net, process tree, heuristics net, or BPMN), <strong>Performance</strong> for throughput and bottlenecks, <strong>Complexity v2</strong> for a metric suite. The first time you open a module for a log it computes: you see live progress with a <strong>Cancel</strong>, and the page appears when it finishes. Later opens are instant, and the result refreshes by itself after the log's data changes. Each page is the module's own panel inside the platform's frame: breadcrumb, version, <strong>Configure</strong> (a form generated from the module's schema, saved per user), and an info hint explaining the view.</p>
+<p>Open <strong>Discovery</strong> for the process as a directly-follows graph (and Petri net, process tree, heuristics net, or BPMN), <strong>Performance</strong> for throughput and bottlenecks, <strong>Complexity v2</strong> for a metric suite. The first time you open a module for a log it computes: you see live progress with a <strong>Cancel</strong>, and the page appears when it finishes. Later opens are instant, and the result refreshes by itself after the log's data changes. Each page is the module's own panel inside the platform's frame: breadcrumb, version, <strong>Configure</strong> (a form generated from the module's schema, saved per user), an info hint with the module's description and citations, and a <strong>How to use</strong> button that opens the module's guide beside the page: what the module needs, every setting, and how to read each view.</p>
 <h2 id="5-compose-a-dashboard">5. Compose a dashboard<a class="h-anchor" href="#5-compose-a-dashboard" aria-label="Link to this section">#</a></h2>
 <ol class="steps">
     <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p>Open <strong>Dashboards</strong> and create a board, or start from a template.</p></div></li>

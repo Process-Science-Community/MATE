@@ -36,7 +36,7 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | [`modules/PROTOCOL.md`](../modules/PROTOCOL.md) | Wire protocol between the platform host and non-Python module workers (JVM today; Node/R reserved). |
 | [`modules/SIDECAR_SERVICES.md`](../modules/SIDECAR_SERVICES.md) | How a module ships with its own long-running container (compose profiles, e.g. the Neo4j graph sidecar). |
 
-Some modules also carry their own `README.md` (e.g. `modules/actor_performance/`).
+Every module carries a `HOW_TO_USE.md`, its user guide in one fixed format (shown behind the **How to use** button in the app and published in the manual under *Module guides*; the format is in [`modules/README.md`](../modules/README.md) §2). Some modules also keep a `README.md` for developer and provenance notes (e.g. `modules/actor_performance/`).
 
 ## Conventions
 
