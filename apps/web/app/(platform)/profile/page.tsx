@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageContainer } from "@/components/page";
+import { SignInMethodsCard } from "@/components/sign-in-methods-card";
 import { initials } from "@/components/user-menu";
 
 function providerLabel(provider?: string): string {
@@ -59,6 +60,9 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Keycloak's linked identity providers; not in demo mode, which has no Keycloak. */}
+      <SignInMethodsCard enabled={status === "authenticated" && session?.provider !== "demo"} />
 
       <Card>
         <CardHeader>
