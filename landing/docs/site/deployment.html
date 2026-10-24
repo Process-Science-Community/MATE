@@ -860,29 +860,6 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
       </ul>
     </details>
-    <details class="side-group" data-group="Module guides" open>
-      <summary><span>Module guides</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
-      <ul>
-        <li><a class="side-link" href="guide-actor-performance.html">Actor Performance</a></li>
-        <li><a class="side-link" href="guide-agentsimulator.html">AgentSimulator</a></li>
-        <li><a class="side-link" href="guide-complexity.html">Complexity</a></li>
-        <li><a class="side-link" href="guide-complexity-over-time.html">Complexity Over Time</a></li>
-        <li><a class="side-link" href="guide-complexity-v2.html">Complexity V2</a></li>
-        <li><a class="side-link" href="guide-complexity-v2-over-time.html">Complexity V2 Over Time</a></li>
-        <li><a class="side-link" href="guide-concept-drift-explainer.html">Concept Drift Explainer</a></li>
-        <li><a class="side-link" href="guide-conformance.html">Conformance Checking</a></li>
-        <li><a class="side-link" href="guide-cv4cdd.html">CV4CDD - Concept Drift Detection</a></li>
-        <li><a class="side-link" href="guide-discovery.html">Discovery</a></li>
-        <li><a class="side-link" href="guide-log-evolution.html">Log Evolution</a></li>
-        <li><a class="side-link" href="guide-ocel-discovery.html">Object-Centric Discovery</a></li>
-        <li><a class="side-link" href="guide-pcomp.html">Pcomp</a></li>
-        <li><a class="side-link" href="guide-performance.html">Performance</a></li>
-        <li><a class="side-link" href="guide-performance-java.html">Performance Metrics (Java)</a></li>
-        <li><a class="side-link" href="guide-performance-over-time.html">Performance Over Time</a></li>
-        <li><a class="side-link" href="guide-process-comparison.html">Process Comparison</a></li>
-        <li><a class="side-link" href="guide-temporal-mapper.html">Temporal Mapper</a></li>
-      </ul>
-    </details>
     <details class="side-group" data-group="Platform" open>
       <summary><span>Platform</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
@@ -980,7 +957,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api</cod
 <p>Optional components: the CV4CDD model files (uploaded on the module's settings page), the Neo4j sidecar (compose profile <code>graph</code>), and S3 storage.</p>
 <h2 id="identity-setup">Identity setup<a class="h-anchor" href="#identity-setup" aria-label="Link to this section">#</a></h2>
 <p>The realm JSON imports <strong>only into an empty Keycloak database</strong>; everything after that is a console change.</p>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>How</th></tr></thead><tbody><tr><td>Create accounts</td><td>Keycloak console → Users → Add user, then set a temporary password. The platform creates its own <code>users</code> row on first contact.</td></tr><tr><td>Grant admin</td><td>Realm roles → <code>admin</code> → Assign role. The seeded account deliberately has no admin role.</td></tr><tr><td>Broker an institutional IdP</td><td><code>./infra/keycloak/configure-university-idp.sh</code>, then set <code>KEYCLOAK_IDP_HINT</code> so users skip Keycloak's form. Keep the local form as break-glass.</td></tr><tr><td>Admin REST client (user deletion)</td><td><code>./infra/keycloak/configure-admin-client.sh</code></td></tr><tr><td>MCP OAuth client</td><td><code>./infra/keycloak/configure-mcp-client.sh</code></td></tr><tr><td>Change how Keycloak's own pages look</td><td>Edit the <code>mate</code> theme in <code>infra/keycloak/themes/mate</code>. Every deploy re-applies <code>loginTheme=mate</code>, so do not switch it in the console.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>How</th></tr></thead><tbody><tr><td>Create accounts</td><td>Keycloak console → Users → Add user, then set a temporary password. The platform creates its own <code>users</code> row on first contact.</td></tr><tr><td>Grant admin</td><td>Realm roles → <code>admin</code> → Assign role. The seeded account deliberately has no admin role.</td></tr><tr><td>Broker an institutional IdP</td><td><code>./infra/keycloak/configure-university-idp.sh</code>, then set <code>KEYCLOAK_IDP_HINT</code> so users skip Keycloak's form. Keep the local form as break-glass.</td></tr><tr><td>Offer Google, Microsoft and GitHub</td><td>Register an OAuth app at each provider, run <code>./infra/keycloak/configure-social-idps.sh</code> with their client ids and secrets (and <code>MICROSOFT_TENANT</code>), then set <code>KEYCLOAK_SOCIAL_IDPS</code>. A provider never attaches to an existing account on a matching email; people connect methods themselves under <em>Profile → Sign-in methods</em>. See <code>docs/DEPLOY.md</code>.</td></tr><tr><td>Admin REST client (user deletion)</td><td><code>./infra/keycloak/configure-admin-client.sh</code></td></tr><tr><td>MCP OAuth client</td><td><code>./infra/keycloak/configure-mcp-client.sh</code></td></tr><tr><td>Change how Keycloak's own pages look</td><td>Edit the <code>mate</code> theme in <code>infra/keycloak/themes/mate</code>. Every deploy re-applies <code>loginTheme=mate</code>, so do not switch it in the console.</td></tr></tbody></table></div></div>
 <p>Deleting a user from <em>Admin → Users</em> purges their logs, results, jobs, dashboards, tokens, and settings, removes the Keycloak identity, and deletes their S3 prefix. This is intentionally irreversible.</p>
 <h2 id="updating-a-deployment">Updating a deployment<a class="h-anchor" href="#updating-a-deployment" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="bash">
