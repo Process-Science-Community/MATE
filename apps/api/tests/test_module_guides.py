@@ -32,9 +32,9 @@ from mate.sdk.guide import (
 )
 from mate.sdk.manifest import Manifest
 from tests.guide_text import minimal_guide
-from tests.test_modules_per_user import (  # pyright: ignore[reportPrivateUsage]
-    _reset_user_modules,
-    _upload,
+from tests.test_modules_per_user import (
+    _reset_user_modules,  # pyright: ignore[reportPrivateUsage]
+    _upload,  # pyright: ignore[reportPrivateUsage]
 )
 
 NAME = "Sample Module"
