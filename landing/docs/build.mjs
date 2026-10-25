@@ -7,6 +7,11 @@
  * docs/site/: one page per chapter, in the landing page's design system and the
  * docs layout of Starlight/Fumadocs.
  *
+ * It also reads every module's `modules/<id>/HOW_TO_USE.md` and files them as
+ * a "Module guides" group between "Using MATE" and "Platform": one chapter per
+ * module, titled with the module name, slug `guide-<id>`. The same file is what
+ * the app shows behind a module's "How to use" button, so there is one source.
+ *
  *   - <slug>.html         three-column docs page: group rail (search trigger,
  *                         nested sections of the current chapter) · article ·
  *                         "On this page", plus breadcrumb and prev/next pager
@@ -51,12 +56,14 @@
  *
  * Zero dependencies: `node landing/docs/build.mjs` (or `make docs`).
  */
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, "content");
+const MODULES = join(HERE, "..", "..", "modules");
 const OUT = join(HERE, "site");
 
 /* ---------- helpers ---------- */
@@ -2365,13 +2372,55 @@ ${rest.map((b) => renderBlock(b, ids)).join("\n")}
 
 /* ---------- build ---------- */
 
-/** Every markdown file under content/, concatenated in filename order. */
+/** slug -> SHA-256 of the raw `HOW_TO_USE.md` it was built from. Written to
+ *  `site/guides.json` so the test suite can tell a stale page from a fresh one
+ *  without parsing HTML. Filled by `readModuleGuides`. */
+const GUIDE_HASHES = {};
+
+/** The module guides as one markdown block: a "Module guides" group with a chapter
+ *  per `modules/<id>/HOW_TO_USE.md`. A chapter is titled with the module name (the
+ *  guide's own H1 reads "How to use <name>", which the sidebar group already says)
+ *  and pins its slug, so renaming a module never breaks a link. The mate-sdk
+ *  validator (`python -m mate.sdk.guide`) keeps each guide inside the markdown
+ *  subset this builder renders; here we only reshape the title. */
+function readModuleGuides() {
+  if (!existsSync(MODULES)) return "";
+  const guides = [];
+  for (const entry of readdirSync(MODULES, { withFileTypes: true })) {
+    if (!entry.isDirectory() || /^[._]/.test(entry.name)) continue;
+    const file = join(MODULES, entry.name, "HOW_TO_USE.md");
+    if (!existsSync(file)) continue;
+    const raw = readFileSync(file);
+    const text = raw.toString("utf8").replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+    const title = text.match(/^# (.+)\n/);
+    if (!title) throw new Error(`${file}: the first line must be a "# How to use …" title`);
+    guides.push({
+      id: entry.name,
+      slug: `guide-${entry.name.replace(/_/g, "-")}`,
+      name: title[1].replace(/^How to use\s+/i, "").trim(),
+      body: text.slice(title[0].length).trimEnd(),
+      sha: createHash("sha256").update(raw).digest("hex"),
+    });
+  }
+  if (!guides.length) return "";
+  guides.sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
+  for (const g of guides) GUIDE_HASHES[g.slug] = g.sha;
+  const chapters = guides.map((g) => `# ${g.name}\n<!-- slug: ${g.slug} -->\n${g.body}\n`);
+  return ["<!-- group: Module guides -->", ...chapters].join("\n\n");
+}
+
+/** Every markdown file under content/, plus the module guides as a virtual
+ *  `15-module-guides.md` (so they sort between "Using MATE" and "Platform"),
+ *  concatenated in filename order. */
 function readContent() {
   const files = readdirSync(SRC)
     .filter((f) => f.endsWith(".md"))
-    .sort();
+    .map((f) => ({ name: f, text: readFileSync(join(SRC, f), "utf8") }));
   if (!files.length) throw new Error(`no markdown files in ${SRC}`);
-  return files.map((f) => readFileSync(join(SRC, f), "utf8")).join("\n\n");
+  const guides = readModuleGuides();
+  if (guides) files.push({ name: "15-module-guides.md", text: guides });
+  files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return files.map((f) => f.text).join("\n\n");
 }
 
 /** Every searchable string in a block, directives included. */
@@ -2456,7 +2505,11 @@ mkdirSync(OUT, { recursive: true });
 
 writeFileSync(join(OUT, "search-index.json"), JSON.stringify(buildSearchIndex(chapters)));
 writeFileSync(join(OUT, "llms.txt"), buildLlmsTxt(chapters));
-const written = ["search-index.json", "llms.txt"];
+writeFileSync(
+  join(OUT, "guides.json"),
+  JSON.stringify(Object.fromEntries(Object.entries(GUIDE_HASHES).sort()), null, 2) + "\n",
+);
+const written = ["search-index.json", "llms.txt", "guides.json"];
 chapters.forEach((c, i) => {
   const file = `${c.slug}.html`;
   writeFileSync(

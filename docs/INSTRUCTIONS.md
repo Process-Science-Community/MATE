@@ -871,9 +871,10 @@ The platform also bundles several **advanced** modules in `modules/` – `comple
 1. Create a folder under `modules/` – the folder name is arbitrary (convention: same as the module's `id`, but not enforced).
 2. Create `modules/<folder>/manifest.yaml` – id, version, category, requirements, provides, consumes, **dependencies**, frontend.
 3. Create `modules/<folder>/module.py` – implement `Module` class using the SDK. Handlers may be written as `async def` or plain `def`: `@route` handlers ride FastAPI's built-in threadpool, and `@on_event` / `@job` handlers are auto-wrapped by the SDK (§5.5). For operations expected to run more than a few seconds, add `@job(progress=True)` (§5.6) to get a persisted job, progress streaming and a non-blocking `job_id` response.
-4. *(optional)* Create `modules/<folder>/panel/` and widget files for the frontend page.
-5. *(optional)* Declare event/payload types in `events.py`.
-6. Restart (or rely on hot reload in dev). On first boot the platform creates `modules/<folder>/.venv/` and `modules/<folder>/.dist/` automatically – nothing to install by hand, nothing leaks into the platform.
+4. Create `modules/<folder>/HOW_TO_USE.md` – the **compulsory** user guide, in the fixed format described in `modules/README.md` §2 (start from `modules/HOW_TO_USE.template.md`; check it with `uv run python -m mate.sdk.guide modules/<folder>`). An upload without a valid guide is rejected. The app shows it behind the **How to use** button on the module page, and the manual publishes it under *Module guides*.
+5. *(optional)* Create `modules/<folder>/panel/` and widget files for the frontend page.
+6. *(optional)* Declare event/payload types in `events.py`.
+7. Restart (or rely on hot reload in dev). On first boot the platform creates `modules/<folder>/.venv/` and `modules/<folder>/.dist/` automatically – nothing to install by hand, nothing leaks into the platform.
 
 **Removing a module:** delete the folder. All its dependencies, bundles, caches and lockfiles go with it. The platform's own dependencies are unaffected.
 

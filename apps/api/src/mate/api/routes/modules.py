@@ -22,7 +22,7 @@ from mate.api.config import get_settings
 from mate.api.db.models import ModuleConfig, ModuleLayout, UserSetting
 from mate.api.db.session import SessionDep
 from mate.api.jobs.runtime import get_job_runtime
-from mate.api.modules import get_module_loader
+from mate.api.modules import ModuleLoader, get_module_loader
 from mate.api.modules.availability import Availability
 from mate.api.modules.cards import (
     MODEL_LOCK_SENTINEL,
@@ -36,6 +36,7 @@ from mate.api.modules.defaults import (
     get_admin_default_ids,
     get_excluded_default_ids,
 )
+from mate.api.modules.guides import has_guide, read_guide
 from mate.api.modules.install_jobs import JOB_TYPE_UPLOAD
 from mate.api.modules.installs import (
     seed_default_modules,
@@ -68,6 +69,21 @@ async def _assert_owns_module(session: SessionDep, user_id: str, module_id: str)
     """
     if not await user_owns_module(session, user_id, module_id):
         raise HTTPException(status_code=404, detail=f"Module {module_id!r} is not installed.")
+
+
+def _module_folder(loader: ModuleLoader, module_id: str) -> Path | None:
+    """The loaded module's folder, or ``None`` if it isn't loaded.
+
+    Read defensively: some tests register stub entries in ``loader.loaded`` that
+    carry no ``discovered`` record.
+    """
+    folder = getattr(getattr(loader.loaded.get(module_id), "discovered", None), "folder", None)
+    return folder if isinstance(folder, Path) else None
+
+
+def _has_guide(loader: ModuleLoader, module_id: str) -> bool:
+    folder = _module_folder(loader, module_id)
+    return folder is not None and has_guide(folder)
 
 
 async def _reconcile_default_modules(
@@ -118,6 +134,10 @@ class ModuleSummary(BaseModel):
     provides: list[str]
     consumes: list[str]
     has_frontend: bool
+    # Whether the module ships a `HOW_TO_USE.md` (the topbar's "How to use"
+    # panel). Compulsory for new modules; false only for a module that was
+    # installed before the rule - `GET /modules/{id}/guide` serves the text.
+    has_guide: bool = False
     # Whether the module page renders the platform's log-scoped filter bar above
     # the panel (manifest `frontend.log_filter`). Folds in `has_frontend`: with
     # no panel there is no surface to filter.
@@ -207,6 +227,7 @@ async def list_modules(
             provides=list(m.provides),
             consumes=list(m.consumes),
             has_frontend=bool(m.frontend.panel),
+            has_guide=_has_guide(loader, m.id),
             supports_log_filter=bool(m.frontend.panel) and m.frontend.log_filter,
             enabled=enabled_map.get(m.id, m.default_enabled),
             is_confidential_safe=m.is_confidential_safe,
@@ -336,6 +357,28 @@ async def get_manifest(module_id: str, session: SessionDep, user: CurrentUserDep
             detail=f"Module {module_id!r} is not loaded.",
         )
     return loaded.manifest.model_dump(by_alias=True)
+
+
+class ModuleGuide(BaseModel):
+    module_id: str
+    # The module's `HOW_TO_USE.md`, verbatim. The web app renders it in the
+    # topbar's "How to use" panel; the manual builds a chapter from the same file.
+    markdown: str
+
+
+@router.get("/{module_id}/guide", response_model=ModuleGuide)
+async def get_guide(module_id: str, session: SessionDep, user: CurrentUserDep) -> ModuleGuide:
+    """The module's how-to-use guide, read from disk on every request so an edit
+    shows up without a reload. 404 when the module isn't installed for this user
+    (same rule as ``/manifest``) or ships no guide."""
+    await _assert_owns_module(session, user.id, module_id)
+    folder = _module_folder(get_module_loader(), module_id)
+    markdown = read_guide(folder) if folder is not None else None
+    if markdown is None:
+        raise HTTPException(
+            status_code=404, detail=f"Module {module_id!r} has no how-to-use guide."
+        )
+    return ModuleGuide(module_id=module_id, markdown=markdown)
 
 
 @router.get("/{module_id}/config-schema")

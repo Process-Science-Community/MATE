@@ -7,15 +7,9 @@ Decomposes waiting time between process steps by **actor behavior**, implementin
 > https://doi.org/10.1109/ICPM63005.2024.10680657
 
 For every case transition (activity → next activity) the module classifies how the work
-moved between actors and aggregates waiting time per class:
-
-| class | meaning |
-|---|---|
-| `continuation` | same actor, back-to-back in their own work stream |
-| `interruption` | same actor, but they worked on something else in between |
-| `handover_idle` | different actor who had been idle (or has no earlier work) |
-| `handover_prioritized` | different actor squeezed it in while mid another task |
-| `handover_deprioritized` | different actor finished other work first |
+moved between actors - `continuation`, `interruption`, `handover_idle`,
+`handover_prioritized` or `handover_deprioritized` - and aggregates waiting time per
+class. The class definitions are the Cypher in `pipeline/queries.py`.
 
 Pipeline (per run, fully transient): event log → prepared CSV → Event Knowledge Graph
 in Neo4j (promg) → task instances → behavior classification on case df-edges →
@@ -23,12 +17,19 @@ per-transition aggregation → module cache. The graph is **wiped before and aft
 run** and runs are serialized behind a module-global lock, so the shared sidecar never
 holds user data at rest and tenants never see each other's graphs.
 
+## Using it
+
+The user guide is [`HOW_TO_USE.md`](HOW_TO_USE.md): what the classes mean, the run
+options, and how to read the behavior mix and the transition table. The app shows it
+behind the **How to use** button on the module page. This README is the sidecar setup,
+validation and development notes.
+
 ## The Neo4j sidecar
 
 Neo4j is a separate server process - it is **not** bundled with the platform.
 
 - **Docker stack:** enable the compose profile - `COMPOSE_PROFILES=graph` (+
-  `NEO4J_PASSWORD`, optional `NEO4J_HEAP`) in `.env`. See `DEPLOY.md` §4b.
+  `NEO4J_PASSWORD`, optional `NEO4J_HEAP`) in `.env`. See `docs/DEPLOY.md` §4b.
 - **Host-mode dev (`make dev`):** run the sidecar once by hand:
 
 ```bash
@@ -94,4 +95,4 @@ uv run --with promg==1.0.10 --with 'neo4j>=5.15,<6' --with 'pandas>=2.2.2,<3' \
 `GPL-3.0` for this module folder: it links against [promg](https://github.com/PromG-dev/promg-core)
 (GPL-3.0). The reference implementation repository carries no license file; its Cypher
 was rewritten here (with fixes) and is credited in `pipeline/queries.py` and the
-manifest's `authors`/`papers`.
+manifest's `source`/`artifacts`.

@@ -7,6 +7,7 @@ import {
   queryKeys,
   eventLogsListPath,
   eventsPath,
+  moduleGuidePath,
   modulesListPath,
   ocelListPath,
   variantsPath,
@@ -690,6 +691,24 @@ export function useModuleManifest(moduleId: string) {
     queryKey: queryKeys.moduleManifest(moduleId),
     queryFn: () => api<ModuleManifest>(`/api/v1/modules/${moduleId}/manifest`),
     staleTime: Infinity,
+  });
+}
+
+/** A module's `HOW_TO_USE.md` (`GET /modules/{id}/guide`), shown in the topbar's
+ *  "How to use" panel. Disabled until a module id is given. */
+export interface ModuleGuide {
+  module_id: string;
+  markdown: string;
+}
+
+export function useModuleGuide(moduleId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.moduleGuide(moduleId ?? ""),
+    queryFn: () => api<ModuleGuide>(moduleGuidePath(moduleId ?? "")),
+    enabled: moduleId !== null,
+    // The file is read from disk per request, so an edit in dev shows up on the
+    // next open once this window has passed; in production it only changes on deploy.
+    staleTime: 30_000,
   });
 }
 
