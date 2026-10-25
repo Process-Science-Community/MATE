@@ -88,3 +88,6 @@ tasks.md
 modules/node_modules
 modules/*/cv4cdd/
 scripts/deploy.env
+
+# Claude Code worktrees (nested checkouts, never commit)
+.claude/worktrees/
