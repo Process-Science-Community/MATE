@@ -34,6 +34,7 @@ import structlog
 from mate.api.jobs.supervisor import ChildHandle, get_child_supervisor
 from mate.api.modules.ctx_rpc import build_ctx_meta, jsonify, make_ctx_dispatcher
 from mate.api.modules.job_logs import get_job_log_buffer
+from mate.api.modules.module_logs import record_module_log
 from mate.api.modules.subprocess_worker import RPC_STREAM_LIMIT, WireConnection
 from mate.sdk import Cancelled as SdkCancelled
 
@@ -116,12 +117,21 @@ class JobWorker:
             # (print, TF/joblib chatter) rather than `ctx.logger` - mirror it into
             # the per-job ring too, or the admin Jobs tab log panel stays empty
             # for exactly the modules worth watching mid-run.
-            get_job_log_buffer().append(
-                self.job_id,
-                "warning" if label == "stderr" else "info",
-                text,
-                {"stream": label},
-            )
+            level = "warning" if label == "stderr" else "info"
+            get_job_log_buffer().append(self.job_id, level, text, {"stream": label})
+            # ...and into the user's own module Logs tab. A job worker serves one
+            # call for one user, so the attribution is unambiguous.
+            if text and self._ctx is not None:
+                record_module_log(
+                    self._ctx.user_id,
+                    self.module_id,
+                    level,
+                    text,
+                    {},
+                    source="stderr" if label == "stderr" else "stdout",
+                    log_id=self._ctx.log_id or None,
+                    job_id=self.job_id,
+                )
 
     async def run(self, attr: str, ctx: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         self._ctx = ctx

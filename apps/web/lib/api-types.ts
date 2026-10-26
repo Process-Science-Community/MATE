@@ -318,6 +318,50 @@ export interface BusEnvelope<T = Record<string, unknown>> {
   ts: number;
 }
 
+// ── Module logs (`GET /modules/{id}/logs`, `module.log.*` bus topics) ───────
+
+export type ModuleLogLevel = "debug" | "info" | "warning" | "error";
+
+/** Where a line came from: the module's own `ctx.logger`, a platform record about
+ *  one of its handlers (job started / failed…), or a worker's raw stdout/stderr. */
+export type ModuleLogSource = "module" | "platform" | "stdout" | "stderr";
+
+export interface ModuleLogLine {
+  /** Process-wide monotonic id: de-duplicates the REST backfill against the live stream. */
+  seq: number;
+  ts: number;
+  level: ModuleLogLevel;
+  event: string;
+  fields: Record<string, unknown>;
+  source: ModuleLogSource;
+  log_id: string | null;
+  job_id: string | null;
+}
+
+export interface ModuleLogs {
+  module_id: string;
+  lines: ModuleLogLine[];
+  /** Retained lines per level, before any filter. */
+  counts: Record<ModuleLogLevel, number>;
+  /** Older lines were evicted — this is a tail, not the whole history. */
+  truncated: boolean;
+  capacity: number;
+  /** Highest seq stored for this user + module (0 = nothing yet). */
+  last_seq: number;
+}
+
+/** Payload of a live `module.log.<level>` frame (the level is the topic's last segment). */
+export interface ModuleLogEventPayload {
+  module_id: string;
+  seq: number;
+  ts: number;
+  source: ModuleLogSource;
+  event: string;
+  fields: Record<string, unknown>;
+  log_id: string | null;
+  job_id: string | null;
+}
+
 // ── Events / Variants / Data quality / Edits ────────────────────────────────
 
 export type ColumnType = "string" | "number" | "datetime" | "duration" | "enum" | "boolean";

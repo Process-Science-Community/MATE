@@ -70,6 +70,26 @@ class SampleModule(Module):
             rows = await log.duckdb_fetch("SELECT COUNT(*) FROM events")
         return {"events": int(rows[0][0])}
 
+    @route.get("/log-demo")
+    async def log_demo(self, ctx: ModuleContext) -> dict[str, bool]:
+        """Logs from the event loop, one line per level that the Logs tab shows."""
+        ctx.logger.debug("sample.debug_line")
+        ctx.logger.info("sample.async_line", n=1)
+        ctx.logger.warning("sample.async_warning")
+        return {"ok": True}
+
+    @route.get("/log-demo-sync")
+    def log_demo_sync(self, ctx: ModuleContext) -> dict[str, bool]:
+        """A *sync* handler runs in a worker thread (no running loop there) - the
+        case whose lines used to vanish before they reached anything."""
+        ctx.logger.error("sample.sync_error", code=7)
+        return {"ok": True}
+
+    @route.get("/boom")
+    async def boom(self, ctx: ModuleContext) -> dict[str, bool]:
+        raise RuntimeError("kaboom")
+
     @on_event("test.shout")
     async def on_shout(self, ctx: ModuleContext, payload: dict) -> None:
+        ctx.logger.debug("sample.shout_received", keys=sorted(payload))
         _received.append(payload)

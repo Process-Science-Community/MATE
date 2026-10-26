@@ -515,8 +515,48 @@ class _LoggerProxy:
     def error(self, event: str, **kw: Any) -> None:
         self._log("error", event, **kw)
 
+    def critical(self, event: str, **kw: Any) -> None:
+        self._log("error", event, **kw)
+
     def exception(self, event: str, **kw: Any) -> None:
-        self._log("error", event, exc_info=True, **kw)
+        # The host runs `ctx.logger` outside the except block, so `exc_info=True`
+        # sent across would record no traceback there: render it here, where the
+        # exception is being handled, and ship the text.
+        tb = _handled_traceback()
+        self._log("error", event, **({"traceback": tb} if tb else {}), **kw)
+
+    warn = warning
+
+
+# The worker's own package: its frames say nothing about the module's bug and carry
+# the server's install path, which the module's user has no business reading.
+_WORKER_DIR = os.path.dirname(os.path.abspath(__file__)) + os.sep
+_TRACEBACK_MAX_CHARS = 2_000
+
+
+def _drop_worker_frames(exc: traceback.TracebackException, seen: set[int]) -> None:
+    if id(exc) in seen:
+        return
+    seen.add(id(exc))
+    exc.stack = traceback.StackSummary.from_list(
+        [f for f in exc.stack if not os.path.abspath(f.filename).startswith(_WORKER_DIR)]
+    )
+    for chained in (exc.__cause__, exc.__context__):
+        if chained is not None:
+            _drop_worker_frames(chained, seen)
+
+
+def _handled_traceback() -> str:
+    """The exception being handled, minus the worker's own frames, tail-bounded."""
+    exc = sys.exc_info()[1]
+    if exc is None:
+        return ""
+    rendered = traceback.TracebackException.from_exception(exc)
+    _drop_worker_frames(rendered, set())
+    text = "".join(rendered.format())
+    if len(text) <= _TRACEBACK_MAX_CHARS:
+        return text
+    return "…\n" + text[-(_TRACEBACK_MAX_CHARS - 2) :]
 
 
 class WireConnection:

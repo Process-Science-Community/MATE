@@ -25,6 +25,7 @@ from pathlib import Path
 import structlog
 
 from mate.api.modules.guides import warn_on_guide_problems
+from mate.api.modules.logging_contract import warn_on_logging_problems
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.manifest import Manifest
 
@@ -103,6 +104,7 @@ def discover(*roots: Path) -> list[DiscoveredModule]:
                 continue
             seen_ids[manifest.id] = entry
             warn_on_guide_problems(entry, manifest)
+            warn_on_logging_problems(entry, manifest)
             discovered.append(
                 DiscoveredModule(folder=entry, manifest=manifest, source="filesystem")
             )
@@ -118,6 +120,7 @@ def discover(*roots: Path) -> list[DiscoveredModule]:
             continue
         seen_ids[ep_mod.id] = ep_mod.folder
         warn_on_guide_problems(ep_mod.folder, ep_mod.manifest)
+        warn_on_logging_problems(ep_mod.folder, ep_mod.manifest)
         discovered.append(ep_mod)
 
     return discovered
