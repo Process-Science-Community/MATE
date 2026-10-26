@@ -224,7 +224,7 @@ function StructuralTable({ metrics }: { metrics: ComplexityMetrics }) {
       key: "pentland_task",
       label: "Pentland's task complexity",
       value: formatNumber(metrics.pentland_task),
-      description: "Sum of leaf-state frequencies in prefix automaton",
+      description: "Sum of leaf-state depths in prefix automaton",
     },
     {
       key: "pentland_process",

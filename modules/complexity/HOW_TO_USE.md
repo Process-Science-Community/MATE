@@ -52,7 +52,7 @@ One row per measure with its **Value** and a short **Description**.
 - **Distinct traces**: the number of distinct variants, that is of different activity sequences, as a share of the number of cases, in percent. 100% means every case took its own path, and 25% means that each path is taken by four cases on average.
 - **Deviation from random**: 1 minus the distance between the shares of transitions and an even spread over all pairs of activities. Close to 1 the transitions are spread almost evenly, like random behaviour; lower, a few transitions dominate.
 - **Lempel-Ziv complexity**: the number of phrases needed to describe the stream of all events in time order without repetition. Repetitive behaviour needs few, random-looking behaviour many.
-- **Pentland's task complexity**: the sum of the frequencies of the leaf states of the prefix automaton. It has no info icon.
+- **Pentland's task complexity**: the sum of the lengths of the paths from the root of the prefix automaton to each of its end nodes, in effect the total length of the distinct variants, leaving out a variant that is only the beginning of a longer one. It has no info icon.
 - **Pentland's process complexity**: `10^(0.08·(1 + e − v))` with e distinct directly-follows connections and v distinct activities, an estimate of the number of routes through the process. A log with very many connections shows "–", because the value would exceed what can be represented.
 
 A "–" in any row means the measure is undefined for this log, for example **Affinity** with fewer than two cases.

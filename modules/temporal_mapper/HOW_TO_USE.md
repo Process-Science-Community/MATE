@@ -11,6 +11,7 @@ Temporal Mapper groups calendar periods (days, weeks, months or years) whose act
 ## Before you start
 
 - The module needs a case-centric event log with `case_id`, `activity` and `timestamp` columns, at least 50 events and at least 2 cases.
+- A filter bar above the panel (**Add filter** and a time range you confirm with **Apply**) narrows the log before the map is built.
 - Nothing is precomputed. The map is built on demand when you press **Build map**, and the result is not cached, so changing a setting means building again.
 - The module refuses oversized input instead of sampling it silently: at most 250,000 events, 800 occupied periods and 5,000 features. An error explains which limit you hit.
 - To try it without your own data, import [recurring_process.csv](https://github.com/Process-Science-Community/MATE/blob/main/modules/temporal_mapper/examples/recurring_process.csv), map its columns to `case_id`, `activity` and `timestamp`, open the imported process and choose **Temporal Mapper**. The synthetic log has 54 cases over 18 weeks, with recurring approval, escalation and automated workflows.
@@ -25,7 +26,7 @@ These controls sit above the map. Changing one hides the distance heatmap and cl
 | --- | --- | --- |
 | Time unit | Day | The size of a period: Day, Week, Month or Year. Dates use UTC and weeks start on Monday. |
 | Similarity | 0.85 | How alike two periods must be (0 to 1, cosine similarity) to be connected. Higher values need closer matches and give more, smaller states. |
-| Clustering | Average linkage | How periods are grouped. **Average linkage** clusters hierarchically; **Pairwise threshold** connects every pair that meets the similarity directly. |
+| Clustering | Average linkage | How periods are grouped. **Average linkage** clusters hierarchically; **Pairwise threshold** connects every pair that meets the similarity directly, except periods that are neighbours in the sequence of occupied periods; those are only linked through the temporal links. |
 | Temporal links across gaps | Bridge gaps | A gap is a period with no recorded patterns. **Bridge gaps** links consecutive observed periods even across a gap; **Adjacent only** links only periods that are next to each other on the calendar. |
 | Loop size | 2 | How aggressively periods merge into one state (1 to 20). At 1 nothing merges; larger values merge more. |
 | Enable PCA | Off | Projects the period vectors onto principal components before comparing them. |
@@ -83,6 +84,6 @@ Each cell is the shortest directed path, counted in arrows, between the states c
 
 For each period, the module counts every activity occurrence and every directed transition between two successive different activities within a case; nothing is linked across cases. All of a case's activity counts go to the period of its first event, and all of its transition counts go to the period containing the source of its first transition between different activities, which can be a different period. Within each period the activity counts and the transition counts are each scaled to unit length and then joined into one vector, with or without PCA.
 
-Periods are compared by cosine similarity (on the component scores when PCA is on). **Average linkage** cuts a hierarchical clustering at one minus the similarity and connects the periods in each cluster, so not every pair in a cluster has to reach the threshold itself. **Pairwise threshold** connects pairs that reach it directly. Temporal links are then added between consecutive periods, and two periods merge into one state when each can reach the other in fewer arrows than **Loop size**.
+Periods are compared by cosine similarity (on the component scores when PCA is on). **Average linkage** cuts a hierarchical clustering at one minus the similarity and connects the periods in each cluster, so not every pair in a cluster has to reach the threshold itself. **Pairwise threshold** connects pairs that reach it directly, apart from periods that are neighbours in the sequence. Temporal links are then added between consecutive periods, and two periods merge into one state when each can reach the other in fewer arrows than **Loop size**.
 
 Temporal Mapper was introduced by Mengsen Zhang, Samir Chowdhury and Manish Saggar (2023). This module follows GraphExplain's adaptation of it for process event logs, which Zhang, Wolf, Pentland and Pentland applied to routine dynamics in outpatient clinics (2025). The formal citations are in the info popover next to the module name.
