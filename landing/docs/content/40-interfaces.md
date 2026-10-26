@@ -103,8 +103,10 @@ The table is generated from that schema: after changing a route, a request model
 | Modules | `GET /modules/{module_id}/config` | — | `200` `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` |
 | Modules | `PUT /modules/{module_id}/config` | `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` | `200` `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` |
 | Modules | `GET /modules/{module_id}/config-schema` | — | `200` `null` |
+| Modules | `GET /modules/{module_id}/guide` | — | `200` `{"module_id":"018f2c9a…","markdown":"…"}` |
 | Modules | `GET /modules/{module_id}/layout` | `?log_id=018f2c9a…` | `200` `{"layout":null}` |
 | Modules | `PUT /modules/{module_id}/layout` | `?log_id=018f2c9a…` · `{"layout":null}` | `200` `{"layout":null}` |
+| Modules | `GET /modules/{module_id}/logs` | `?limit=500` | `200` `{"module_id":"018f2c9a…","lines":[{"seq":25,"ts":0.5,…}],"counts":null,"truncated":false,…}` |
 | Modules | `GET /modules/{module_id}/manifest` | — | `200` `null` |
 | Datasets | `GET /datasets/catalog` | — | `200` `[{"module_id":"018f2c9a…","module_name":"…","dataset_id":"018f2c9a…",…}]` |
 | Datasets | `GET /datasets/{module_id}/{dataset_id}` | `?log_id=018f2c9a…` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |

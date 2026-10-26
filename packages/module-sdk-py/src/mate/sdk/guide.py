@@ -392,8 +392,11 @@ def _check_line(line: _Line) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _module_dirs(paths: Sequence[str]) -> Iterator[Path]:
-    """A path holding ``manifest.yaml`` is one module; otherwise its child folders are."""
+def module_dirs(paths: Sequence[str]) -> Iterator[Path]:
+    """A path holding ``manifest.yaml`` is one module; otherwise its child folders are.
+
+    Shared by the module checkers' CLIs (``mate.sdk.guide``, ``mate.sdk.logcheck``).
+    """
     for raw in paths:
         path = Path(raw)
         if (path / "manifest.yaml").is_file():
@@ -423,7 +426,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     checked = 0
     failed = 0
-    for folder in _module_dirs(args):
+    for folder in module_dirs(args):
         checked += 1
         try:
             manifest = Manifest.load_yaml(folder / "manifest.yaml")

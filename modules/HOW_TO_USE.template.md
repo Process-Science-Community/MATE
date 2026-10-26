@@ -28,6 +28,7 @@
 ## Tips and limits
 
 - <Size limits, run time, caveats, and what the module does not do.>
+- <What the module's Logs panel (Settings → Modules → the module) shows for a run, and which line to look for when a result looks wrong.>
 
 ## Method
 

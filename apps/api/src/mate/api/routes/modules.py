@@ -43,6 +43,7 @@ from mate.api.modules.installs import (
     user_module_ids,
     user_owns_module,
 )
+from mate.api.modules.module_logs import LogLevel, LogSource, get_module_log_store
 from mate.api.modules.uninstall import uninstall_for_user
 from mate.api.policy import SCOPE_CARD, resolve
 from mate.api.schemas.event_logs import LogModel
@@ -379,6 +380,76 @@ async def get_guide(module_id: str, session: SessionDep, user: CurrentUserDep) -
             status_code=404, detail=f"Module {module_id!r} has no how-to-use guide."
         )
     return ModuleGuide(module_id=module_id, markdown=markdown)
+
+
+class ModuleLogLineOut(BaseModel):
+    seq: int
+    ts: float
+    level: LogLevel
+    event: str
+    fields: dict[str, Any]
+    source: LogSource
+    log_id: str | None = None
+    job_id: str | None = None
+
+
+class ModuleLogs(BaseModel):
+    module_id: str
+    # Newest last. Already narrowed by `level` / `log_id` / `after`.
+    lines: list[ModuleLogLineOut]
+    # Retained lines per level *before* any filter - the severity chips' counts.
+    counts: dict[LogLevel, int]
+    # Older lines were evicted: this is a tail, not the whole history.
+    truncated: bool
+    capacity: int
+    # Highest seq stored for this user + module; pass it back as `after`.
+    last_seq: int
+
+
+@router.get("/{module_id}/logs", response_model=ModuleLogs)
+async def get_module_logs(
+    module_id: str,
+    session: SessionDep,
+    user: CurrentUserDep,
+    level: Annotated[list[LogLevel] | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    after: Annotated[int, Query(ge=0)] = 0,
+    log_id: str | None = None,
+) -> ModuleLogs:
+    """The caller's recent log lines for one module, filterable by severity.
+
+    Everything the module logged through ``ctx.logger`` (any runtime, any
+    thread) plus the platform's own start/finish/failure records for its
+    handlers. Scoped to the calling user - a module's code is shared in-process
+    but its log lines can embed one user's data. In-memory and bounded: it is a
+    tail that restarts with the API. ``level`` is repeatable (default: all);
+    ``after`` is a ``seq`` cursor for filling the gap after a live-stream
+    reconnect.
+    """
+    await _assert_owns_module(session, user.id, module_id)
+    page = get_module_log_store().read(
+        user.id, module_id, levels=level, limit=limit, after_seq=after, log_id=log_id
+    )
+    return ModuleLogs(
+        module_id=module_id,
+        lines=[
+            ModuleLogLineOut(
+                seq=ln.seq,
+                ts=ln.ts,
+                level=ln.level,
+                event=ln.event,
+                fields=ln.fields,
+                source=ln.source,
+                log_id=ln.log_id,
+                job_id=ln.job_id,
+            )
+            for ln in page.lines
+        ],
+        counts=page.counts,
+        truncated=page.truncated,
+        capacity=page.capacity,
+        last_seq=page.last_seq,
+    )
 
 
 @router.get("/{module_id}/config-schema")

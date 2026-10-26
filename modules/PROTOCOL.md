@@ -252,6 +252,14 @@ Notes:
   workers need not await the reply before continuing. A log frame that
   reaches the host after its `call` already completed is silently dropped -
   flush (await/order) your last log lines before returning when they matter.
+  Logging is compulsory for every runtime: the host stores each line per
+  `(user, module)` for the module's *Logs* panel (severity-filterable). The
+  other `payload` fields become the line's fields. For an exception, render
+  the traceback **in the worker** and send it as a string field named
+  `traceback` - `exc_info` has no meaning across the wire, because the host
+  is not inside your `except` block. Drop your own SDK's frames from it:
+  the text is shown to the module's user. A worker's raw stdout/stderr lines
+  are captured too, but only `ctx.logger.log` carries a level and fields.
 - **`ctx.progress.update`**: `current` alone may be a fraction in `[0,1]`, a
   running counter, or paired with `total` for absolute progress.
 - **`ctx.bus.emit`**: topics must be declared in the manifest's `provides:`.

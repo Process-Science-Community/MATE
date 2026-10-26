@@ -138,6 +138,16 @@ class EventBus:
                         drops=sub.drops,
                     )
 
+    def has_subscribers(self, topic: str) -> bool:
+        """Whether any current subscriber would receive ``topic``.
+
+        Lock-free (it reads a snapshot of the list), so it is safe from any thread:
+        high-volume publishers use it to skip building an event nobody listens to.
+        """
+        return any(
+            _topic_matches(pattern, topic) for sub in list(self._subs) for pattern in sub.patterns
+        )
+
     @contextlib.asynccontextmanager
     async def subscribe(
         self,

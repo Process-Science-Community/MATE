@@ -294,7 +294,10 @@ Symptoms by area, with the cause that most often explains them.
 | --- | --- |
 | Progress bar stalls with a "no progress" hint | The module reports nothing; cancel and retry, or fix the module. |
 | Job fails with a timeout | It exceeds `JOB_EXECUTION_TIMEOUT_SECONDS`. |
-| A module fails to load | Manifest, install, or import error — API log, then the module detail page's log tail. |
+| A module fails to load | Manifest, install, or import error — API log, then the module detail page's Logs panel. |
+| A module's Logs panel is empty | Nothing has run yet, or the server restarted (lines live in memory, latest 1000 per user and module). The *Debug* chip starts off. A module installed before logging became compulsory may log nothing of its own: the API log carries a `modules.logging.missing` warning. |
+| A module's panel errors | Open its Logs panel: a failing handler leaves a `handler.failed` line with the error and a traceback of the module's own frames. |
+| Upload rejected with "A module must log through ctx.logger" | None of the listed handlers reaches a `ctx.logger` call; add them, see *Module development → Logging*. |
 | Cards stay *Limited* | An optional dependency is missing. |
 | Installed module does not appear | The install job failed and rolled back. |
 | Subprocess module restarts repeatedly | A crash at worker startup; the bridge logs the exit code and attempt count. |

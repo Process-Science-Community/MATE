@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 from typing import Any, Literal
 
 from fastapi import HTTPException
@@ -187,12 +188,20 @@ def _layout_cache_key(body: DfgLayoutRequest, options: dict[str, Any]) -> str:
     return f"dfg_layout__{digest}"
 
 
+def _result_sizes(result: Any) -> dict[str, int]:
+    """Element counts of a result's list-valued fields (activities, edges, places, ...)."""
+    if not isinstance(result, dict):
+        return {}
+    return {k: len(v) for k, v in result.items() if isinstance(v, list)}
+
+
 async def _cached_or_compute(
     ctx: ModuleContext,
     key: str,
     compute: Any,
     *,
     min_version: int = 0,
+    **fields: Any,
 ) -> dict[str, Any]:
     """Return the cached result if present AND `result["version"] >= min_version`.
 
@@ -203,15 +212,34 @@ async def _cached_or_compute(
     (re-import) or when the module config changes."), so no manual freshness
     check is needed. The `min_version` gate lets a callsite invalidate snapshots
     from before a serializer-shape bump without renaming the cache key.
+
+    Every discovery view goes through here, so this is where a cache miss is
+    logged: `key` names the algorithm, `fields` carries the request parameters
+    (a hit is `debug` only - the panels poll these routes).
     """
     if await ctx.cache.exists(key):
         cached = await ctx.cache.get(key)
         if cached is not None:
             cached_version = cached.get("version", 0) if isinstance(cached, dict) else 0
             if cached_version >= min_version:
+                ctx.logger.debug("discovery.cache_hit", key=key)
                 return cached
-    result = await compute()
+            ctx.logger.debug("discovery.cache_outdated", key=key, cached_version=cached_version)
+    t0 = time.perf_counter()
+    try:
+        result = await compute()
+    except HTTPException:
+        raise  # a deliberate 4xx (e.g. the ILP size guard), already explained to the caller
+    except Exception:
+        ctx.logger.exception("discovery.compute_failed", key=key, **fields)
+        raise
     await ctx.cache.set(key, result)
+    ctx.logger.info(
+        "discovery.computed",
+        key=key,
+        **{**_result_sizes(result), **fields},
+        duration_ms=round((time.perf_counter() - t0) * 1000),
+    )
     return result
 
 
@@ -340,6 +368,13 @@ async def _guard_ilp_size(ctx: ModuleContext) -> None:
     n_activities = int(rows[0][0]) if rows and rows[0][0] is not None else 0
     n_cases = int(rows[0][1]) if rows and rows[0][1] is not None else 0
     if n_activities > _ILP_MAX_ACTIVITIES or n_cases > _ILP_MAX_CASES:
+        ctx.logger.warning(
+            "discovery.ilp_refused",
+            activities=n_activities,
+            cases=n_cases,
+            max_activities=_ILP_MAX_ACTIVITIES,
+            max_cases=_ILP_MAX_CASES,
+        )
         raise HTTPException(
             status_code=413,
             detail=(
@@ -663,9 +698,11 @@ class DiscoveryModule(Module):
     async def dfg(self, ctx: ModuleContext, *, variant_pct: float | None = None) -> dict[str, Any]:
         if variant_pct is not None:
             vp = max(0.0, min(1.0, float(variant_pct)))
+            if vp != variant_pct:
+                ctx.logger.warning("discovery.variant_pct_clamped", requested=variant_pct, used=vp)
             key = f"dfg_variants_{vp:.2f}"
             return await _cached_or_compute(
-                ctx, key, lambda: self._compute_dfg(ctx, variant_pct=vp)
+                ctx, key, lambda: self._compute_dfg(ctx, variant_pct=vp), variant_pct=vp
             )
         # min_version=3: mean_trace_position was added in v3; force-recompute
         # older caches that don't have it (v2 added durations).
@@ -684,6 +721,9 @@ class DiscoveryModule(Module):
         if body is None:
             raise HTTPException(status_code=422, detail="Missing layout request body.")
         if len(body.nodes) > _LAYOUT_MAX_NODES:
+            ctx.logger.warning(
+                "discovery.layout_refused", nodes=len(body.nodes), max_nodes=_LAYOUT_MAX_NODES
+            )
             raise HTTPException(
                 status_code=413,
                 detail=(
@@ -692,6 +732,9 @@ class DiscoveryModule(Module):
                 ),
             )
         if len(body.edges) > _LAYOUT_MAX_EDGES:
+            ctx.logger.warning(
+                "discovery.layout_refused", edges=len(body.edges), max_edges=_LAYOUT_MAX_EDGES
+            )
             raise HTTPException(
                 status_code=413,
                 detail=(
@@ -715,7 +758,11 @@ class DiscoveryModule(Module):
 
         options = _layout_options(ctx.config, body.params)
         options["algorithm"] = body.algorithm
+        ignored = sorted(set(body.params or {}) - _LAYOUT_PARAM_KEYS)
+        if ignored:
+            ctx.logger.warning("discovery.layout_params_ignored", params=ignored)
         if not body.nodes:
+            ctx.logger.warning("discovery.layout_empty", algorithm=body.algorithm)
             # Mirrors pipeline._empty_response without importing the compute
             # chain (networkx et al.) into the API process.
             return {
@@ -734,8 +781,24 @@ class DiscoveryModule(Module):
 
         key = _layout_cache_key(body, options)
         request_payload = body.model_dump(mode="json")
+
+        async def _layout() -> dict[str, Any]:
+            result = await _offload(ctx, _dfg_layout_worker, request_payload, options)
+            # Solver trouble is never a 5xx, so it is only visible here: say which
+            # degraded path produced the coordinates (not repeated on cache hits).
+            status = str((result.get("solver") or {}).get("status", ""))
+            if status.startswith("fallback") or status == "feasible_timeout":
+                ctx.logger.warning(
+                    "discovery.layout_degraded",
+                    algorithm=body.algorithm,
+                    status=status,
+                    nodes=len(body.nodes),
+                    time_limit_s=options["time_limit_s"],
+                )
+            return result
+
         return await _cached_or_compute(
-            ctx, key, lambda: _offload(ctx, _dfg_layout_worker, request_payload, options)
+            ctx, key, _layout, algorithm=body.algorithm, nodes=len(body.nodes)
         )
 
     @route.get("/petri-net/alpha")
@@ -773,7 +836,7 @@ class DiscoveryModule(Module):
         )
         key = _heuristics_cache_key(thresholds)
         return await _cached_or_compute(
-            ctx, key, lambda: self._compute_heuristics_net(ctx, **thresholds)
+            ctx, key, lambda: self._compute_heuristics_net(ctx, **thresholds), **thresholds
         )
 
     @route.get("/petri-net/alpha-plus")
@@ -793,7 +856,7 @@ class DiscoveryModule(Module):
         nt = float(noise_threshold) if noise_threshold is not None else 0.2
         key = f"petri_net_imf__{nt:.3f}"
         return await _cached_or_compute(
-            ctx, key, lambda: self._compute_petri_imf(ctx, noise_threshold=nt)
+            ctx, key, lambda: self._compute_petri_imf(ctx, noise_threshold=nt), noise_threshold=nt
         )
 
     @route.get("/process-tree/imf")
@@ -803,7 +866,10 @@ class DiscoveryModule(Module):
         nt = float(noise_threshold) if noise_threshold is not None else 0.2
         key = f"process_tree_imf__{nt:.3f}"
         return await _cached_or_compute(
-            ctx, key, lambda: self._compute_process_tree_imf(ctx, noise_threshold=nt)
+            ctx,
+            key,
+            lambda: self._compute_process_tree_imf(ctx, noise_threshold=nt),
+            noise_threshold=nt,
         )
 
     @route.get("/process-tree/alpha")
@@ -854,8 +920,13 @@ class DiscoveryModule(Module):
             nt = float(noise_threshold) if noise_threshold is not None else 0.2
             key = f"bpmn_imf__{nt:.3f}"
             return await _cached_or_compute(
-                ctx, key, lambda: self._compute_bpmn_imf(ctx, noise_threshold=nt)
+                ctx,
+                key,
+                lambda: self._compute_bpmn_imf(ctx, noise_threshold=nt),
+                noise_threshold=nt,
             )
+        if algo != "inductive":
+            ctx.logger.warning("discovery.bpmn_algo_unknown", algo=algo, used="inductive")
         return await _cached_or_compute(
             ctx, "bpmn_inductive", lambda: self._compute_bpmn_inductive(ctx)
         )
@@ -912,8 +983,27 @@ class DiscoveryModule(Module):
         ]
 
         total = len(stages)
+        ctx.logger.info(
+            "discovery.precompute_planned",
+            algorithms=[key for key, _ in stages],
+            events=payload.get("events_count"),
+            cases=payload.get("cases_count"),
+        )
         for i, (key, fn) in enumerate(stages):
             await ctx.progress.update(i, total=total, stage=key, message=key)
-            result = await fn()
+            t0 = time.perf_counter()
+            try:
+                result = await fn()
+            except Exception:
+                # The first failing stage aborts the job; name it (and what was
+                # already cached) so the user knows which algorithm to blame.
+                ctx.logger.exception("discovery.precompute_stage_failed", stage=key, cached=i)
+                raise
             await ctx.cache.set(key, result)
+            ctx.logger.info(
+                "discovery.precomputed",
+                stage=key,
+                **_result_sizes(result),
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
         await ctx.progress.update(total, total=total, stage="done", message="done")

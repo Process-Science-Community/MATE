@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
-import contextlib
 import hashlib
 import importlib.util
 import inspect
@@ -27,6 +26,7 @@ import json
 import shutil
 import sys
 import tempfile
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,7 +40,7 @@ from mate.api.auth import CurrentUser, CurrentUserDep
 from mate.api.db.engine import get_sessionmaker
 from mate.api.db.models import EventLog, ModuleConfig
 from mate.api.events import EventBus
-from mate.api.jobs.runtime import JobHandle, JobRuntime
+from mate.api.jobs.runtime import JobCancelled, JobHandle, JobRuntime
 from mate.api.modules.availability import Availability
 from mate.api.modules.availability import evaluate as evaluate_availability
 from mate.api.modules.cache import ResultCache
@@ -51,14 +51,20 @@ from mate.api.modules.finder import get_finder, module_namespace, reset_finder
 from mate.api.modules.guides import warn_on_guide_problems
 from mate.api.modules.installer import ModuleInstallError, venv_site_packages
 from mate.api.modules.installs import user_module_ids, user_owns_module
-from mate.api.modules.job_logs import get_job_log_buffer
 from mate.api.modules.job_worker import JobWorker
+from mate.api.modules.logging_contract import warn_on_logging_problems
+from mate.api.modules.module_logs import (
+    BusForwardingLogger,
+    LogLevel,
+    format_exc_info,
+    record_module_log,
+)
 from mate.api.modules.object_centric_log_access import ObjectCentricLogAccess
 from mate.api.modules.registry import CapabilityRegistry
 from mate.api.modules.runtimes import runtime_for
 from mate.api.modules.subprocess_host import SubprocessBridge
 from mate.api.sharing import user_can_read_log
-from mate.api.tasks import spawn
+from mate.sdk import Cancelled as SdkCancelled
 from mate.sdk.context import ModuleContext
 from mate.sdk.decorators import (
     JobSpec,
@@ -266,73 +272,6 @@ class _ModuleConfigAdapter:
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._value.get(key, default)
-
-
-class _BusForwardingLogger:
-    """Wraps a structlog `BoundLogger` so every log call also fans out to the
-    event bus as `module.log.<level>` - the per-module logs tail in Settings
-    (§7.6.2) subscribes to that topic and filters by payload.module_id.
-
-    We keep the structlog output too so server-side log aggregators stay
-    untouched.
-    """
-
-    def __init__(
-        self, base, bus: EventBus, module_id: str, user_id: str, job_id: str | None = None
-    ) -> None:
-        self._base = base
-        self._bus = bus
-        self._module_id = module_id
-        self._user_id = user_id
-        # Set when this logger belongs to a job invocation (precompute / @job /
-        # route-job); None for direct route handlers. Drives the per-job ring.
-        self._job_id = job_id
-
-    def bind(self, **kwargs: Any) -> _BusForwardingLogger:
-        return _BusForwardingLogger(
-            self._base.bind(**kwargs), self._bus, self._module_id, self._user_id, self._job_id
-        )
-
-    def _emit(self, level: str, event: str, **kwargs: Any) -> None:
-        getattr(self._base, level)(event, **kwargs)
-        # Mirror into the per-job ring (admin Jobs tab). Synchronous + lock-guarded,
-        # so unlike the bus publish below it also captures lines logged from inside
-        # `asyncio.to_thread` module compute (no running loop there). Best-effort.
-        if self._job_id:
-            with contextlib.suppress(Exception):
-                get_job_log_buffer().append(self._job_id, level, event, kwargs)
-        # Best-effort: never let a logging side-effect break the handler.
-        # `user_id` scopes the line to the owning tenant - the Settings logs
-        # tail subscribes to `module.log.*` over the per-user WS, so without it
-        # one user would see another's log fields (which can embed their data).
-        with contextlib.suppress(Exception):
-            spawn(
-                self._bus.publish(
-                    f"module.log.{level}",
-                    {
-                        "module_id": self._module_id,
-                        "user_id": self._user_id,
-                        "job_id": self._job_id,
-                        "event": event,
-                        "fields": kwargs,
-                    },
-                )
-            )
-
-    def debug(self, event: str, **kw: Any) -> None:
-        self._emit("debug", event, **kw)
-
-    def info(self, event: str, **kw: Any) -> None:
-        self._emit("info", event, **kw)
-
-    def warning(self, event: str, **kw: Any) -> None:
-        self._emit("warning", event, **kw)
-
-    def error(self, event: str, **kw: Any) -> None:
-        self._emit("error", event, **kw)
-
-    def exception(self, event: str, **kw: Any) -> None:
-        self._emit("error", event, exc_info=True, **kw)
 
 
 class _UserScopedRegistry:
@@ -707,8 +646,9 @@ class ModuleLoader:
         from mate.api.modules.discovery import DiscoveredModule
 
         # Boot goes through `discover()`, which warns; this is the hot-reload
-        # path, which doesn't. A guide problem never blocks a load.
+        # path, which doesn't. A guide or logging problem never blocks a load.
         warn_on_guide_problems(folder, manifest)
+        warn_on_logging_problems(folder, manifest)
         existing = self.loaded.get(manifest.id)
         if existing is not None:
             await self.unload_one(manifest.id)
@@ -1492,6 +1432,83 @@ class ModuleLoader:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
+        """Run one handler and leave a platform record of how it went.
+
+        A module that never calls ``ctx.logger`` still gets a Logs tab with
+        substance: every job-backed run (precompute / ``@job``) logs started and
+        completed/failed/cancelled with its duration, and any handler that
+        crashes logs the error and traceback - the lines you need to answer
+        "why is my panel broken". Successful plain route calls are *not*
+        recorded: a panel polls them, and they would bury the real lines.
+        """
+        job_id = getattr(ctx, "_ff_job_id", None)
+        handler = getattr(bound_method, "__name__", "handler")
+
+        def record(level: LogLevel, event: str, **fields: Any) -> None:
+            record_module_log(
+                ctx.user_id,
+                ctx.module_id,
+                level,
+                event,
+                {"handler": handler, **fields},
+                source="platform",
+                log_id=ctx.log_id or None,
+                job_id=job_id,
+                bus=self.bus,
+            )
+
+        started = time.perf_counter()
+
+        def took_ms() -> int:
+            return round((time.perf_counter() - started) * 1000)
+
+        if job_id is not None:
+            record("info", "job.started")
+        try:
+            result = await self._dispatch_handler(bound_method, ctx, *args, **kwargs)
+        except HTTPException as exc:
+            # A deliberate answer ("no model uploaded yet" -> 404) is not a crash.
+            if exc.status_code >= 500:
+                record(
+                    "error",
+                    "handler.failed",
+                    status=exc.status_code,
+                    message=str(exc.detail),
+                    duration_ms=took_ms(),
+                )
+            else:
+                record(
+                    "debug",
+                    "handler.rejected",
+                    status=exc.status_code,
+                    message=str(exc.detail),
+                    duration_ms=took_ms(),
+                )
+            raise
+        except (JobCancelled, SdkCancelled):
+            record("info", "job.cancelled", duration_ms=took_ms())
+            raise
+        except Exception as exc:
+            record(
+                "error",
+                "handler.failed",
+                error=type(exc).__name__,
+                message=str(exc),
+                traceback=format_exc_info(True),
+                duration_ms=took_ms(),
+            )
+            raise
+        if job_id is not None:
+            record("info", "job.completed", duration_ms=took_ms())
+        return result
+
+    async def _dispatch_handler(
+        self,
+        bound_method: Callable[..., Any],
+        ctx: ModuleContext,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
         # _make_context mkdtemps a fresh workdir per invocation; delete it
         # once the handler is done so per-call scratch space doesn't pile up
         # (§5.5 "workdir: scratch space, auto-cleaned on completion").
@@ -1787,12 +1804,13 @@ class ModuleLoader:
             config=_ModuleConfigAdapter(cfg_json),
             progress=progress or _NoopProgress(),
             cancellation=cancellation or _NOOP_CANCELLATION,  # type: ignore[arg-type]
-            logger=_BusForwardingLogger(  # type: ignore[arg-type]
+            logger=BusForwardingLogger(  # type: ignore[arg-type]
                 log.bind(module_id=module_id, log_id=log_id, user_id=user_id),
                 self.bus,
                 module_id,
                 user_id,
                 job_id,
+                log_id=log_id,
             ),
             workdir=workdir,
             run_in_process=self._bind_run_in_process(module_id),  # type: ignore[arg-type]

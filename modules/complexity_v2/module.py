@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,7 @@ async def _cached_or_compute(
     if _cache_is_fresh(ctx, key):
         cached = await ctx.cache.get(key)
         if cached is not None:
+            ctx.logger.debug("complexity_v2.cache_hit", key=key)
             return cached
     result = await compute()
     await ctx.cache.set(key, result)
@@ -80,7 +82,8 @@ def _read_detected_schema(ctx: ModuleContext) -> dict[str, Any] | None:
         return None
     try:
         meta = json.loads(meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        ctx.logger.warning("complexity_v2.schema_unreadable", error=type(exc).__name__)
         return None
     schema = meta.get("detected_schema")
     return schema if isinstance(schema, dict) else None
@@ -191,22 +194,69 @@ class ComplexityV2Module(Module):
     @job(progress=True, title="Complexity v2 - precompute")
     async def precompute(self, ctx: ModuleContext, payload: dict[str, Any]) -> None:
         await ctx.progress.update(0.0, "Loading log")
-        schema = _read_detected_schema(ctx)
-        max_variants = _max_variants(ctx)
 
         await ctx.progress.update(0.2, "Computing metrics (entropy, variation, distance)")
-        metrics = await _offload(ctx, _metrics_worker, schema, max_variants)
+        metrics = await self._compute(ctx)
         await ctx.progress.update(0.85, "Computing transition matrix")
-        matrix = await _offload(ctx, _matrix_worker)
+        matrix = await self._compute_matrix(ctx)
 
         await ctx.cache.set("metrics", metrics)
         await ctx.cache.set("transition_matrix", matrix)
         await ctx.progress.update(1.0, "Done")
 
     async def _compute(self, ctx: ModuleContext) -> dict[str, Any]:
+        t0 = time.perf_counter()
         schema = _read_detected_schema(ctx)
         max_variants = _max_variants(ctx)
-        return await _offload(ctx, _metrics_worker, schema, max_variants)
+        try:
+            result = await _offload(ctx, _metrics_worker, schema, max_variants)
+        except Exception:
+            ctx.logger.exception("complexity_v2.metrics_failed", max_variants=max_variants)
+            raise
+
+        if result.get("values", {}).get("empty"):
+            ctx.logger.warning("complexity_v2.no_metrics", reason="empty event log")
+            return result
+        ctx.logger.info(
+            "complexity_v2.metrics_computed",
+            events=result["n_events"],
+            cases=result["n_cases"],
+            variants=result["n_variants"],
+            enriched=result["enriched_supported"],
+            max_variants=max_variants,
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        if result["downsampled"]:
+            # Distance metrics (avg edit distance, structural variety) ran on a subset.
+            ctx.logger.warning(
+                "complexity_v2.distance_variants_capped",
+                variants=result["n_variants"],
+                used=result["distance_variants_used"],
+                max_variants=max_variants,
+            )
+        return result
 
     async def _compute_matrix(self, ctx: ModuleContext) -> dict[str, Any]:
-        return await _offload(ctx, _matrix_worker)
+        t0 = time.perf_counter()
+        try:
+            result = await _offload(ctx, _matrix_worker)
+        except Exception:
+            ctx.logger.exception("complexity_v2.transition_matrix_failed")
+            raise
+
+        activities = len(result["activities"])
+        if not activities:
+            ctx.logger.warning("complexity_v2.transition_matrix_empty", reason="empty event log")
+            return result
+        ctx.logger.info(
+            "complexity_v2.transition_matrix_computed",
+            activities=activities,
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        if result["truncated"]:
+            ctx.logger.warning(
+                "complexity_v2.transition_matrix_truncated",
+                shown=activities,
+                top_k=_TRANSITION_TOP_K,
+            )
+        return result

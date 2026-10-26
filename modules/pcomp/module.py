@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,20 @@ def _to_pcomp_df(df: Any) -> Any:
         activity_key="activity",
         timestamp_key="timestamp",
     )
+
+
+def _group_sizes(ctx: ModuleContext, df_baseline: Any, df_other: Any) -> dict[str, int]:
+    """Event/case counts of the two compared logs, warning when a group is too
+    small for a test to say anything."""
+    sizes = {
+        "baseline_events": len(df_baseline),
+        "baseline_cases": int(df_baseline["case_id"].nunique()),
+        "other_events": len(df_other),
+        "other_cases": int(df_other["case_id"].nunique()),
+    }
+    if min(sizes["baseline_cases"], sizes["other_cases"]) < 2:
+        ctx.logger.warning("pcomp.group_too_small", **sizes)
+    return sizes
 
 
 class PermutationTestRequest(BaseModel):
@@ -104,8 +119,12 @@ class PcompModule(Module):
         try:
             other_access = await ctx.open_event_log(other_log_id)
         except PermissionError as exc:
+            ctx.logger.warning("pcomp.other_log_unavailable", other_log_id=other_log_id, status=404)
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
+            ctx.logger.warning(
+                "pcomp.other_log_unavailable", other_log_id=other_log_id, status=422, error=str(exc)
+            )
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         async with other_access as other_log:
             df_other = await other_log.pandas()
@@ -148,7 +167,19 @@ class PcompModule(Module):
                 "weighted_time_cost": weighted,
             }
 
+        sizes = _group_sizes(ctx, df_baseline, df_other)
+        t0 = time.perf_counter()
         result = await asyncio.to_thread(_run)
+        ctx.logger.info(
+            "pcomp.permutation_test_completed",
+            other_log_id=other_id,
+            **sizes,
+            distribution_size=dist_size,
+            seed=seed,
+            weighted_time_cost=weighted,
+            pvalue=result["pvalue"],
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         await ctx.progress.update(0.95, "Caching result")
         await ctx.cache.set(f"permutation__{body.other_log_id}", result)
         await ctx.progress.update(1.0, "Done")
@@ -189,7 +220,19 @@ class PcompModule(Module):
                 "seed": seed,
             }
 
+        sizes = _group_sizes(ctx, df_baseline, df_other)
+        t0 = time.perf_counter()
         result = await asyncio.to_thread(_run)
+        ctx.logger.info(
+            "pcomp.bootstrap_test_completed",
+            other_log_id=other_id,
+            **sizes,
+            bootstrapping_dist_size=dist_size,
+            resample_size=resample_size,
+            seed=seed,
+            pvalue=result["pvalue"],
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         await ctx.progress.update(0.95, "Caching result")
         await ctx.cache.set(f"bootstrap__{body.other_log_id}", result)
         await ctx.progress.update(1.0, "Done")

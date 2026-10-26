@@ -21,6 +21,7 @@ on-demand.
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,7 @@ async def _cached_or_compute(ctx: ModuleContext, key: str, compute: Any) -> dict
     if _cache_is_fresh(ctx, key):
         cached = await ctx.cache.get(key)
         if cached is not None:
+            ctx.logger.debug("log_evolution.cache_hit", key=key)
             return cached
     result = await compute()
     await ctx.cache.set(key, result)
@@ -64,6 +66,29 @@ async def _cached_or_compute(ctx: ModuleContext, key: str, compute: Any) -> dict
 
 def _resolve_granularity(granularity: str) -> str:
     return granularity if granularity in _GRANULARITIES else _DEFAULT_GRANULARITY
+
+
+def _log_evolution(
+    ctx: ModuleContext, result: dict[str, Any], *, events: int, t0: float, trigger: str
+) -> None:
+    """Log a freshly aggregated series: sizes + duration, warn when rows were unusable."""
+    ctx.logger.info(
+        "log_evolution.timeseries_computed",
+        trigger=trigger,
+        granularity=result["granularity"],
+        freq=result["freq"],
+        events=events,
+        periods=len(result["periods"]),
+        activities=len(result["activity_mix"]["activities"]),
+        duration_ms=round((time.perf_counter() - t0) * 1000),
+    )
+    if not result["periods"]:
+        ctx.logger.warning("log_evolution.no_usable_events", events=events)
+    else:
+        # Rows without a parsable timestamp are dropped before bucketing.
+        skipped = events - sum(result["events"])
+        if skipped:
+            ctx.logger.warning("log_evolution.rows_skipped", skipped=skipped, events=events)
 
 
 # ── Module ─────────────────────────────────────────────────────────────────────
@@ -108,12 +133,27 @@ class LogEvolutionModule(Module):
         ctx: ModuleContext,
         granularity: str = _DEFAULT_GRANULARITY,
     ) -> dict[str, Any]:
+        if granularity not in _GRANULARITIES:
+            ctx.logger.warning(
+                "log_evolution.unknown_granularity",
+                requested=granularity[:40],
+                used=_DEFAULT_GRANULARITY,
+            )
         granularity = _resolve_granularity(granularity)
 
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 df = await log.pandas()
-            return await asyncio.to_thread(compute_evolution, df, granularity)
+            try:
+                result = await asyncio.to_thread(compute_evolution, df, granularity)
+            except Exception:
+                ctx.logger.exception(
+                    "log_evolution.timeseries_failed", granularity=granularity, events=len(df)
+                )
+                raise
+            _log_evolution(ctx, result, events=len(df), t0=t0, trigger="request")
+            return result
 
         return await _cached_or_compute(ctx, _cache_key(granularity), _compute)
 
@@ -126,20 +166,51 @@ class LogEvolutionModule(Module):
         max_points = max(1, int(max_points))
 
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 df = await log.pandas()
-            return await asyncio.to_thread(compute_dotted, df, max_points)
+            try:
+                result = await asyncio.to_thread(compute_dotted, df, max_points)
+            except Exception:
+                ctx.logger.exception(
+                    "log_evolution.dotted_failed", max_points=max_points, events=len(df)
+                )
+                raise
+            ctx.logger.info(
+                "log_evolution.dotted_computed",
+                events=result["total_events"],
+                cases=result["n_cases"],
+                points=len(result["points"]),
+                activities=len(result["activities"]),
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
+            if not result["total_events"]:
+                ctx.logger.warning("log_evolution.no_usable_events", events=len(df))
+            elif result["sampled"]:
+                ctx.logger.warning(
+                    "log_evolution.dotted_sampled",
+                    events=result["total_events"],
+                    points=len(result["points"]),
+                    max_points=result["max_points"],
+                )
+            return result
 
         return await _cached_or_compute(ctx, f"dotted_{max_points}", _compute)
 
     @on_event("log.imported")
     @job(progress=True, title="Log evolution - precompute")
     async def precompute(self, ctx: ModuleContext, payload: dict[str, Any]) -> None:
+        t0 = time.perf_counter()
         await ctx.progress.update(0.0, "Loading log")
         async with ctx.event_log as log:
             df = await log.pandas()
         await ctx.progress.update(0.4, "Aggregating over time")
-        result = await asyncio.to_thread(compute_evolution, df, _DEFAULT_GRANULARITY)
+        try:
+            result = await asyncio.to_thread(compute_evolution, df, _DEFAULT_GRANULARITY)
+        except Exception:
+            ctx.logger.exception("log_evolution.precompute_failed", events=len(df))
+            raise
+        _log_evolution(ctx, result, events=len(df), t0=t0, trigger="precompute")
         await ctx.progress.update(0.95, "Caching")
         await ctx.cache.set(_cache_key(_DEFAULT_GRANULARITY), result)
         await ctx.progress.update(1.0, "Done")

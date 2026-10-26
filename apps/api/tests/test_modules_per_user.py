@@ -31,6 +31,7 @@ def _module_zip(
     body_marker: str = "",
     with_guide: bool = True,
     guide_text: str | None = None,
+    with_logging: bool = True,
 ) -> bytes:
     """A minimal, valid uploadable module archive declaring *module_id*.
 
@@ -39,11 +40,13 @@ def _module_zip(
     exercise the collision/reject paths. The default (empty) always yields
     byte-identical content for a given id, so two calls hash the same.
 
-    The archive carries a valid ``HOW_TO_USE.md`` (compulsory for uploads);
-    ``with_guide=False`` omits it and ``guide_text`` replaces it, to exercise the
-    rejection paths.
+    The archive carries a valid ``HOW_TO_USE.md`` and a handler that logs through
+    ``ctx.logger`` (both compulsory for uploads); ``with_guide=False`` /
+    ``with_logging=False`` omit them and ``guide_text`` replaces the guide, to
+    exercise the rejection paths.
     """
     marker = f"    # variant: {body_marker}\n" if body_marker else ""
+    log_line = '        ctx.logger.info("ping")\n' if with_logging else ""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
@@ -64,6 +67,7 @@ def _module_zip(
                 "\n"
                 '    @route.get("/ping")\n'
                 "    async def ping(self, ctx: ModuleContext) -> dict[str, str]:\n"
+                f"{log_line}"
                 '        return {"id": ctx.module_id}\n'
             ),
         )

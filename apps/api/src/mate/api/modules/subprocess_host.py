@@ -36,6 +36,7 @@ from mate.api.modules.ctx_rpc import (
     make_ctx_dispatcher,
 )
 from mate.api.modules.job_logs import get_job_log_buffer
+from mate.api.modules.module_logs import record_module_log
 from mate.api.modules.runtimes.base import WorkerLaunchSpec
 from mate.api.modules.subprocess_worker import RPC_STREAM_LIMIT, WireConnection
 from mate.api.tasks import spawn
@@ -491,6 +492,23 @@ class SubprocessBridge:
             level = "warning" if label == "stderr" else "info"
             for job_id in {*self._token_job.values()}:
                 get_job_log_buffer().append(job_id, level, text, {"stream": label})
+            # The user-facing module Logs tab is per tenant, and one worker can
+            # serve several users' calls at once - so attribute the line only when
+            # exactly one call is in flight; otherwise whose output it is would be
+            # a guess, and a wrong guess shows one user another's output.
+            in_flight = list(self._ctx_registry.values())
+            if text and len(in_flight) == 1:
+                ctx = in_flight[0]
+                record_module_log(
+                    ctx.user_id,
+                    self.manifest.id,
+                    level,
+                    text,
+                    {},
+                    source="stderr" if label == "stderr" else "stdout",
+                    log_id=ctx.log_id or None,
+                    job_id=getattr(ctx, "_ff_job_id", None),
+                )
 
     async def _on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         conn = WireConnection(reader, writer)

@@ -26,6 +26,7 @@ import base64
 import binascii
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -159,6 +160,19 @@ def _cache_key(prefix: str, sides: list[dict[str, Any]], mtimes: list[float]) ->
     return f"{prefix}__{digest}"
 
 
+def _compute_fields(frames: list[Any], result: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Log fields for one comparison: per-side sizes in and (once known) list sizes out."""
+    fields: dict[str, Any] = {
+        "sides": len(frames),
+        "events": [len(df) for df in frames],
+        "cases": [int(df["case_id"].nunique()) for df in frames],
+    }
+    for key, value in (result or {}).items():
+        if isinstance(value, list) and key not in ("sides", "log_ids"):
+            fields[key] = len(value)
+    return fields
+
+
 def _cached_keys_newest_first(cache: Any, prefix: str) -> list[str]:
     """Cache keys matching ``{prefix}__*``, newest first.
 
@@ -258,16 +272,25 @@ class ProcessComparisonModule(Module):
         since the cache key depends on the resolved mtimes.
         """
         accessors: list[Any] = []
-        for side in sides:
+        for i, side in enumerate(sides):
             try:
                 accessors.append(await ctx.open_event_log(side["log"], side["filter"]))
             except PermissionError as exc:
+                ctx.logger.warning(
+                    "process_comparison.side_unavailable", side=_side_label(i), log=side["log"]
+                )
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             except ValueError as exc:
+                ctx.logger.warning(
+                    "process_comparison.side_rejected",
+                    side=_side_label(i),
+                    log=side["log"],
+                    error=str(exc),
+                )
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
         return accessors
 
-    async def _frames(self, accessors: list[Any]) -> list[Any]:
+    async def _frames(self, ctx: ModuleContext, accessors: list[Any]) -> list[Any]:
         """Load each side's rows, refusing a side its filter emptied.
 
         An empty side would sail through the primitives and render as "every
@@ -279,6 +302,7 @@ class ProcessComparisonModule(Module):
             async with access as log:
                 df = await log.pandas()
             if len(df) == 0:
+                ctx.logger.warning("process_comparison.side_empty", side=_side_label(i))
                 raise HTTPException(
                     status_code=422,
                     detail=(
@@ -299,6 +323,7 @@ class ProcessComparisonModule(Module):
         unscoped call simply recomputes every time.
         """
         if not ctx.log_id:
+            ctx.logger.debug("process_comparison.cache_unscoped")
             return None
         cached = await ctx.cache.get(key)
         return cached if isinstance(cached, dict) else None
@@ -325,12 +350,26 @@ class ProcessComparisonModule(Module):
         key = _cache_key(prefix, sides, [_events_mtime(a) for a in accessors])
         cached = await self._cache_get(ctx, key)
         if cached is not None:
+            ctx.logger.debug("process_comparison.cache_hit", view=prefix)
             return cached
         ordered_ids = [s["log"] for s in sides]
-        frames = await self._frames(accessors)
-        result = await asyncio.to_thread(run, ordered_ids, frames)
+        frames = await self._frames(ctx, accessors)
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.to_thread(run, ordered_ids, frames)
+        except Exception:
+            ctx.logger.exception(
+                "process_comparison.compute_failed", view=prefix, **_compute_fields(frames)
+            )
+            raise
         result["sides"] = sides
         await self._cache_set(ctx, key, result)
+        ctx.logger.info(
+            "process_comparison.computed",
+            view=prefix,
+            **_compute_fields(frames, result),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return result
 
     async def _compute_pairwise(
@@ -351,9 +390,10 @@ class ProcessComparisonModule(Module):
         key = _cache_key(prefix, sides, [_events_mtime(a) for a in accessors])
         cached = await self._cache_get(ctx, key)
         if cached is not None:
+            ctx.logger.debug("process_comparison.cache_hit", view=prefix)
             return cached
 
-        frames = await self._frames(accessors)
+        frames = await self._frames(ctx, accessors)
 
         def _wrapped() -> dict[str, Any]:
             payload = run(frames)
@@ -362,8 +402,21 @@ class ProcessComparisonModule(Module):
             payload["sides"] = sides
             return payload
 
-        result = await asyncio.to_thread(_wrapped)
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.to_thread(_wrapped)
+        except Exception:
+            ctx.logger.exception(
+                "process_comparison.compute_failed", view=prefix, **_compute_fields(frames)
+            )
+            raise
         await self._cache_set(ctx, key, result)
+        ctx.logger.info(
+            "process_comparison.computed",
+            view=prefix,
+            **_compute_fields(frames, result),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return result
 
     # -- routes --------------------------------------------------------------
@@ -372,6 +425,13 @@ class ProcessComparisonModule(Module):
     async def similarity(self, ctx: ModuleContext, sides: str = "") -> dict[str, Any]:
         def _run(ordered_ids: list[str], frames: list[Any]) -> dict[str, Any]:
             variant_counts = [comp.variant_counts(df) for df in frames]
+            if any(len(vc) > comp._EMD_VARIANT_CAP for vc in variant_counts):
+                # EMD only sees the most frequent variants; the long tail is dropped.
+                ctx.logger.warning(
+                    "process_comparison.emd_variants_capped",
+                    cap=comp._EMD_VARIANT_CAP,
+                    variants=[len(vc) for vc in variant_counts],
+                )
             metrics = comp.pairwise_similarity(
                 activities=[set(comp.activity_frequencies(df)) for df in frames],
                 edges=[set(comp.discover_dfg(df)[0]) for df in frames],
@@ -424,7 +484,14 @@ class ProcessComparisonModule(Module):
     @route.get("/variants")
     async def variants(self, ctx: ModuleContext, sides: str = "") -> dict[str, Any]:
         def _run(ordered_ids: list[str], frames: list[Any]) -> dict[str, Any]:
-            return serialize_variant_diff(ordered_ids, [comp.variant_counts(df) for df in frames])
+            diff = serialize_variant_diff(ordered_ids, [comp.variant_counts(df) for df in frames])
+            if diff["total_variants"] > len(diff["variants"]):
+                ctx.logger.warning(
+                    "process_comparison.variants_truncated",
+                    total=diff["total_variants"],
+                    shown=len(diff["variants"]),
+                )
+            return diff
 
         return await self._compute_over_set(ctx, "variants", sides, _run)
 

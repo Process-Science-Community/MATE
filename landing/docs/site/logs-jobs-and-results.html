@@ -831,6 +831,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <a data-toc href="#_top">Overview</a>
         <a data-toc href="#reading-the-log">Reading the log</a>
         <a data-toc href="#precompute-jobs-and-progress">Precompute, jobs and progress</a>
+        <a data-toc href="#logging">Logging</a>
         <a data-toc href="#results">Results</a>
     </div>
   </div>
@@ -897,7 +898,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="the-manifest.html">The manifest</a></li>
         <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
         <li><a class="side-link" href="logs-jobs-and-results.html" aria-current="page">Logs, jobs and results</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#reading-the-log">Reading the log</a></li><li><a data-toc href="#precompute-jobs-and-progress">Precompute, jobs and progress</a></li><li><a data-toc href="#results">Results</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#reading-the-log">Reading the log</a></li><li><a data-toc href="#precompute-jobs-and-progress">Precompute, jobs and progress</a></li><li><a data-toc href="#logging">Logging</a></li><li><a data-toc href="#results">Results</a></li></ul></li>
         <li><a class="side-link" href="module-communication.html">Module communication</a></li>
         <li><a class="side-link" href="frontend-panels-widgets-and-datasets.html">Frontend: panels, widgets and datasets</a></li>
         <li><a class="side-link" href="dependencies-isolation-and-runtimes.html">Dependencies, isolation and runtimes</a></li>
@@ -976,6 +977,21 @@ async def precompute(self, ctx: ModuleContext, payload: dict) -&gt; None:
     await ctx.progress.update(1.0, &quot;Done&quot;)</code></pre>
 </figure>
 <ul><li>Precompute is <strong>lazy</strong>. The platform runs the job the first time a log needs the module (the page, a dashboard card, an MCP read) and mounts your panel only once it has finished, so the panel can assume its cache is filled. <code>precompute: eager</code> in the manifest also runs it after every import.</li><li>Only job-backed handlers are tracked. A handler without <code>@job</code> is fire-and-forget: no run state, never shown, never run on demand.</li><li>The handler also runs after the log's data changes and again after an interrupted run is restarted, and its payload has no <code>import_job_id</code> when run on demand: make it idempotent and rebuild from <code>ctx.event_log</code> alone. Other jobs run in parallel up to the worker limit, so keep memory bounded.</li><li>To run after another module, subscribe to <code>&lt;module_id&gt;.completed</code> — see <a href="module-communication.html">Module communication</a>.</li></ul>
+<h2 id="logging">Logging<a class="h-anchor" href="#logging" aria-label="Link to this section">#</a></h2>
+<p>Logging through <code>ctx.logger</code> is <strong>compulsory</strong>. It is the only thing that feeds the <em>Logs</em> panel on the module's page (Settings → Modules → your module), where the user filters by severity; <code>print()</code>, the stdlib <code>logging</code> module and a module-level <code>structlog</code> logger go to the server's stdout and never reach it.</p>
+<figure class="codeblock" data-lang="python">
+  <figcaption class="cb-head"><span class="cb-title">Log what the module decides, with numbers</span></figcaption>
+  <pre><code>ctx.logger.info(&quot;my_module.kpis_computed&quot;, events=n_events, duration_ms=ms)
+ctx.logger.warning(&quot;my_module.fallback&quot;, reason=&quot;no end_timestamp&quot;)
+try:
+    result = fit(df)
+except ValueError:
+    ctx.logger.exception(&quot;my_module.fit_failed&quot;, column=name)   # keeps the traceback
+    raise</code></pre>
+</figure>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Level</th><th>Use it for</th></tr></thead><tbody><tr><td><code>debug</code></td><td>Cache hits and per-step detail. Hidden in the panel until the user turns it on.</td></tr><tr><td><code>info</code></td><td>A computation that really runs (sizes in and out, <code>duration_ms</code>), a cache being rebuilt, a change the user asked for.</td></tr><tr><td><code>warning</code></td><td>A degraded path that continues: fallback, skipped rows or columns, a missing optional service, truncated output.</td></tr><tr><td><code>error</code> / <code>exception</code></td><td>A failure you catch and handle or convert. One you let propagate is recorded by the platform.</td></tr></tbody></table></div></div>
+<ul><li>Name events <code>&lt;module_id&gt;.&lt;what_happened&gt;</code>; put counts, ids and parameters in keyword fields. Never put raw events, secrets or user-written text there — the lines are shown to the user.</li><li>A GET route that a panel polls logs on a cache <strong>miss</strong> only.</li><li>The platform adds <code>job.started</code> / <code>job.completed</code> / <code>job.failed</code> / <code>job.cancelled</code> for job-backed handlers, <code>handler.failed</code> with a traceback for any handler that raises, and the stdout/stderr of worker, subprocess and JVM modules. Do not duplicate them.</li><li>It keeps the latest 1000 lines per user and module in memory (an API restart clears them); only the user who produced a line can read it.</li></ul>
+<p>The rule, checked statically: every <code>@job</code>, <code>@on_event</code> and mutating <code>@route</code> handler must reach a <code>ctx.logger</code> call, and a module of only <code>@route.get</code> handlers must log at least once. <code>uv run python -m mate.sdk.logcheck modules/my_module</code> lists the handlers that do not; an upload that breaks the rule is rejected, and a module already installed only logs a <code>modules.logging.missing</code> warning. JVM modules are exempt from the check (it cannot read a jar) and call <code>ctx.logger()</code> instead.</p>
 <h2 id="results">Results<a class="h-anchor" href="#results" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Output</th><th>Where</th></tr></thead><tbody><tr><td>Structured result (KPIs, rankings, summaries)</td><td><code>ctx.cache</code> as JSON — readable by routes, datasets, and MCP tools.</td></tr><tr><td>Tabular result</td><td><code>ctx.cache</code> as a DataFrame (stored as Parquet).</td></tr><tr><td>Large binary or model artifact</td><td><code>ctx.cache</code> as bytes; <code>ctx.workdir</code> only for scratch.</td></tr><tr><td>Transient per-request computation</td><td>Nothing — compute and return.</td></tr></tbody></table></div></div>
 <figure class="codeblock" data-lang="python">

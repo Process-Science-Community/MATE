@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from modules.ocel_discovery.module import OcelDiscoveryModule, _aggregate_object_pairs
 
 from .conftest import FakeCtx
@@ -30,6 +31,19 @@ def test_objects_graph_descendants(ctx: FakeCtx) -> None:
     assert out["directed"] is True
     assert {t["type"] for t in out["object_types"]} == {"order", "item"}
     assert all(e["directed"] is True for e in out["edges"])
+
+
+def test_objects_graph_logs_the_computation(ctx: FakeCtx) -> None:
+    asyncio.run(OcelDiscoveryModule().objects_graph(ctx, graph_type="object_interaction"))  # type: ignore[arg-type]
+
+    assert ("info", "ocel_discovery.objects_graph_computed") in ctx.logger.records
+
+
+def test_objects_graph_unknown_type_warns_and_still_raises(ctx: FakeCtx) -> None:
+    with pytest.raises(ValueError):
+        asyncio.run(OcelDiscoveryModule().objects_graph(ctx, graph_type="nope"))  # type: ignore[arg-type]
+
+    assert ("warning", "ocel_discovery.unknown_graph_type") in ctx.logger.records
 
 
 def test_aggregate_object_pairs_undirected_dedupes() -> None:

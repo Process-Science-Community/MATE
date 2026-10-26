@@ -9,6 +9,7 @@ when the events.parquet mtime advances.
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -47,8 +48,15 @@ async def _cached_or_compute(ctx: ModuleContext, key: str, compute: Any) -> dict
     if _cache_is_fresh(ctx, key):
         cached = await ctx.cache.get(key)
         if cached is not None:
+            # The panels poll these routes: a hit is debug only. Each route's
+            # `_compute` logs the (info) line for a real computation.
+            ctx.logger.debug("performance.cache_hit", key=key)
             return cached
-    result = await compute()
+    try:
+        result = await compute()
+    except Exception:
+        ctx.logger.exception("performance.compute_failed", key=key)
+        raise
     await ctx.cache.set(key, result)
     return result
 
@@ -155,6 +163,7 @@ class PerformanceModule(Module):
     @route.get("/kpis")
     async def kpis(self, ctx: ModuleContext) -> dict[str, Any]:
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 kpi_rows = await log.duckdb_fetch(KPI_SQL)
                 variants_rows = await log.duckdb_fetch(VARIANTS_SQL)
@@ -189,6 +198,16 @@ class PerformanceModule(Module):
                 for a in per_activity
             ]
 
+            if not cases:
+                ctx.logger.warning("performance.empty_log", view="kpis")
+            ctx.logger.info(
+                "performance.kpis_computed",
+                cases=int(cases or 0),
+                events=int(events or 0),
+                variants=variants,
+                activities=len(per_activity),
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
             return {
                 "kind": "kpis",
                 "summary": {
@@ -212,6 +231,7 @@ class PerformanceModule(Module):
     @route.get("/bottlenecks")
     async def bottlenecks(self, ctx: ModuleContext) -> dict[str, Any]:
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 freq_rows = await log.duckdb_fetch(PER_ACTIVITY_FREQ_SQL)
                 df = await log.pandas()
@@ -219,6 +239,15 @@ class PerformanceModule(Module):
             stats = await _per_activity_sojourn(df, freq_rows)
             total_time = sum(a["avg_sojourn_s"] * a["frequency"] for a in stats) or 1.0
             flagged = detect_bottlenecks(stats)
+            if not stats:
+                ctx.logger.warning("performance.empty_log", view="bottlenecks")
+            ctx.logger.info(
+                "performance.bottlenecks_computed",
+                events=len(df),
+                activities=len(stats),
+                bottlenecks=len(flagged),
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
 
             items = []
             for rank, item in enumerate(flagged, start=1):
@@ -243,6 +272,7 @@ class PerformanceModule(Module):
     @route.get("/dfg-performance")
     async def dfg_performance(self, ctx: ModuleContext) -> dict[str, Any]:
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 df = await log.pandas()
 
@@ -297,13 +327,24 @@ class PerformanceModule(Module):
                     "end_activities": {a: int(f) for a, f in end.items()},
                 }
 
-            return await asyncio.to_thread(_run)
+            out = await asyncio.to_thread(_run)
+            if not out["edges"]:
+                ctx.logger.warning("performance.dfg_empty", events=len(df))
+            ctx.logger.info(
+                "performance.dfg_computed",
+                events=len(df),
+                activities=len(out["activities"]),
+                edges=len(out["edges"]),
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
+            return out
 
         return await _cached_or_compute(ctx, "dfg_performance", _compute)
 
     @route.get("/cycle-time-distribution")
     async def cycle_time_distribution(self, ctx: ModuleContext) -> dict[str, Any]:
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 rows = await log.duckdb_fetch(CYCLE_HISTOGRAM_SQL)
                 kpi_rows = await log.duckdb_fetch(KPI_SQL)
@@ -331,6 +372,14 @@ class PerformanceModule(Module):
                 for r in rows
             ]
 
+            if not buckets:
+                ctx.logger.warning("performance.empty_log", view="cycle_time_distribution")
+            ctx.logger.info(
+                "performance.cycle_time_computed",
+                cases=sum(b["count"] for b in buckets),
+                buckets=len(buckets),
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
             return {
                 "kind": "cycle_time_distribution",
                 "buckets": buckets,

@@ -38,6 +38,7 @@ from mate.api.modules.installs import module_owned_by_other, record_install
 from mate.api.storage.module_archive import archive_module_sync
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.guide import require_guide
+from mate.sdk.logcheck import require_logging
 from mate.sdk.manifest import Manifest
 
 if TYPE_CHECKING:
@@ -183,10 +184,12 @@ def _read_staged_manifest(staging: Path) -> tuple[Path, Manifest]:
             f"Archive is missing manifest.yaml at the top level (looked in {inner})."
         )
     manifest = Manifest.load_yaml(manifest_path)
-    # A new module must ship its how-to-use guide. This is the one hard gate:
-    # nothing has been written to disk yet, and modules already installed (which
-    # predate the rule) keep loading with only a warning (`modules.guides`).
+    # A new module must ship its how-to-use guide and log through `ctx.logger`.
+    # These are the hard gates: nothing has been written to disk yet, and modules
+    # already installed (which predate the rules) keep loading with only a warning
+    # (`modules.guides`, `modules.logging_contract`).
     require_guide(inner, manifest.name)
+    require_logging(inner, manifest)
     return inner, manifest
 
 

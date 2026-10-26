@@ -81,11 +81,31 @@ class FakeObjectLog:
         return self._ocel
 
 
+class FakeLogger:
+    """Records ``(level, event)`` so tests can assert what reaches the Logs panel."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str]] = []
+
+    def debug(self, event: str, **fields: Any) -> None:
+        self.records.append(("debug", event))
+
+    def info(self, event: str, **fields: Any) -> None:
+        self.records.append(("info", event))
+
+    def warning(self, event: str, **fields: Any) -> None:
+        self.records.append(("warning", event))
+
+    def exception(self, event: str, **fields: Any) -> None:
+        self.records.append(("exception", event))
+
+
 class FakeCtx:
-    """Minimal ``ModuleContext`` stand-in exposing only ``object_log``."""
+    """Minimal ``ModuleContext`` stand-in exposing only ``object_log`` and ``logger``."""
 
     def __init__(self, ocel: OCEL) -> None:
         self.object_log = FakeObjectLog(ocel)
+        self.logger = FakeLogger()
         self.log_id = "test-log"
         self.module_id = "ocel_discovery"
         self.user_id = "test-user"

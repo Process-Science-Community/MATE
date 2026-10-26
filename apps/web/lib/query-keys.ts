@@ -79,6 +79,9 @@ export const queryKeys = {
   // Per-log module compute state. Deliberately a top-level key: `["event-logs"]`
   // is invalidated on every `job.completed`, which would refetch this for nothing.
   moduleRuns: (logId: string) => ["module-runs", logId] as const,
+  // Top-level for the same reason as `moduleRuns`: `["modules"]` is invalidated by
+  // config saves and installs, which must not refetch a log tail.
+  moduleLogs: (id: string) => ["module-logs", id] as const,
   moduleRunGate: (logId: string, moduleId: string) =>
     ["module-runs", logId, "gate", moduleId] as const,
   jobs: (params?: Record<string, string>) => ["jobs", params ?? {}] as const,
@@ -125,6 +128,14 @@ export function moduleManifestPath(id: string): string {
 
 export function moduleGuidePath(id: string): string {
   return `/api/v1/modules/${encodeURIComponent(id)}/guide`;
+}
+
+/** `after` is a `seq` cursor: only lines newer than it come back. */
+export function moduleLogsPath(id: string, params: { limit?: number; after?: number } = {}): string {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.after) qs.set("after", String(params.after));
+  return `/api/v1/modules/${encodeURIComponent(id)}/logs${qs.toString() ? `?${qs}` : ""}`;
 }
 
 export function moduleConfigPath(id: string): string {

@@ -304,7 +304,7 @@ Every member is a Protocol — depend on the contract, not an implementation.
 | `ctx.config` | The user's configuration, validated against your schema; read it defensively (`ctx.config.get(key, default)`). |
 | `ctx.progress` | `update(fraction, stage)`, `update(current=…, total=…, stage=…)`, or a running counter. |
 | `ctx.bus` · `ctx.registry` | Emit topics; call other modules' capabilities. |
-| `ctx.logger` | Structured logging bound with module and log ids. `print()` is dropped. |
+| `ctx.logger` | Structured logging bound with module and log ids; it feeds the module's *Logs* panel and is compulsory ([Logging](logs-jobs-and-results.html#logging)). `print()` never reaches the panel. |
 | `ctx.workdir` | Scratch space, removed after the invocation. |
 | `ctx.run_in_process(fn, …)` | Offload CPU-bound work to the platform's process pool. |
 | `ctx.is_cancelled()` · `await ctx.check_cancelled()` | Cooperative cancellation. |
@@ -384,6 +384,34 @@ async def precompute(self, ctx: ModuleContext, payload: dict) -> None:
 - Only job-backed handlers are tracked. A handler without `@job` is fire-and-forget: no run state, never shown, never run on demand.
 - The handler also runs after the log's data changes and again after an interrupted run is restarted, and its payload has no `import_job_id` when run on demand: make it idempotent and rebuild from `ctx.event_log` alone. Other jobs run in parallel up to the worker limit, so keep memory bounded.
 - To run after another module, subscribe to `<module_id>.completed` — see [Module communication](module-communication.html).
+
+## Logging
+
+Logging through `ctx.logger` is **compulsory**. It is the only thing that feeds the *Logs* panel on the module's page (Settings → Modules → your module), where the user filters by severity; `print()`, the stdlib `logging` module and a module-level `structlog` logger go to the server's stdout and never reach it.
+
+```python title="Log what the module decides, with numbers"
+ctx.logger.info("my_module.kpis_computed", events=n_events, duration_ms=ms)
+ctx.logger.warning("my_module.fallback", reason="no end_timestamp")
+try:
+    result = fit(df)
+except ValueError:
+    ctx.logger.exception("my_module.fit_failed", column=name)   # keeps the traceback
+    raise
+```
+
+| Level | Use it for |
+| --- | --- |
+| `debug` | Cache hits and per-step detail. Hidden in the panel until the user turns it on. |
+| `info` | A computation that really runs (sizes in and out, `duration_ms`), a cache being rebuilt, a change the user asked for. |
+| `warning` | A degraded path that continues: fallback, skipped rows or columns, a missing optional service, truncated output. |
+| `error` / `exception` | A failure you catch and handle or convert. One you let propagate is recorded by the platform. |
+
+- Name events `<module_id>.<what_happened>`; put counts, ids and parameters in keyword fields. Never put raw events, secrets or user-written text there — the lines are shown to the user.
+- A GET route that a panel polls logs on a cache **miss** only.
+- The platform adds `job.started` / `job.completed` / `job.failed` / `job.cancelled` for job-backed handlers, `handler.failed` with a traceback for any handler that raises, and the stdout/stderr of worker, subprocess and JVM modules. Do not duplicate them.
+- It keeps the latest 1000 lines per user and module in memory (an API restart clears them); only the user who produced a line can read it.
+
+The rule, checked statically: every `@job`, `@on_event` and mutating `@route` handler must reach a `ctx.logger` call, and a module of only `@route.get` handlers must log at least once. `uv run python -m mate.sdk.logcheck modules/my_module` lists the handlers that do not; an upload that breaks the rule is rejected, and a module already installed only logs a `modules.logging.missing` warning. JVM modules are exempt from the check (it cannot read a jar) and call `ctx.logger()` instead.
 
 ## Results
 
@@ -737,7 +765,7 @@ Validating the manifest and the guide first is deliberate: they are the cheapest
 | Upload | A `.zip`, `.tar`, `.tar.gz`, or `.tgz` of the folder | Private modules, one-off installs, air-gapped hosts. |
 | Installed package | A package exposing the `mate.modules` entry point | Modules shipped through your own infrastructure — discovery picks it up at boot; the UI has no registry browser. |
 
-Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, `HOW_TO_USE.md`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`). An archive without a valid `HOW_TO_USE.md` is rejected before anything is written; the install job's error lists what is wrong.
+Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, `HOW_TO_USE.md`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`). An archive without a valid `HOW_TO_USE.md`, or whose handlers never log through `ctx.logger`, is rejected before anything is written; the install job's error lists what is wrong.
 
 ## Versioning
 
@@ -750,6 +778,7 @@ Bump `version:` whenever results change, not only when code changes. A results-a
 - [ ] Every emitted topic is in `provides:`; every subscription and capability call is in `consumes:` or `optional_modules:`.
 - [ ] Precompute ordering uses `<module_id>.completed` (or `requirements.modules`), not hope; the handler is idempotent and rebuilds from `ctx.event_log`.
 - [ ] Long jobs use `@job(progress=True)` and check cancellation at loop boundaries.
+- [ ] Every `@job`, `@on_event` and mutating `@route` handler logs through `ctx.logger`, with counts and parameters only; `python -m mate.sdk.logcheck modules/my_module` prints `ok`.
 - [ ] Results live in `ctx.cache` under keys that encode the parameters that change them.
 - [ ] No imports from `apps/api/*` or `apps/web/*`.
 - [ ] Widgets use the shared kit and declare `min_px_w`/`min_px_h` measured in a browser.

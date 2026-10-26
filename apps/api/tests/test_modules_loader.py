@@ -343,6 +343,7 @@ async def test_module_install_from_upload(client_with_sample_mod: AsyncClient) -
                 '    id = "uploaded_mod"\n\n'
                 '    @route.get("/ping")\n'
                 "    async def ping(self, ctx: ModuleContext) -> dict[str, str]:\n"
+                '        ctx.logger.info("ping")\n'
                 '        return {"id": ctx.module_id}\n'
             ),
         )
