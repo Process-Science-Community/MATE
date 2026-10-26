@@ -242,12 +242,14 @@ class MyModule(Module):
             return cached
         kpis = await self._compute(ctx)
         await ctx.cache.set("kpis", kpis)
+        ctx.logger.info("my_module.kpis_computed", kpis=len(kpis))   # on a cache miss only
         return kpis
 
     @on_event("log.imported")
     @job(progress=True, title="My Module – precompute")
     async def precompute(self, ctx: ModuleContext, payload: dict) -> None:
         await ctx.cache.set("kpis", await self._compute(ctx))
+        ctx.logger.info("my_module.precomputed")
 
     @route.post("/recompute")
     @job(progress=True, title="My Module – recompute")
@@ -258,6 +260,7 @@ class MyModule(Module):
         await ctx.progress.update(0.5, "Computing")
         kpis = self._reduce(df)
         await ctx.cache.set("kpis", kpis)
+        ctx.logger.info("my_module.recomputed", rows=len(df), kpis=len(kpis))
         await ctx.progress.update(1.0, "Done")
         return kpis
 ```
@@ -271,6 +274,7 @@ Rules:
   - `@route.*` rides FastAPI's built-in `run_in_threadpool`.
   - `@on_event` and `@job` are wrapped by the SDK with `asyncio.to_thread` ([`decorators.py`](../packages/module-sdk-py/src/mate/sdk/decorators.py)).
 - For anything expected to run more than a few seconds, add `@job` so the user sees a toast / dock entry / progress bar instead of a hung request.
+- Log what the module does through `ctx.logger`. It is **compulsory**: the module's *Logs* panel shows nothing else, and a module that never logs is rejected on upload (see "Logging" in §5).
 
 ### `@route.*`
 
@@ -441,9 +445,49 @@ When a run is part of an import (an eager module), the jobs UI shows it in the i
 
 A temporary directory unique to this invocation. Cleaned automatically on completion.
 
-### `ctx.logger`
+### Logging – `ctx.logger` (compulsory)
 
-A `structlog.BoundLogger` already bound with `module_id` and `log_id`. Use it; `print()` is dropped.
+A `structlog.BoundLogger` already bound with `module_id`, `log_id` and `user_id`. It is the **only** thing that feeds the *Logs* panel on the module's page (Settings → Modules → your module), where the user filters by severity. `print()`, the stdlib `logging` module and a module-level `structlog` logger write to the server's stdout and never reach it. Lines arrive from every runtime: async and sync handlers (worker threads included), `execution: worker` and subprocess modules, JVM modules.
+
+```python
+ctx.logger.info("my_module.kpis_computed", events=n_events, cases=n_cases, duration_ms=ms)
+ctx.logger.warning("my_module.fallback", reason="no end_timestamp", used="timestamp")
+try:
+    result = fit(df)
+except ValueError:
+    ctx.logger.exception("my_module.fit_failed", column=name)   # records the traceback
+    raise
+```
+
+**The rule.** Every `@job`, `@on_event` and mutating `@route.post|put|patch|delete` handler must reach a `ctx.logger` call – in its own body or in a function it uses, in any file of the module – and so must at least one handler of a module made only of `@route.get`s. A static checker enforces it; it follows calls by name, never imports or runs your code, and skips `tests/`, `.venv/` and `node_modules/`. It cannot see inside a JVM module's jar, so `runtime: jvm` modules are exempt from the check and owe the same behaviour (§13).
+
+| Where | What happens |
+| --- | --- |
+| `uv run python -m mate.sdk.logcheck modules/<folder>` | Lists every handler that does not log and exits `1`. Pass a modules root to check them all. |
+| Upload (`POST /api/v1/modules/install`) | A module that breaks the rule is rejected before anything is written; the install job's error lists each handler. |
+| Bundled modules | `apps/api/tests/test_module_logging_contract.py` runs the checker on every `modules/*/`. |
+| Modules already installed | Keep loading; discovery, boot and hot reload log a `modules.logging.missing` warning. |
+
+**What to log.**
+
+| Level | Use it for |
+| --- | --- |
+| `debug` | Cache hits and cheap per-step detail. The panel hides `debug` until the user turns it on. |
+| `info` | A computation that really runs (sizes in and out, `duration_ms`), a result cache being (re)built, a change the user asked for (upload, activate, delete). |
+| `warning` | A degraded path that continues: a fallback taken, rows or columns skipped, an optional dependency or service missing, output truncated by a cap, empty input. |
+| `error` / `exception` | A failure you catch and handle or convert. Call `exception` inside the `except` block so the traceback is kept. An error you simply let propagate is recorded by the platform. |
+
+- Name events `<module_id>.<what_happened>` in `snake_case` and put the context in keyword fields: counts, ids, parameter values, `duration_ms`.
+- A GET route that a panel polls logs on a cache **miss** only; a hit is `debug` at most.
+- No logging inside per-row loops. Never put raw events, DataFrames, secrets or user-written text in a field: the lines are shown to the user.
+
+**What the platform records for you** (do not duplicate it; these lines carry a *platform* tag in the panel):
+
+- For every job-backed handler: `job.started`, then `job.completed` (with `duration_ms`), `job.failed` or `job.cancelled`.
+- For every handler that raises: `handler.failed` with the error, its duration and a traceback of *your* frames.
+- For worker-execution, subprocess and JVM modules: their raw stdout/stderr lines, tagged `stdout` / `stderr`.
+
+**Limits.** A field value is cut at 2000 characters and a line's fields at 8 KB. The platform keeps the latest 1000 lines per user and module **in memory** (an API restart clears them), and only the user who produced a line can read it: `GET /api/v1/modules/{id}/logs` (`level` repeatable, `after` is a `seq` cursor).
 
 ---
 
@@ -772,7 +816,7 @@ The platform's CI also runs every module's tests against the platform's `inherit
 
 Three channels are supported by the *Settings → Modules → Import* flow:
 
-1. **Zip / tarball** – drop `modules/<folder>/` into a `.zip` or `.tar.gz`. The archive must contain a valid `HOW_TO_USE.md`; an upload without one is rejected (see §2).
+1. **Zip / tarball** – drop `modules/<folder>/` into a `.zip` or `.tar.gz`. The archive must contain a valid `HOW_TO_USE.md` (§2) and its handlers must log through `ctx.logger` (§5); an upload missing either is rejected.
 2. **Git URL** – repo root must contain the module folder layout from §2.
 3. **PyPI / npm** – publish a Python package exposing the `mate.modules` entry point. The platform discovers it without copying files into `modules/`.
 
@@ -793,6 +837,8 @@ Before submitting a module:
 - [ ] Every `ctx.registry.call(...)` target is in `consumes:` or `optional_modules:`.
 - [ ] No imports from `apps/api/*` or `apps/web/*` – only `mate.sdk` and `@mate/module-sdk-ts`.
 - [ ] Long operations use `@job(progress=True)` (progress is optional but recommended for long jobs).
+- [ ] Every `@job`, `@on_event` and mutating `@route` handler logs through `ctx.logger` (a read-only module logs when it computes, degrades or fails), and `uv run python -m mate.sdk.logcheck modules/<folder>` prints `ok` (§5 "Logging").
+- [ ] Log fields hold counts, ids and parameters – never raw events, secrets or user-written text.
 - [ ] Precompute that must run after another module subscribes to its `<module_id>.completed` event (not a phantom topic nobody emits) and/or lists it in `requirements.modules`; the handler is job-backed (`@on_event` + `@job`) – a plain `@on_event` is never tracked.
 - [ ] A precompute handler is idempotent and rebuilds from `ctx.event_log` alone (it also runs on demand, after data changes, and again after an interrupted run is restarted); `precompute: eager` is set only if the module is the first thing people open.
 - [ ] Sync `def` handlers are fine – don't reach for `asyncio.run` or `loop.run_until_complete`. The SDK auto-wraps.
@@ -903,6 +949,7 @@ cross-runtime conformance suite lives at
 - [ ] Results/cache values are pure JSON; big artefacts go as files under
       `cache().dir()` with JSON metadata.
 - [ ] Long jobs tick `progress()` and poll `checkCancelled()`.
+- [ ] Logs through `ctx.logger()` (`info` / `warning` / `error` with fields), not `System.out`: stdout reaches the *Logs* panel as raw `stdout` lines, but only `ctx.logger()` carries a level and fields. The static logging check cannot look inside the jar, so this one is on you (§5 "Logging").
 - [ ] `duckdbFetch` results stay well under the 256 MiB frame limit –
       aggregate in SQL or use `materialize()`.
 

@@ -186,7 +186,7 @@ Modules are the platform's capabilities. The **Modules** page manages which ones
 
 Installation runs as a job: unpack, validate the manifest, `uv sync`, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed, and no restart is needed.
 
-The module detail page shows an About popover (description, longer *about*, cited works, artifacts), the *Provides*/*Consumes* lists, the configuration forms, a live tail of that module's log lines, and the *Uninstall* action in its danger zone.
+The module detail page shows an About popover (description, longer *about*, cited works, artifacts), the *Provides*/*Consumes* lists, the configuration forms, the **Logs** panel, and the *Uninstall* action in its danger zone. The Logs panel lists what the module and the platform recorded about its runs: its own messages, when each job started and finished, and the error with a traceback when a handler fails. Filter by severity with the *Error*, *Warning*, *Info* and *Debug* chips (debug starts hidden; each chip shows how many lines it holds), expand a traceback, or copy what is shown. Lines are private to your account, new ones appear live, and only the latest 1000 per module are kept, in memory, so a restart of the server clears them.
 
 ## How to use
 
