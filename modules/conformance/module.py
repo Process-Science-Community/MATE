@@ -27,6 +27,7 @@ import json
 import math
 import os
 import re
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -190,6 +191,9 @@ class ConformanceModule(Module):
         if not file.filename:
             raise HTTPException(status_code=422, detail="filename missing")
         if Path(file.filename).suffix.lower() not in _VALID_SUFFIXES:
+            ctx.logger.warning(
+                "conformance.upload_rejected", name=file.filename, reason="extension"
+            )
             raise HTTPException(
                 status_code=422,
                 detail="Upload a BPMN 2.0 file with a .bpmn or .xml extension.",
@@ -213,6 +217,7 @@ class ConformanceModule(Module):
             ) from exc
         if n_tasks == 0:
             dest.unlink(missing_ok=True)
+            ctx.logger.warning("conformance.bpmn_no_tasks", name=name)
             raise HTTPException(
                 status_code=422,
                 detail="This BPMN has no labelled tasks to check the log against.",
@@ -231,6 +236,7 @@ class ConformanceModule(Module):
         if p.exists():
             p.unlink()
         new_active = _remove_from_index(models_dir, safe)
+        ctx.logger.info("conformance.model_deleted", name=safe, active=new_active)
         return {"deleted": safe, "active": new_active}
 
     @route.post("/model/{name}/activate")
@@ -239,12 +245,15 @@ class ConformanceModule(Module):
         async with ctx.event_log as log:
             models_dir = _models_dir(log.events_path)
         if not (models_dir / safe).exists():
+            ctx.logger.warning("conformance.activate_failed", name=safe, reason="file missing")
             raise HTTPException(status_code=404, detail="Reference model not found.")
         index = _read_index(models_dir)
         if not any(m.get("name") == safe for m in index.get("models", [])):
+            ctx.logger.warning("conformance.activate_failed", name=safe, reason="not in index")
             raise HTTPException(status_code=404, detail="Reference model not in index.")
         index["active"] = safe
         _write_index(models_dir, index)
+        ctx.logger.info("conformance.model_activated", name=safe)
         return {"active": safe}
 
     # ── run + results ────────────────────────────────────────────────────────
@@ -253,7 +262,12 @@ class ConformanceModule(Module):
     @job(progress=True, title="Conformance - replay")
     async def run(self, ctx: ModuleContext, *, technique: str | None = None) -> dict[str, Any]:
         cfg = ctx.config.value or {}
-        technique = _norm_technique(technique or cfg.get("technique"))
+        requested = technique or cfg.get("technique")
+        technique = _norm_technique(requested)
+        if requested and requested != technique:
+            ctx.logger.warning(
+                "conformance.technique_fallback", requested=str(requested), using=technique
+            )
         threshold = float(cfg.get("conforming_fitness_threshold", 1.0))
 
         await ctx.progress.update(0.0, "Loading reference model")
@@ -261,9 +275,11 @@ class ConformanceModule(Module):
             models_dir = _models_dir(log.events_path)
         active = _read_index(models_dir).get("active")
         if not active:
+            ctx.logger.warning("conformance.run_no_model")
             raise HTTPException(status_code=404, detail="Upload a reference BPMN first.")
         bpmn_path = models_dir / active
         if not bpmn_path.exists():
+            ctx.logger.warning("conformance.model_file_missing", name=active)
             raise HTTPException(status_code=404, detail="Reference model file is missing.")
         model_hash = _hash_file(bpmn_path)
 
@@ -273,6 +289,7 @@ class ConformanceModule(Module):
         await ctx.progress.update(
             0.15, f"Replaying log ({technique.replace('_', ' ')}) - may take a few minutes"
         )
+        t0 = time.perf_counter()
         result = await _offload(ctx, _conformance_worker, str(bpmn_path), technique, threshold)
         n_events = int(result.pop("_n_events", 0))
 
@@ -292,6 +309,34 @@ class ConformanceModule(Module):
 
         await ctx.progress.update(0.97, "Saving results")
         await ctx.cache.set(_results_key(model_hash, technique), result)
+        kpis = result["kpis"]
+        ctx.logger.info(
+            "conformance.replay_completed",
+            technique=technique,
+            model=active,
+            events=n_events,
+            cases=kpis.get("n_cases"),
+            variants=kpis.get("n_variants"),
+            fitness=kpis["log_fitness"],
+            precision=kpis["precision"],
+            deviations=kpis.get("total_deviations"),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        report = result.get("label_report") or {}
+        model_only = len(report.get("in_model_not_log") or [])
+        log_only = len(report.get("in_log_not_model") or [])
+        if model_only or log_only:
+            # Label spelling differences read as deviations, so say so.
+            ctx.logger.warning(
+                "conformance.label_mismatch",
+                in_model_not_log=model_only,
+                in_log_not_model=log_only,
+                matched=len(report.get("matched") or []),
+            )
+        if result.get("per_case_truncated"):
+            ctx.logger.warning(
+                "conformance.per_case_truncated", shown=len(result.get("per_case") or [])
+            )
         await ctx.bus.emit(
             "conformance.computed",
             {
@@ -324,6 +369,9 @@ class ConformanceModule(Module):
         """
         precision_max_events = int(cfg.get("precision_max_events", 150_000))
         if precision_max_events and n_events > precision_max_events:
+            ctx.logger.warning(
+                "conformance.precision_skipped", events=n_events, limit=precision_max_events
+            )
             return None, (
                 f"Precision skipped: this log has {n_events:,} events "
                 f"(limit {precision_max_events:,}). Fitness and deviations are unaffected. "
@@ -342,6 +390,7 @@ class ConformanceModule(Module):
                 "precision event limit in this module's settings to skip it sooner."
             )
         if prec is None or not math.isfinite(float(prec)):
+            ctx.logger.warning("conformance.precision_unavailable")
             return None, (
                 "Precision could not be computed for this model. "
                 "Fitness and deviations are unaffected."
@@ -363,6 +412,13 @@ class ConformanceModule(Module):
         n_cases = int(rows[0][0]) if rows and rows[0][0] is not None else 0
         n_variants = int(rows[0][1]) if rows and rows[0][1] is not None else 0
         if n_cases > max_cases or n_variants > max_variants:
+            ctx.logger.warning(
+                "conformance.alignments_refused",
+                cases=n_cases,
+                variants=n_variants,
+                max_cases=max_cases,
+                max_variants=max_variants,
+            )
             raise HTTPException(
                 status_code=413,
                 detail=(

@@ -9,6 +9,7 @@ available on OCEL logs.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from mate.sdk import Module, ModuleContext, route
@@ -259,6 +260,7 @@ class OcelDiscoveryModule(Module):
     async def summary(self, ctx: ModuleContext) -> dict[str, Any]:
         if ctx.object_log is None:
             raise RuntimeError("ocel_discovery requires an object-centric log.")
+        t0 = time.perf_counter()
         async with ctx.object_log as ol:
             type_rows = await ol.duckdb_fetch(
                 'SELECT "ocel:type" AS t, COUNT(*) AS n FROM ocel_objects '
@@ -268,9 +270,22 @@ class OcelDiscoveryModule(Module):
             (activities_count,) = (
                 await ol.duckdb_fetch('SELECT COUNT(DISTINCT "ocel:activity") FROM ocel_events')
             )[0]
+        objects_count = int(sum(int(n) for _, n in type_rows))
+        if not events_count or not objects_count:
+            ctx.logger.warning(
+                "ocel_discovery.empty_log", events=int(events_count), objects=objects_count
+            )
+        ctx.logger.debug(
+            "ocel_discovery.summary_computed",
+            events=int(events_count),
+            objects=objects_count,
+            object_types=len(type_rows),
+            activities=int(activities_count),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return {
             "object_types": [{"type": str(t), "count": int(n)} for t, n in type_rows],
-            "objects_count": int(sum(int(n) for _, n in type_rows)),
+            "objects_count": objects_count,
             "events_count": int(events_count),
             "activities_count": int(activities_count),
         }
@@ -279,6 +294,7 @@ class OcelDiscoveryModule(Module):
     async def ocdfg(self, ctx: ModuleContext) -> dict[str, Any]:
         if ctx.object_log is None:
             raise RuntimeError("ocel_discovery requires an object-centric log.")
+        t0 = time.perf_counter()
         async with ctx.object_log as ol:
             ocel = await ol.ocel()
 
@@ -287,12 +303,25 @@ class OcelDiscoveryModule(Module):
 
             return _serialize_ocdfg(pm4py.discover_ocdfg(ocel))
 
-        return await asyncio.to_thread(_run)
+        out = await asyncio.to_thread(_run)
+        ctx.logger.info(
+            "ocel_discovery.ocdfg_computed",
+            events=len(ocel.events),
+            objects=len(ocel.objects),
+            object_types=len(out["object_types"]),
+            activities=len(out["activities"]),
+            edges=len(out["edges"]),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        if not out["edges"]:
+            ctx.logger.warning("ocel_discovery.ocdfg_empty", events=len(ocel.events))
+        return out
 
     @route.get("/ocpn")
     async def ocpn(self, ctx: ModuleContext) -> dict[str, Any]:
         if ctx.object_log is None:
             raise RuntimeError("ocel_discovery requires an object-centric log.")
+        t0 = time.perf_counter()
         async with ctx.object_log as ol:
             ocel = await ol.ocel()
 
@@ -301,7 +330,25 @@ class OcelDiscoveryModule(Module):
 
             return _serialize_ocpn(pm4py.discover_oc_petri_net(ocel))
 
-        return await asyncio.to_thread(_run)
+        out = await asyncio.to_thread(_run)
+        nets = out["nets"]
+        ctx.logger.info(
+            "ocel_discovery.ocpn_computed",
+            events=len(ocel.events),
+            objects=len(ocel.objects),
+            object_types=len(nets),
+            places=sum(len(n["places"]) for n in nets),
+            transitions=sum(len(n["transitions"]) for n in nets),
+            arcs=sum(len(n["arcs"]) for n in nets),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        # `_serialize_ocpn` swallows a per-type mining failure into an empty net.
+        empty = [n["object_type"] for n in nets if not n["places"] and not n["transitions"]]
+        if empty:
+            ctx.logger.warning(
+                "ocel_discovery.ocpn_nets_empty", count=len(empty), object_types=empty
+            )
+        return out
 
     @route.get("/objects-graph")
     async def objects_graph(
@@ -318,9 +365,11 @@ class OcelDiscoveryModule(Module):
         if ctx.object_log is None:
             raise RuntimeError("ocel_discovery requires an object-centric log.")
         if graph_type not in _GRAPH_TYPES:
+            ctx.logger.warning("ocel_discovery.unknown_graph_type", graph_type=graph_type)
             raise ValueError(f"Unknown graph_type {graph_type!r}; one of {sorted(_GRAPH_TYPES)}.")
         directed = _GRAPH_TYPES[graph_type]
 
+        t0 = time.perf_counter()
         edges: list[dict[str, Any]] = []
         intra: dict[str, int] = {}
         async with ctx.object_log as ol:
@@ -370,6 +419,15 @@ class OcelDiscoveryModule(Module):
             {"type": str(t), "count": int(n), "intra_count": int(intra.get(str(t), 0))}
             for t, n in type_rows
         ]
+        ctx.logger.info(
+            "ocel_discovery.objects_graph_computed",
+            graph_type=graph_type,
+            object_types=len(object_types),
+            edges=len(edges),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        if not edges:
+            ctx.logger.warning("ocel_discovery.objects_graph_empty", graph_type=graph_type)
         return {
             "graph_type": graph_type,
             "directed": directed,
@@ -384,6 +442,7 @@ class OcelDiscoveryModule(Module):
         Pure DuckDB over the relations table (pm4py ``eve_to_obj_types``)."""
         if ctx.object_log is None:
             raise RuntimeError("ocel_discovery requires an object-centric log.")
+        t0 = time.perf_counter()
         async with ctx.object_log as ol:
             rows = await ol.duckdb_fetch(
                 'SELECT "ocel:activity" AS act, "ocel:type" AS t, '
@@ -397,6 +456,15 @@ class OcelDiscoveryModule(Module):
         ]
         activities = sorted({c["activity"] for c in cells})
         object_types = sorted({c["object_type"] for c in cells})
+        if not cells:
+            ctx.logger.warning("ocel_discovery.activity_object_types_empty")
+        ctx.logger.debug(
+            "ocel_discovery.activity_object_types_computed",
+            activities=len(activities),
+            object_types=len(object_types),
+            cells=len(cells),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return {"activities": activities, "object_types": object_types, "cells": cells}
 
     @route.get("/objects-summary")
@@ -407,6 +475,7 @@ class OcelDiscoveryModule(Module):
         when the log carries one (OCEL 2.0), else ``None``."""
         if ctx.object_log is None:
             raise RuntimeError("ocel_discovery requires an object-centric log.")
+        t0 = time.perf_counter()
         async with ctx.object_log as ol:
             type_rows = await ol.duckdb_fetch(
                 "WITH per_obj AS ("
@@ -446,6 +515,15 @@ class OcelDiscoveryModule(Module):
             }
             for oid, t, dur, n in top_rows
         ]
+        if not types:
+            ctx.logger.warning("ocel_discovery.objects_summary_empty")
+        ctx.logger.debug(
+            "ocel_discovery.objects_summary_computed",
+            object_types=len(types),
+            top_objects=len(top_objects),
+            has_o2o=bool(interacting),  # False: no O2O table (OCEL 1.0) or it was unreadable
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return {"types": types, "top_objects": top_objects, "has_interacting": bool(interacting)}
 
     @staticmethod

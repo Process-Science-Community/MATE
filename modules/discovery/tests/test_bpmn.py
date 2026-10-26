@@ -74,6 +74,25 @@ class _FakeCache:
         self._store.pop(key, None)
 
 
+class _FakeLogger:
+    """Records ``(level, event)`` so tests can assert what reaches the Logs panel."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str]] = []
+
+    def debug(self, event: str, **fields: object) -> None:
+        self.records.append(("debug", event))
+
+    def info(self, event: str, **fields: object) -> None:
+        self.records.append(("info", event))
+
+    def warning(self, event: str, **fields: object) -> None:
+        self.records.append(("warning", event))
+
+    def exception(self, event: str, **fields: object) -> None:
+        self.records.append(("exception", event))
+
+
 class _FakeCtx:
     """Just enough of ``ModuleContext`` for the BPMN route."""
 
@@ -82,6 +101,7 @@ class _FakeCtx:
         self.module_id = "discovery"
         self.event_log = _FakeEventLog(df)
         self.cache = _FakeCache()
+        self.logger = _FakeLogger()
 
     async def run_in_process(self, fn: object, *args: object, **kwargs: object) -> object:
         # The real ctx ships `fn` to a process pool; tests run the worker
@@ -146,11 +166,15 @@ def test_second_get_bpmn_is_served_from_cache() -> None:
     # The default (no-noise) path caches under "bpmn_inductive".
     assert ctx.cache.set_calls.get("bpmn_inductive") == 1
     assert asyncio.run(ctx.cache.exists("bpmn_inductive")) is True
+    assert ctx.logger.records.count(("info", "discovery.computed")) == 1
 
     second = asyncio.run(module.bpmn(ctx))  # type: ignore[arg-type]
     # No additional compute → no second set() for that key.
     assert ctx.cache.set_calls.get("bpmn_inductive") == 1
     assert second == first
+    # ... and no second info line: a cache hit is debug at most.
+    assert ctx.logger.records.count(("info", "discovery.computed")) == 1
+    assert ("debug", "discovery.cache_hit") in ctx.logger.records
 
 
 def test_editing_routes_are_removed() -> None:

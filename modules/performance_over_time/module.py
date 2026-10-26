@@ -18,6 +18,7 @@ first panel open is instant.
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,7 @@ async def _cached_or_compute(ctx: ModuleContext, key: str, compute: Any) -> dict
     if _cache_is_fresh(ctx, key):
         cached = await ctx.cache.get(key)
         if cached is not None:
+            ctx.logger.debug("performance_over_time.cache_hit", key=key)
             return cached
     result = await compute()
     await ctx.cache.set(key, result)
@@ -88,6 +90,42 @@ def _default_key(ctx: ModuleContext) -> str:
         min_cases=_int_config(ctx, "min_cases_per_slice", 1),
         granularity="auto",
     )
+
+
+def _log_series(
+    ctx: ModuleContext,
+    result: dict[str, Any],
+    *,
+    events: int,
+    min_cases: int,
+    t0: float,
+    trigger: str,
+) -> None:
+    """Log a freshly computed series: sizes + duration, warn when slices had no metrics."""
+    points = result.get("slices") or []
+    skipped = sum(1 for p in points if p.get("metrics") is None)
+    ctx.logger.info(
+        "performance_over_time.timeseries_computed",
+        trigger=trigger,
+        mode=result.get("mode"),
+        params=result.get("params"),
+        events=events,
+        slices=len(points),
+        computed=len(points) - skipped,
+        metrics=len(result.get("metric_keys") or []),
+        duration_ms=round((time.perf_counter() - t0) * 1000),
+    )
+    if not points:
+        ctx.logger.warning(
+            "performance_over_time.no_slices", mode=result.get("mode"), events=events
+        )
+    elif skipped:
+        ctx.logger.warning(
+            "performance_over_time.slices_skipped",
+            skipped=skipped,
+            slices=len(points),
+            min_cases=min_cases,
+        )
 
 
 # ── Module ───────────────────────────────────────────────────────────────────
@@ -154,6 +192,10 @@ class PerformanceOverTimeModule(Module):
         window: float = 30.0,
         step: float = 7.0,
     ) -> dict[str, Any]:
+        if mode not in _MODES:
+            ctx.logger.warning(
+                "performance_over_time.unknown_mode", requested=mode[:40], used="calendar"
+            )
         mode = mode if mode in _MODES else "calendar"
         min_cases = _int_config(ctx, "min_cases_per_slice", 1)
 
@@ -169,33 +211,48 @@ class PerformanceOverTimeModule(Module):
             key = _cache_key("calendar", min_cases=min_cases, granularity=granularity)
 
         async def _compute() -> dict[str, Any]:
+            t0 = time.perf_counter()
             async with ctx.event_log as log:
                 df = await log.pandas()
-            return await asyncio.to_thread(
-                compute_timeseries,
-                df,
-                mode,
-                params,
-                min_cases=min_cases,
-            )
+            try:
+                result = await asyncio.to_thread(
+                    compute_timeseries,
+                    df,
+                    mode,
+                    params,
+                    min_cases=min_cases,
+                )
+            except Exception:
+                ctx.logger.exception(
+                    "performance_over_time.timeseries_failed", mode=mode, events=len(df)
+                )
+                raise
+            _log_series(ctx, result, events=len(df), min_cases=min_cases, t0=t0, trigger="request")
+            return result
 
         return await _cached_or_compute(ctx, key, _compute)
 
     @on_event("log.imported")
     @job(progress=True, title="Performance over time - precompute")
     async def precompute(self, ctx: ModuleContext, payload: dict[str, Any]) -> None:
+        t0 = time.perf_counter()
         await ctx.progress.update(0.0, "Loading log")
         min_cases = _int_config(ctx, "min_cases_per_slice", 1)
         async with ctx.event_log as log:
             df = await log.pandas()
         await ctx.progress.update(0.4, "Slicing & computing")
-        result = await asyncio.to_thread(
-            compute_timeseries,
-            df,
-            "calendar",
-            {"granularity": "auto"},
-            min_cases=min_cases,
-        )
+        try:
+            result = await asyncio.to_thread(
+                compute_timeseries,
+                df,
+                "calendar",
+                {"granularity": "auto"},
+                min_cases=min_cases,
+            )
+        except Exception:
+            ctx.logger.exception("performance_over_time.precompute_failed", events=len(df))
+            raise
+        _log_series(ctx, result, events=len(df), min_cases=min_cases, t0=t0, trigger="precompute")
         await ctx.progress.update(0.95, "Caching")
         await ctx.cache.set(_default_key(ctx), result)
         await ctx.progress.update(1.0, "Done")

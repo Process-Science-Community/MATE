@@ -4,10 +4,14 @@ consumes."""
 
 from __future__ import annotations
 
+import asyncio
+
 import pandas as pd
 import pm4py
-from modules.ocel_discovery.module import _serialize_ocpn
+from modules.ocel_discovery.module import OcelDiscoveryModule, _serialize_ocpn
 from pm4py.objects.ocel.obj import OCEL
+
+from .conftest import FakeCtx
 
 
 def _sample_ocel() -> OCEL:
@@ -61,3 +65,14 @@ def test_serialize_ocpn_shape() -> None:
         assert arc["source"] in node_ids
         assert arc["target"] in node_ids
         assert isinstance(arc["variable"], bool)
+
+
+def test_ocpn_and_ocdfg_routes_log_their_computation(ctx: FakeCtx) -> None:
+    module = OcelDiscoveryModule()
+    asyncio.run(module.ocpn(ctx))  # type: ignore[arg-type]
+    asyncio.run(module.ocdfg(ctx))  # type: ignore[arg-type]
+
+    assert ("info", "ocel_discovery.ocpn_computed") in ctx.logger.records
+    assert ("info", "ocel_discovery.ocdfg_computed") in ctx.logger.records
+    # The sample log mines cleanly: no per-type net degraded to an empty one.
+    assert ("warning", "ocel_discovery.ocpn_nets_empty") not in ctx.logger.records

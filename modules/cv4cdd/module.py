@@ -24,6 +24,8 @@ import re
 import shutil
 import tarfile
 import tempfile
+import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -206,11 +208,23 @@ class Cv4cddModule(Module):
                 "module's settings page."
             )
 
+        configured = cfg.get("model")
+        if isinstance(configured, str) and configured and configured != model_dir.name:
+            # The chosen model was deleted (or never uploaded): detection still runs.
+            ctx.logger.warning("cv4cdd.model_fallback", configured=configured, using=model_dir.name)
+
         n_windows = int(cfg.get("n_windows", 200))
         threshold = float(cfg.get("confidence_threshold", 0.5))
 
         await ctx.progress.update(0.0, "Loading event log")
         df = await self._load_sorted_df(ctx)
+        n_cases = int(df["case_id"].nunique())
+        if n_cases < n_windows:
+            # WINSIM cuts windows of equal trace count; with fewer traces than
+            # windows each window holds one trace and the trailing ones stay empty.
+            ctx.logger.warning(
+                "cv4cdd.fewer_cases_than_windows", cases=n_cases, n_windows=n_windows
+            )
 
         # Capture the running loop here on the main thread so the worker
         # thread can marshal progress callbacks back through it - calling
@@ -218,8 +232,21 @@ class Cv4cddModule(Module):
         # the thread-pool thread doesn't own a loop.
         loop = asyncio.get_running_loop()
 
+        t0 = time.perf_counter()
         result = await asyncio.to_thread(
             self._run_sync, df, model_dir, n_windows, threshold, ctx, loop
+        )
+        by_type = Counter(d["type"] for d in result["drifts"])
+        ctx.logger.info(
+            "cv4cdd.detection_completed",
+            model=model_dir.name,
+            events=len(df),
+            cases=n_cases,
+            n_windows=n_windows,
+            confidence_threshold=threshold,
+            drifts=len(result["drifts"]),
+            drift_types=", ".join(f"{t}={n}" for t, n in sorted(by_type.items())),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
         )
 
         await ctx.progress.update(0.97, "Saving results")
@@ -392,6 +419,7 @@ class Cv4cddModule(Module):
             )
         dest = MODEL_ROOT / name
         if _is_model_dir(dest):
+            ctx.logger.warning("cv4cdd.model_rejected", model=name, reason="already exists")
             raise HTTPException(
                 status_code=409,
                 detail=f"A model named '{name}' already exists. Delete it first to replace it.",
@@ -413,6 +441,7 @@ class Cv4cddModule(Module):
 
             model_src = _find_model_root(staging)
             if model_src is None:
+                ctx.logger.warning("cv4cdd.model_rejected", model=name, reason="no saved_model.pb")
                 raise HTTPException(
                     status_code=422,
                     detail=(

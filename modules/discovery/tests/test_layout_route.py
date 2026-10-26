@@ -66,11 +66,34 @@ class _Config:
         return self._values.get(key, default)
 
 
+class _FakeLogger:
+    """Records ``(level, event)`` so tests can assert what reaches the Logs panel."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str]] = []
+
+    def _record(self, level: str, event: str, **fields: Any) -> None:
+        self.records.append((level, event))
+
+    def debug(self, event: str, **fields: Any) -> None:
+        self._record("debug", event, **fields)
+
+    def info(self, event: str, **fields: Any) -> None:
+        self._record("info", event, **fields)
+
+    def warning(self, event: str, **fields: Any) -> None:
+        self._record("warning", event, **fields)
+
+    def exception(self, event: str, **fields: Any) -> None:
+        self._record("exception", event, **fields)
+
+
 class _Ctx:
     def __init__(self, parquet_path: Path) -> None:
         self.cache = _DictCache()
         self.event_log = _FakeEventLog(parquet_path)
         self.config = _Config()
+        self.logger = _FakeLogger()
         self.log_id = "log-1"
         self.module_id = "discovery"
         self.user_id = "user-1"
@@ -164,6 +187,7 @@ def test_over_cap_is_413(ctx: _Ctx) -> None:
     with pytest.raises(HTTPException) as excinfo:
         _call(ctx, body)
     assert excinfo.value.status_code == 413
+    assert ("warning", "discovery.layout_refused") in ctx.logger.records
 
 
 def test_empty_nodes_short_circuits_without_offload(ctx: _Ctx) -> None:
@@ -172,6 +196,7 @@ def test_empty_nodes_short_circuits_without_offload(ctx: _Ctx) -> None:
     assert response["solver"]["status"] == "empty"
     assert ctx.offload_calls == 0
     assert ctx.cache.data == {}  # nothing worth caching
+    assert ("warning", "discovery.layout_empty") in ctx.logger.records
 
 
 def test_happy_path_and_cache_hit(ctx: _Ctx) -> None:
@@ -183,10 +208,24 @@ def test_happy_path_and_cache_hit(ctx: _Ctx) -> None:
     assert first["solver"]["status"] in {"optimal", "fallback_no_solver"}
     assert ctx.offload_calls == 1
     assert len(ctx.cache.data) == 1
+    assert ctx.logger.records.count(("info", "discovery.computed")) == 1
 
     second = _call(ctx, body)
     assert second == first
     assert ctx.offload_calls == 1  # served from cache
+    # A hit is debug only: the panel re-asks for the same layout all the time.
+    assert ctx.logger.records.count(("info", "discovery.computed")) == 1
+    assert ("debug", "discovery.cache_hit") in ctx.logger.records
+
+
+def test_degraded_solver_status_is_warned_once(ctx: _Ctx) -> None:
+    async def _degraded(fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+        return {"kind": "dfg_layout", "edges": [], "solver": {"status": "fallback_size_cap"}}
+
+    ctx.run_in_process = _degraded
+    _call(ctx, _request())
+    _call(ctx, _request())  # second call is a cache hit: no second warning
+    assert ctx.logger.records.count(("warning", "discovery.layout_degraded")) == 1
 
 
 def test_param_overrides_rotate_the_cache_key(ctx: _Ctx) -> None:

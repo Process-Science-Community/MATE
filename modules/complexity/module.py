@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,7 @@ async def _cached_or_compute(ctx: ModuleContext, key: str, compute: Any) -> dict
     if _cache_is_fresh(ctx, key):
         cached = await ctx.cache.get(key)
         if cached is not None:
+            ctx.logger.debug("complexity.cache_hit", key=key)
             return cached
     result = await compute()
     await ctx.cache.set(key, result)
@@ -68,7 +70,8 @@ def _read_detected_schema(ctx: ModuleContext) -> dict[str, Any] | None:
         return None
     try:
         meta = json.loads(meta_path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        ctx.logger.warning("complexity.schema_unreadable", error=type(exc).__name__)
         return None
     schema = meta.get("detected_schema")
     return schema if isinstance(schema, dict) else None
@@ -120,6 +123,7 @@ class ComplexityModule(Module):
         await ctx.progress.update(1.0, "Done")
 
     async def _compute(self, ctx: ModuleContext) -> dict[str, Any]:
+        t0 = time.perf_counter()
         schema = _read_detected_schema(ctx)
         enriched_supported = bool(is_enriched_supported(schema))
         k = _exponential_k(ctx)
@@ -158,4 +162,23 @@ class ComplexityModule(Module):
                 "exponential_k": k,
             }
 
-        return await asyncio.to_thread(_run)
+        try:
+            result = await asyncio.to_thread(_run)
+        except Exception:
+            ctx.logger.exception("complexity.compute_failed", events=len(df), exponential_k=k)
+            raise
+
+        basic = result["basic"]
+        if not basic:
+            ctx.logger.warning("complexity.no_metrics", events=len(df), reason="empty event log")
+        else:
+            ctx.logger.info(
+                "complexity.metrics_computed",
+                events=len(df),
+                cases=basic.get("support", 0),
+                activities=basic.get("variety", 0),
+                enriched=bool(result["enriched"]),
+                exponential_k=k,
+                duration_ms=round((time.perf_counter() - t0) * 1000),
+            )
+        return result

@@ -149,6 +149,25 @@ class _Cache:
         self.store[key] = value
 
 
+class _FakeLogger:
+    """Records ``(level, event)`` so tests can assert what reaches the Logs panel."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str]] = []
+
+    def debug(self, event: str, **fields: Any) -> None:
+        self.records.append(("debug", event))
+
+    def info(self, event: str, **fields: Any) -> None:
+        self.records.append(("info", event))
+
+    def warning(self, event: str, **fields: Any) -> None:
+        self.records.append(("warning", event))
+
+    def exception(self, event: str, **fields: Any) -> None:
+        self.records.append(("exception", event))
+
+
 class _Ctx:
     """ctx stub whose ``open_event_log`` serves a frame per (log, filter)."""
 
@@ -156,6 +175,7 @@ class _Ctx:
         self._frames = frames
         self._path = path
         self.cache = _Cache()
+        self.logger = _FakeLogger()
         self.log_id = "log-a"
         self.module_id = "process_comparison"
         self.user_id = "user-1"
@@ -208,6 +228,22 @@ def test_second_call_is_served_from_cache(tmp_path: Path) -> None:
     # call) but the frames are only crunched once.
     assert len(ctx.calls) == 4
     assert len(ctx.cache.store) == 1
+    # One info line for the computation; the polled second call is debug only.
+    assert ctx.logger.records.count(("info", "process_comparison.computed")) == 1
+    assert ctx.logger.records.count(("debug", "process_comparison.cache_hit")) == 1
+
+
+def test_set_routes_log_each_computation(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, _log([["a", "b", "c"]] * 3), _log([["a", "b", "d"]] * 2))
+    mod = ProcessComparisonModule()
+    sides = _encode([{"log": "log-a", "filter": NORTH}, {"log": "log-a", "filter": SOUTH}])
+
+    asyncio.run(mod.similarity(ctx, sides=sides))  # type: ignore[arg-type]
+    asyncio.run(mod.variants(ctx, sides=sides))  # type: ignore[arg-type]
+
+    assert ctx.logger.records.count(("info", "process_comparison.computed")) == 2
+    # Two variants only: nothing is capped or truncated, so no warning.
+    assert not [r for r in ctx.logger.records if r[0] == "warning"]
 
 
 def test_side_filtered_to_nothing_is_422(tmp_path: Path) -> None:
@@ -219,6 +255,7 @@ def test_side_filtered_to_nothing_is_422(tmp_path: Path) -> None:
         asyncio.run(mod.summary(ctx, sides=sides))  # type: ignore[arg-type]
     assert exc.value.status_code == 422
     assert "Side B" in str(exc.value.detail)
+    assert ("warning", "process_comparison.side_empty") in ctx.logger.records
 
 
 def test_unscoped_call_computes_without_caching(tmp_path: Path) -> None:
@@ -244,6 +281,7 @@ def test_unscoped_call_computes_without_caching(tmp_path: Path) -> None:
 
     payload = asyncio.run(mod.summary(ctx, sides=sides))  # type: ignore[arg-type]
     assert payload["kind"] == "summary_delta"
+    assert ("debug", "process_comparison.cache_unscoped") in ctx.logger.records
 
 
 def test_pairwise_route_refuses_three_sides(tmp_path: Path) -> None:

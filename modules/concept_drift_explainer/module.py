@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -182,6 +183,9 @@ class ConceptDriftExplainerModule(Module):
         if not file.filename:
             raise HTTPException(status_code=422, detail="filename missing")
         if not FILENAME_PREFIX_RE.match(file.filename):
+            ctx.logger.warning(
+                "concept_drift_explainer.doc_rejected", name=file.filename, reason="date prefix"
+            )
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -190,6 +194,9 @@ class ConceptDriftExplainerModule(Module):
                 ),
             )
         if Path(file.filename).suffix.lower() not in SUPPORTED_SUFFIXES:
+            ctx.logger.warning(
+                "concept_drift_explainer.doc_rejected", name=file.filename, reason="extension"
+            )
             raise HTTPException(
                 status_code=422,
                 detail=f"Unsupported extension. Supported: {sorted(SUPPORTED_SUFFIXES)}",
@@ -201,7 +208,12 @@ class ConceptDriftExplainerModule(Module):
         docs_dir.mkdir(parents=True, exist_ok=True)
         target = docs_dir / file.filename
         target.write_bytes(await file.read())
-        return {"name": file.filename, "size_bytes": target.stat().st_size}
+        size_bytes = target.stat().st_size
+        # Saved only: the vectors land when /ingest runs.
+        ctx.logger.info(
+            "concept_drift_explainer.doc_uploaded", name=file.filename, size_bytes=size_bytes
+        )
+        return {"name": file.filename, "size_bytes": size_bytes}
 
     @route.delete("/documents/{name}")
     async def delete_doc(self, ctx: ModuleContext, name: str) -> dict[str, Any]:
@@ -209,6 +221,7 @@ class ConceptDriftExplainerModule(Module):
             docs_dir = _docs_dir(log.events_path)
         target = docs_dir / name
         if not target.exists():
+            ctx.logger.warning("concept_drift_explainer.doc_not_found", name=name)
             raise HTTPException(status_code=404, detail=f"{name} not found")
         target.unlink()
 
@@ -218,7 +231,8 @@ class ConceptDriftExplainerModule(Module):
             delete_document_vectors(index, namespace=_ns_for(ctx.log_id), source_document_name=name)
         except HTTPException:
             # Pinecone not configured - the file is gone, that's enough.
-            pass
+            ctx.logger.warning("concept_drift_explainer.doc_vectors_kept", name=name)
+        ctx.logger.info("concept_drift_explainer.doc_deleted", name=name)
         return {"deleted": name}
 
     # ── ingestion ────────────────────────────────────────────────────────────
@@ -231,19 +245,27 @@ class ConceptDriftExplainerModule(Module):
             docs_dir = _docs_dir(log.events_path)
 
         if not docs_dir.exists() or not any(docs_dir.iterdir()):
+            ctx.logger.warning("concept_drift_explainer.ingest_no_documents")
             raise HTTPException(
                 status_code=422,
                 detail="Upload at least one document before re-indexing.",
             )
 
-        clients = await load_module_ai_clients(cfg)
-        index = get_pinecone_index(cfg)
+        try:
+            clients = await load_module_ai_clients(cfg)
+            index = get_pinecone_index(cfg)
+        except HTTPException as exc:  # OpenAI / Pinecone key not configured
+            ctx.logger.warning(
+                "concept_drift_explainer.ingest_not_configured", reason=str(exc.detail)
+            )
+            raise
         embedder = Embedder(clients.embeddings)
 
         await ctx.progress.update(0.0, "Indexing documents")
 
         files = [p for p in docs_dir.iterdir() if p.is_file()]
         loop = asyncio.get_running_loop()
+        t0 = time.perf_counter()
 
         def progress(fraction: float, message: str) -> None:
             with contextlib.suppress(RuntimeError):
@@ -271,6 +293,24 @@ class ConceptDriftExplainerModule(Module):
             namespace=KB_NS,
         )
         result["glossary_terms"] = glossary_vectors
+        ctx.logger.info(
+            "concept_drift_explainer.ingest_completed",
+            files=len(files),
+            vectors=result["ingested"],
+            skipped=len(result["skipped"]),
+            failed=len(result["failed"]),
+            glossary_terms=glossary_vectors,
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
+        not_indexed = result["skipped"] + result["failed"]
+        if not_indexed:
+            ctx.logger.warning(
+                "concept_drift_explainer.ingest_files_not_indexed",
+                files=", ".join(str(f["file"]) for f in not_indexed[:10]),
+                total=len(not_indexed),
+            )
+        if not glossary_vectors:
+            ctx.logger.warning("concept_drift_explainer.glossary_not_indexed")
 
         await ctx.progress.update(1.0, "Done")
         return result
@@ -289,6 +329,7 @@ class ConceptDriftExplainerModule(Module):
         ai = cfg.get("ai") or {}
         api_key = (body.api_key or "").strip() or (ai.get("api_key") or "").strip()
         if not api_key:
+            ctx.logger.warning("concept_drift_explainer.ai_check_no_key")
             raise HTTPException(
                 status_code=422,
                 detail="Enter an OpenAI API key before checking.",
@@ -305,11 +346,14 @@ class ConceptDriftExplainerModule(Module):
         except Exception as exc:
             # Broad on purpose: surface any OpenAI SDK error (auth, network,
             # rate-limit) back to the settings card as a 400 with its message.
+            # Only the exception type is logged: its message can echo the key.
+            ctx.logger.warning("concept_drift_explainer.ai_check_failed", error=type(exc).__name__)
             raise HTTPException(
                 status_code=400,
                 detail=f"OpenAI rejected the key: {exc}",
             ) from exc
 
+        ctx.logger.info("concept_drift_explainer.ai_key_verified", models=len(models))
         return {"ok": True, "models": models}
 
     @route.post("/pinecone/recreate-index")
@@ -320,11 +364,28 @@ class ConceptDriftExplainerModule(Module):
         # platform injects this sentinel into runtime config when the card is
         # locked (mirrors cv4cdd's __model_admin_locked__ read-only guard).
         if cfg.get("__ai_admin_locked__"):
+            ctx.logger.warning(
+                "concept_drift_explainer.index_recreate_blocked", reason="admin lock"
+            )
             raise HTTPException(
                 status_code=403,
                 detail="AI models are administrator-controlled; index rebuild is disabled.",
             )
-        result = await asyncio.to_thread(recreate_index, cfg)
+        t0 = time.perf_counter()
+        try:
+            result = await asyncio.to_thread(recreate_index, cfg)
+        except HTTPException as exc:  # Pinecone key not configured
+            ctx.logger.warning(
+                "concept_drift_explainer.index_recreate_blocked", reason=str(exc.detail)
+            )
+            raise
+        # Every vector is gone: documents must be re-indexed afterwards.
+        ctx.logger.info(
+            "concept_drift_explainer.index_recreated",
+            index_name=result["index_name"],
+            dimension=result["dimension"],
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return {"ok": True, **result}
 
     # ── explanation pipeline ─────────────────────────────────────────────────
@@ -335,11 +396,20 @@ class ConceptDriftExplainerModule(Module):
         adapted, _n_windows = await self._adapted_drifts(ctx)
         drift = next((d for d in adapted if d["drift_key"] == body.drift_key), None)
         if drift is None:
+            ctx.logger.warning(
+                "concept_drift_explainer.explain_unknown_drift", drift_key=body.drift_key
+            )
             raise HTTPException(status_code=404, detail=f"Unknown drift_key {body.drift_key!r}")
 
         cfg = ctx.config.value or {}
-        clients = await load_module_ai_clients(cfg)
-        index = get_pinecone_index(cfg)
+        try:
+            clients = await load_module_ai_clients(cfg)
+            index = get_pinecone_index(cfg)
+        except HTTPException as exc:  # OpenAI / Pinecone key not configured
+            ctx.logger.warning(
+                "concept_drift_explainer.explain_not_configured", reason=str(exc.detail)
+            )
+            raise
         embedder = Embedder(clients.embeddings)
 
         # Upload ≠ Re-index: `POST /documents` only writes bytes to disk; the
@@ -347,7 +417,11 @@ class ConceptDriftExplainerModule(Module):
         # retrieval hits and the pipeline degrades to a generic "no relevant
         # documents" summary that reads as a lie to a user who *did* upload.
         # Fail fast with the actual remedy instead.
-        if _namespace_vector_count(index, _ns_for(ctx.log_id)) == 0:
+        n_vectors = _namespace_vector_count(index, _ns_for(ctx.log_id))
+        if n_vectors < 0:
+            ctx.logger.warning("concept_drift_explainer.index_stats_unavailable")
+        if n_vectors == 0:
+            ctx.logger.warning("concept_drift_explainer.explain_no_indexed_documents")
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -380,7 +454,9 @@ class ConceptDriftExplainerModule(Module):
             )
             return graph.invoke({"selected_drift": selected})
 
+        t0 = time.perf_counter()
         result_state = await asyncio.to_thread(run_sync)
+        duration_ms = round((time.perf_counter() - t0) * 1000)
 
         pipeline_error = result_state.get("error_message")
         if pipeline_error:
@@ -393,6 +469,7 @@ class ConceptDriftExplainerModule(Module):
         # Filter by config'd confidence threshold + max_causes.
         threshold = float(cfg.get("confidence_threshold", 0.25))
         max_causes = int(cfg.get("max_causes", 3))
+        n_causes_found = len(explanation.get("ranked_causes") or [])
         explanation = {
             "summary": explanation.get("summary", ""),
             "ranked_causes": [
@@ -401,6 +478,24 @@ class ConceptDriftExplainerModule(Module):
                 if c.get("confidence_score", 0.0) >= threshold
             ][:max_causes],
         }
+        ctx.logger.info(
+            "concept_drift_explainer.explanation_generated",
+            drift_key=body.drift_key,
+            model=getattr(clients.chat, "model_name", None),
+            indexed_vectors=n_vectors,
+            snippets=len(result_state.get("reranked_context_snippets") or []),
+            causes_found=n_causes_found,
+            causes_kept=len(explanation["ranked_causes"]),
+            summary_chars=len(explanation["summary"] or ""),
+            duration_ms=duration_ms,
+        )
+        if not explanation["ranked_causes"]:
+            ctx.logger.warning(
+                "concept_drift_explainer.explanation_no_causes",
+                drift_key=body.drift_key,
+                causes_found=n_causes_found,
+                confidence_threshold=threshold,
+            )
 
         await ctx.progress.update(0.97, "Saving explanation")
         existing = await ctx.cache.get("explanations") or {}
@@ -438,6 +533,9 @@ class ConceptDriftExplainerModule(Module):
     async def chat(self, ctx: ModuleContext, body: ChatRequest) -> dict[str, Any]:
         explanations = await ctx.cache.get("explanations") or {}
         if not isinstance(explanations, dict) or body.drift_key not in explanations:
+            ctx.logger.warning(
+                "concept_drift_explainer.chat_no_explanation", drift_key=body.drift_key
+            )
             raise HTTPException(
                 status_code=404,
                 detail=(
@@ -447,7 +545,13 @@ class ConceptDriftExplainerModule(Module):
             )
 
         cfg = ctx.config.value or {}
-        clients = await load_module_ai_clients(cfg)
+        try:
+            clients = await load_module_ai_clients(cfg)
+        except HTTPException as exc:  # OpenAI key not configured
+            ctx.logger.warning(
+                "concept_drift_explainer.chat_not_configured", reason=str(exc.detail)
+            )
+            raise
 
         stored = explanations[body.drift_key]
         chat_state = await ctx.cache.get(f"chat_{body.drift_key}") or {"chat_history": []}
@@ -472,6 +576,7 @@ class ConceptDriftExplainerModule(Module):
                 }
             )
 
+        t0 = time.perf_counter()
         result = await asyncio.to_thread(run_sync)
 
         if "error_message" in result:
@@ -480,6 +585,16 @@ class ConceptDriftExplainerModule(Module):
         new_history = result.get("chat_history") or chat_history
         chat_state = {"chat_history": new_history}
         await ctx.cache.set(f"chat_{body.drift_key}", chat_state)
+        # Lengths only: the question and answer are the user's own conversation.
+        ctx.logger.info(
+            "concept_drift_explainer.chat_answered",
+            drift_key=body.drift_key,
+            model=getattr(clients.chat, "model_name", None),
+            question_chars=len(body.user_question),
+            answer_chars=len(str(new_history[-1][1])) if new_history else 0,
+            turns=len(new_history),
+            duration_ms=round((time.perf_counter() - t0) * 1000),
+        )
         return chat_state
 
     # ── helpers ──────────────────────────────────────────────────────────────
