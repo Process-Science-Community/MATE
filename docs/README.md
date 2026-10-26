@@ -21,6 +21,12 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | [`MCP.md`](./MCP.md) | MCP server **consumer** reference: endpoint, auth (PAT/OAuth), scopes, tool catalog, data wall, client setup. Operator-side setup lives in `DEPLOY.md` ("MCP server"). |
 | [`S3_OFFLOAD.md`](./S3_OFFLOAD.md) | S3 storage design doc (all phases implemented): local cache + eviction, bypass-hole closure, migration + quota, hydration performance, and the still-open multi-node seams. Storage code docstrings cite it. |
 
+## `docs/design/`
+
+| File | What it is |
+| --- | --- |
+| [`design/module-registry.md`](./design/module-registry.md) | Proposed public module catalogue and module versioning: registry repo, signed multi-version index, SemVer gates, staged upgrades, blockers and phased plan. Nothing implemented. |
+
 ## The published manual
 
 | File | What it is |
