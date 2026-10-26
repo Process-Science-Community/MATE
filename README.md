@@ -1,223 +1,172 @@
-# Mate
+# MATE
 
-A locally-hosted, modular process mining platform. Two services (`api` + `web`)
-plus a bundled Keycloak (`keycloak` + `keycloak-db`) for OIDC login,
-on-disk data stores (Postgres metadata in the compose stack, SQLite in host dev
-and tests; DuckDB + Parquet for event logs), no broker, no cloud.
-Each user gets a fully isolated workspace – their event logs, jobs, AI keys,
-and module config never bleed across accounts.
+**A self-hosted, modular platform for process mining.** Upload an event log, then explore it with installable analysis modules: process discovery, performance, conformance checking, complexity, concept-drift detection, simulation, and more. Every user gets a fully isolated workspace.
 
-All documentation is indexed in [`docs/README.md`](./docs/README.md). For the
-full design rationale, read [`docs/INSTRUCTIONS.md`](./docs/INSTRUCTIONS.md). For
-the module authoring contract, read [`modules/README.md`](./modules/README.md).
-The user manual lives in [`landing/docs/`](./landing/docs/) — rebuild it with
-`make docs` and preview it at `http://localhost:8081/docs/site/introduction.html`.
+- **Local-first.** Logs, results, and metadata stay on your machine. No cloud, no message broker. Metadata lives in SQLite (Postgres in the Docker stack) and event logs in DuckDB + Parquet. Nothing leaves the host unless you configure an external service (S3 storage, an LLM provider) on purpose.
+- **Modular.** Every analysis is a module with the same SDK, loader, and rules, including the bundled ones. There are no privileged first-party hooks.
+- **Multi-user.** Login via Keycloak (OIDC); every log, job, dashboard, and API key is scoped to its owner.
+
+📖 **Manual:** [process-science-community.github.io/MATE](https://process-science-community.github.io/MATE/docs/site/introduction.html) · 🌐 **Hosted instance (WWU Münster):** [mate.uni-muenster.de](https://mate.uni-muenster.de/login)
+
+---
+
+## What do you want to do?
+
+| I want to… | Go to |
+| --- | --- |
+| **Try MATE on my machine** | [Quick start](#quick-start) |
+| **Develop on the platform** (API / web) | [Development](#development) |
+| **Build my own analysis module** | [Building a module](#building-a-module) |
+| **Deploy it for other people** | [`docs/DEPLOY.md`](./docs/DEPLOY.md) |
+| **Use it from a script or an AI agent** | [REST API / MCP server](#use-mate-from-scripts-and-ai-agents) |
+| **Understand how it works** | [Architecture & docs](#how-it-fits-together) |
+
+---
 
 ## Quick start
 
+You need **Docker** (Docker Desktop, or Docker Engine + Compose v2) and free ports `3000`, `8000`, `8080`. Nothing else has to be installed on your host.
+
 ```bash
-git clone <repo-url> mate
+git clone https://github.com/Process-Science-Community/MATE.git mate
 cd mate
 cp .env.example .env
 make up
 ```
 
-Startup refuses to run without the root `.env`. Host-mode development exports
-the same root configuration to both the API and Next.js, so no second web
-environment file is required.
+Then open <http://localhost:3000>.
 
-The default `.env.example` enables local plugin-development mode
-(`DEMO_MODE=true`). It bypasses Keycloak and signs into a fixed local demo
-workspace automatically; `AUTH_SECRET` may remain empty in this mode. Set
-`DEMO_MODE=false` and provide a strong `AUTH_SECRET` before any shared or
-public deployment.
+- **No login needed locally.** `.env.example` sets `DEMO_MODE=true`, which signs you in automatically as a fixed demo user. This is for local development only; see [Before you share it](#before-you-share-it).
+- **First start takes several minutes**: the images are built and each module installs its own Python dependencies (the `cv4cdd` module alone pulls TensorFlow, ~500 MB). Later starts reuse the cache and take seconds. Budget ~3 GB of disk.
+- **Your first analysis:** on the Processes page, drop in an event log (XES, XES.gz, CSV, XML, or OCEL 2.0), open it, and pick a module such as **Discovery** or **Performance**. A walkthrough is in the manual: [Your first analysis](https://process-science-community.github.io/MATE/docs/site/your-first-analysis.html).
+- **Stop:** `make down`. Follow logs with `docker compose logs -f api` (or `web`).
 
-Then open <http://localhost:3000>. On first login use
-`admin@flows-funds.local` / `flowsfunds` – Keycloak forces a password reset.
+> Want real logins instead of the demo user? Set `DEMO_MODE=false` and a strong `AUTH_SECRET` (`openssl rand -base64 32`) in `.env`, restart, and sign in via the bundled Keycloak with `admin@flows-funds.local` / `flowsfunds` (you must change the password on first login). The Keycloak admin console is at <http://localhost:8080/admin> (`admin` / `admin`), realm `flows-funds`.
 
-To add additional users, sign in to the Keycloak admin console at
-<http://localhost:8080/admin> with `admin` / `admin`, switch to the
-`flows-funds` realm, and create users there.
+## Ways to run it
 
-## Running modes
+`make up` *is* `docker compose up -d --build`; the modes differ in which compose files are layered:
 
-**`make up` is not the dev mode, and `docker compose` is not a separate "prod" tool** – `make up` *is* `docker compose up -d --build`. What actually changes between dev and prod is which **compose overlay** stacks on top of the base [`docker-compose.yml`](./docker-compose.yml):
+| Command | What you get | Needs on host |
+| --- | --- | --- |
+| `make up` | Production-style built images, detached, no reload. The default. | Docker |
+| `make up-dev` | Same stack in Docker with hot reload (`uvicorn --reload` + `next dev`, source mounted). | Docker |
+| `make dev` | **No Docker.** API + web dev servers directly on your machine; fastest inner loop. SQLite under `data/`. | Python 3.12, `uv`, Node 20+, `pnpm` |
+| prod overlay | `docker-compose.yml` + `docker-compose.prod.yml` adds Caddy/TLS on one origin. No `make` target; see [`docs/DEPLOY.md`](./docs/DEPLOY.md). | Docker, a host |
 
-| Command | What you get |
-| --- | --- |
-| `make dev` | No Docker – runs the API + web dev servers directly with hot reload (needs `uv` + `pnpm` on the host). Fastest inner loop. |
-| `make up` | Base `docker-compose.yml` only: **prod-style built images**, detached, no reload. The default quick-start – closest to prod, minus TLS/proxy. |
-| `make up-dev` | Base **+ `compose.dev.yml`**: hot reload in Docker (`uvicorn --reload` + `next dev`, source-mounted). The in-container dev mode. |
-| *(prod deploy)* | Base **+ `docker-compose.prod.yml`**: adds Caddy/TLS, collapses everything onto one same-origin, and stops publishing the app ports. Run manually – `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`; there is no `make` target. See [`docs/DEPLOY.md`](./docs/DEPLOY.md). |
+## Development
 
-In short: **develop** with `make up-dev` (or `make dev` without Docker), **preview the prod build** locally with `make up`, and **deploy** by adding the `docker-compose.prod.yml` overlay.
+```bash
+make install    # uv sync --extra dev  +  pnpm install
+make dev        # migrations, then API (:8000) and web (:3000) with reload
+```
 
-## Advanced setup
-
-### Prerequisites
-
-- **Docker Desktop** (macOS / Windows) or **Docker Engine + Compose v2** (Linux). No Python, Node, `uv`, or `pnpm` needed on the host.
-- Free ports `3000` (web), `8000` (api), and `8080` (Keycloak).
-- ~3 GB free disk for the built images. First boot pulls each module's Python deps (cv4cdd alone pulls TensorFlow, ~500 MB) plus Keycloak (~500 MB) and Postgres 16 alpine. Subsequent boots reuse the cached wheels under `data/uv-python/`.
-
-### Step-by-step
-
-1. **Clone the repo.**
-
-   ```bash
-   git clone <repo-url> mate
-   cd mate
-   ```
-
-2. **Build and start the stack.** `make up` is a thin wrapper around `docker compose up -d --build` – it builds both images (`api`, `web`) and starts them detached. Either command works:
-
-   ```bash
-   make up
-   # or
-   docker compose up -d --build
-   ```
-
-   First boot takes several minutes because each module resolves its Python deps into its own `.venv/`. The api container's healthcheck has a 10-minute grace period to cover the worst case (cv4cdd pulling TensorFlow). Subsequent boots reuse the cached wheels and start in seconds.
-
-3. **Open the app.** Visit <http://localhost:3000>. The first run lands on `/processes` with the empty state – drop a XES, XES.gz, or CSV file to start mining.
-
-4. **Hot-reload mode (optional, for development).** Use the dev overlay to run `uvicorn --reload` + `next dev` with the source tree mounted:
-
-   ```bash
-   make up-dev
-   ```
-
-5. **Stop the stack.**
-
-   ```bash
-   make down
-   ```
-
-## Bundled modules
-
-The modules under [`modules/`](./modules/) are discovered on startup and
-mounted automatically:
-
-| Module | What it does |
-| --- | --- |
-| `discovery` | Process discovery – DFG, Petri nets (Alpha / Inductive), Process Tree, Heuristics Net, BPMN |
-| `performance` | Throughput, lead / cycle / sojourn time, P90, bottlenecks, performance DFG |
-| `complexity` | EPA-based complexity measures – variant/sequence entropy, Lempel-Ziv, affinity, structure, Pentland's task/process complexity |
-| `cv4cdd` | Computer-vision concept-drift detection (sudden, gradual, incremental, recurring) |
-| `concept_drift_explainer` | LLM-backed explanations for drifts, grounded in user-uploaded enterprise documents |
-| `agent_simulator` | Agent-based simulation that learns from a log and generates synthetic traces |
-| `demo` | Minimal reference module – useful when authoring your own |
-
-Enable / disable / configure each one under **Settings → Modules**.
-
-## Mate AI
-
-The right-side chat panel ("Mate AI") is wired to your own LLM provider –
-keys, model, and system prompt live in `data/metadata.db` (under the
-`ai.config` user-setting) and never leave the box. Configure under
-**Settings → AI**. The assistant can reference the active process log,
-modules, and recent jobs when answering.
-
-## Privacy & usage
-
-Anonymous usage capture is **on for every user by default**
-(`USER_TRACKING_ONBOARDING=force`): the onboarding privacy step and the
-**Settings → Privacy** tab are hidden and there's no opt-out. Set the var to
-`on` (enabled by default, but opt-out) or `off` (disabled by default, opt-in)
-to let users choose under **Settings → Privacy**. Either way events stay in the
-local SQLite database; nothing ships off the host. See
-[Configuration](#configuration).
-
-## Common commands
+`make dev` runs from the same root `.env` (copy `.env.example` first) and, with `DEMO_MODE=true`, needs no Keycloak. Its preflight frees port 8000 and kills stale API workers. Run `make help` for the full list. The ones you will use most:
 
 | Command | What it does |
 | --- | --- |
-| `make up` | Start the prod-style stack (detached) |
-| `make up-dev` | Start with hot reload – `uvicorn --reload` + `next dev`, source-mounted |
-| `make down` | Stop the stack |
-| `make build` | Rebuild both images |
-| `make test` | Run the Python test suite (inside Docker) |
-| `make typecheck` | Type-check the web app |
-| `docker compose logs -f api` | Tail API logs |
-| `docker compose logs -f web` | Tail web logs |
-| `make clean` | Wipe `data/event_logs/`, `data/module_results/`, and `data/metadata.db` – irrevocable. Module folders are kept. |
+| `make dev-api` / `make dev-web` | Run only one of the two servers |
+| `make test` | Python API tests (`pytest apps/api/tests`) |
+| `uv run pytest modules/<folder>/tests` | One module's tests |
+| `uv run pyright` | Strict Python type check |
+| `make typecheck` | Web app type check |
+| `make fmt` | Format and lint Python with ruff |
+| `make codegen` | Regenerate the web app's API types (API must be running on `:8000`) |
+| `make docs` | Rebuild the manual from `landing/docs/content/*.md` |
+| `make clean` | **Irrevocably** wipe local logs, results, and metadata under `data/` |
 
-## Data & persistence
+Database changes go in a new Alembic migration under `apps/api/alembic/versions/` (applied on boot). Contribution paths and conventions: [Contributing](https://process-science-community.github.io/MATE/docs/site/contributing.html). Using Claude Code? [`AGENT.md`](./AGENT.md) is the orientation file.
 
-- `./data/` is bind-mounted – SQLite metadata, Parquet event logs, module results, and the cached uv-managed Python runtimes all live here. Back up by copying the directory.
-- `./modules/` is bind-mounted read/write – the bundled **default** modules live here, and any module folder you drop in is picked up on the next start. Each module's `.venv/` and `.dist/` (esbuilt frontend bundle) are auto-created and gitignored.
-- User **uploads** (Settings → Modules → Import) land in `data/uploaded_modules/<id>/` instead, so they never overwrite or mix with the repo defaults. Module ownership is per-user (the `module_installs` table): every user is auto-seeded the default set on first login, and uninstall is reference-counted. A **Restore defaults** button re-adds any defaults a user removed.
+## Bundled modules
 
-## Configuration
+Everything under [`modules/`](./modules/) is discovered on startup. Enable, disable, and configure modules under **Settings → Modules**.
 
-The defaults in [`docker-compose.yml`](./docker-compose.yml) work out of the box for `localhost`. Override via `.env` (copy from `.env.example`) when running on a different host or before exposing the stack:
+| Area | Modules |
+| --- | --- |
+| **Discovery** | `discovery` (DFG, Petri net, process tree, heuristics net, BPMN) · `ocel_discovery` (object-centric logs) |
+| **Performance** | `performance` · `performance_java` (JVM runtime example) · `performance_over_time` · `actor_performance` |
+| **Conformance & comparison** | `conformance` (replay against a BPMN model) · `process_comparison` · `pcomp` (statistical test between two logs) |
+| **Complexity** | `complexity` · `complexity_v2` (28 metrics) · `complexity_over_time` · `complexity_v2_over_time` |
+| **Change over time** | `cv4cdd` (concept-drift detection) · `concept_drift_explainer` (LLM, grounded in your documents) · `log_evolution` · `temporal_mapper` |
+| **Simulation** | `agentsimulator` |
 
-- `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) – the URL the **browser** uses to reach the API. This is inlined at build time, so changing it requires a rebuild (`make build` or `docker compose up -d --build`).
-- `CORS_ORIGINS` on the api (default `["http://localhost:3000"]`) – extend this if the web origin changes.
-- `USER_TRACKING_ONBOARDING` on the api (default `force`) – usage-tracking default & policy. `force` keeps tracking on for every user and hides both the onboarding privacy step and the **Settings → Privacy** tab (no opt-out); `on` enables tracking by default during onboarding (opt-out); `off` disables it by default (opt-in).
-- `AUTH_SECRET` – encrypts the Auth.js session cookie. Rotate per environment (`openssl rand -base64 32`).
-- `KEYCLOAK_CLIENT_SECRET` – confidential client secret for the `flows-funds-web` client. Rotate before any non-local deployment; the seeded dev value also lives in `infra/keycloak/realm-export/flows-funds-realm.json`.
-- `KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD` – bootstrap credentials for the Keycloak admin console at `http://localhost:8080/admin`.
+Users can also import their own modules from a zip or git URL via **Settings → Modules → Import**. Each module ships a `HOW_TO_USE.md` guide, shown behind the **How to use** button in the app.
 
-### Authentication
+The right-hand **Mate AI** chat panel talks to your own LLM provider (**Settings → AI**); keys stay in your local metadata database, and the assistant sees aggregates, never raw event rows.
 
-Login is mandatory. The web app gates everything behind a Keycloak OIDC flow
-(Auth.js v5 on the Next.js side, PyJWT + JWKS validation on the FastAPI
-side). Sessions are JWT-only – no extra DB tables on the Auth.js side, and
-no Postgres for the app itself; only Keycloak uses Postgres.
+## Building a module
 
-### Admin data export
-
-Visit **`/admin/export`** to download a consistent snapshot of the entire
-metadata database (every user's accounts, usage analytics, process metadata,
-and settings) as a single SQLite `.db` file. The download requires the Keycloak
-realm role **`admin`** – assign it in the Keycloak admin console under *Realm
-roles → admin → Users in role*. Users without the role see an explanatory
-message instead of the button. The file contains all users' data, so treat the
-download as sensitive.
-
-User data isolation:
-
-- Every event log / job / AI key is keyed by the Keycloak `sub` claim.
-- On-disk parquet + module results live under `data/users/{user_id}/`.
-- WebSocket envelopes are filtered by `user_id` server-side; a user only
-  ever sees their own jobs and events.
-
-## Tests
-
-Run inside Docker so the host doesn't need the toolchain:
+A module is one self-contained folder; you never edit `apps/api` or `apps/web` to ship one.
 
 ```bash
-docker compose run --rm api uv run pytest apps/api/tests -v
-docker compose run --rm web pnpm typecheck
+mkdir modules/my_mod
+$EDITOR modules/my_mod/manifest.yaml   # id, name, dependencies, frontend entry
+$EDITOR modules/my_mod/module.py       # subclass mate.sdk.Module
+make up-dev                            # or make dev; a restart picks it up
 ```
 
-## Layout
+Start with [`modules/README.md`](./modules/README.md) (the authoring contract) and copy from `modules/temporal_mapper/` (a complete example, including its `HOW_TO_USE.md`). Python SDK: [`packages/module-sdk-py`](./packages/module-sdk-py); frontend SDK: [`packages/module-sdk-ts`](./packages/module-sdk-ts). Deleting the folder removes the module.
+
+## Use MATE from scripts and AI agents
+
+- **REST API:** every UI action is an API call. Interactive docs at <http://localhost:8000/docs> when running; reference in the manual ([REST API](https://process-science-community.github.io/MATE/docs/site/rest-api.html)).
+- **MCP server:** lets Claude, Codex, and other MCP clients read your analyses (never raw event rows) and drive MATE. Off by default (`MCP_ENABLED=false`); the API refuses to start with both `MCP_ENABLED` and `DEMO_MODE` on. See [`docs/MCP.md`](./docs/MCP.md).
+
+## How it fits together
 
 ```
 mate/
 ├── apps/
-│   ├── api/         # FastAPI backend
-│   └── web/         # Next.js 15 frontend
-├── modules/         # Bundled + user-installed module packages
+│   ├── api/                 FastAPI backend (jobs, storage, auth, module loader, MCP)
+│   └── web/                 Next.js 15 frontend
+├── modules/                 Bundled analysis modules (+ authoring docs)
 ├── packages/
-│   ├── module-sdk-py/   # Python SDK for module authors
-│   ├── module-sdk-ts/   # TS SDK for module frontends
-│   └── shared-types/    # Generated TS types from OpenAPI
-├── data/            # Bind-mounted; SQLite + Parquet + cached runtimes
-├── docs/            # Design spec, deploy runbook, MCP reference (see docs/README.md)
-├── docker-compose.yml       # base stack
-├── compose.dev.yml          # dev overlay – hot reload (make up-dev)
-└── docker-compose.prod.yml  # prod overlay – Caddy/TLS (see docs/DEPLOY.md)
+│   ├── module-sdk-py/       Python SDK for module authors
+│   ├── module-sdk-ts/       TypeScript SDK for module frontends
+│   ├── module-sdk-jvm/      JVM SDK for non-Python modules
+│   └── shared-types/        Generated TS types from the OpenAPI schema
+├── infra/                   Keycloak realm + scripts, Caddy, VM bootstrap
+├── landing/                 Public landing page and the manual (landing/docs/)
+├── docs/                    Design spec, deploy runbook, MCP and S3 references
+├── data/                    Runtime state (gitignored): metadata DB, Parquet logs, results
+├── docker-compose.yml       Base stack: api, web, Keycloak, Postgres
+├── compose.dev.yml          Dev overlay: hot reload (make up-dev)
+└── docker-compose.prod.yml  Prod overlay: Caddy/TLS
 ```
 
-## Adding a module
+**Where to read next**
 
-```bash
-mkdir modules/my_mod
-$EDITOR modules/my_mod/manifest.yaml   # see modules/README.md §3
-$EDITOR modules/my_mod/module.py        # subclass mate.sdk.Module
-make up-dev                             # restart picks it up
-```
+| Doc | What it covers |
+| --- | --- |
+| [`docs/README.md`](./docs/README.md) | Index of every document in the repo |
+| [`docs/INSTRUCTIONS.md`](./docs/INSTRUCTIONS.md) | Design spec and the reasoning behind the architecture |
+| [`modules/README.md`](./modules/README.md) | Module authoring contract |
+| [`docs/DEPLOY.md`](./docs/DEPLOY.md) | Production deployment runbook |
+| [`docs/S3_OFFLOAD.md`](./docs/S3_OFFLOAD.md) | Optional S3-compatible storage backend |
+| [Manual](https://process-science-community.github.io/MATE/docs/site/introduction.html) | User, operator, and developer documentation (source in `landing/docs/content/`) |
 
-Or upload a zip / clone a git URL via **Settings → Modules → Import**.
+## Configuration
+
+All configuration is one root `.env` (template: [`.env.example`](./.env.example), every variable is commented). The ones you are most likely to touch:
+
+| Variable | Purpose |
+| --- | --- |
+| `DEMO_MODE` / `DEMO_ADMIN` | Skip Keycloak and sign in as a local demo user (optionally an admin). **Local only.** |
+| `AUTH_SECRET` | Session-cookie secret. Required when `DEMO_MODE=false`. |
+| `NEXT_PUBLIC_API_URL` | Where the browser reaches the API. Baked in at build time; changing it needs a rebuild. |
+| `STORAGE_MODE` (`local` / `s3`) | Keep data under `data/` or offload to an S3-compatible bucket. |
+| `USER_TRACKING_ONBOARDING` (`force` / `on` / `off`) | Anonymous usage-tracking policy. Events stay in the local database. |
+| `MCP_ENABLED` | Turn on the MCP server. |
+| `KEYCLOAK_*` | Login provider settings; rotate the secrets before any shared deployment. |
+
+**Data and backups:** everything MATE stores is in `./data/` (copy it to back up). Module folders and their `.venv/` live in `./modules/`; user-imported modules land in `data/uploaded_modules/`. Admins can download a full metadata snapshot at `/admin/export`.
+
+### Before you share it
+
+The defaults are tuned for a single developer on `localhost`. Before exposing MATE to anyone else: set `DEMO_MODE=false`, set a strong `AUTH_SECRET`, rotate `KEYCLOAK_CLIENT_SECRET` and the Keycloak admin credentials, and follow [`docs/DEPLOY.md`](./docs/DEPLOY.md).
+
+## Contributing, issues, license
+
+Bugs and feature requests: [GitHub Issues](https://github.com/Process-Science-Community/MATE/issues). Include the diagnostics blob from **Settings → About**. Modules are the highest-impact contribution; see [Building a module](#building-a-module) and [Contributing](https://process-science-community.github.io/MATE/docs/site/contributing.html).
+
+MIT licensed. © 2026 European Research Center for Information Systems (ERCIS), University of Münster. See [`LICENSE`](./LICENSE).
