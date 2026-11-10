@@ -19,7 +19,10 @@ Requires DEMO_MODE=true in .env (the demo bearer token authenticates the calls).
 Usage (repo root, stack up):
     uv run python scripts/benchmark/import_benchmark.py \\
         --log sepsis=path/Sepsis.xes.gz --log bpic2017=path/BPI2017.xes.gz \\
-        -o bench.json
+        --roles 'bpic2017={"activity": "activity"}' -o bench.json
+
+`--roles key=JSON` pins column roles for one log, exactly like the import wizard's
+role picker (`column_roles` on `POST /event-logs`); unpinned roles still auto-resolve.
 """
 
 from __future__ import annotations
@@ -44,8 +47,16 @@ DB_CONTAINER = "mate-app-db"
 TERMINAL_JOB = {"completed", "failed", "cancelled"}
 TERMINAL_RUN = {"ready", "failed", "cancelled", "unavailable", "stale"}
 
-_UNITS = {"b": 1, "kib": 2**10, "mib": 2**20, "gib": 2**30, "tib": 2**40,
-          "kb": 10**3, "mb": 10**6, "gb": 10**9}
+_UNITS = {
+    "b": 1,
+    "kib": 2**10,
+    "mib": 2**20,
+    "gib": 2**30,
+    "tib": 2**40,
+    "kb": 10**3,
+    "mb": 10**6,
+    "gb": 10**9,
+}
 
 
 def _now() -> str:
@@ -72,7 +83,9 @@ class MemSampler:
     def __enter__(self) -> MemSampler:
         self._proc = subprocess.Popen(
             ["docker", "stats", "--format", "{{.MemUsage}}", self.container],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
         self._thread = threading.Thread(target=self._read, daemon=True)
         self._thread.start()
@@ -105,12 +118,15 @@ def jobs_from_db(job_ids: list[str]) -> dict[str, dict[str, Any]]:
     sql = (
         "select row_to_json(t) from (select id, type, module_id, status, error, "
         "created_at, started_at, finished_at, "
-        "extract(epoch from finished_at - started_at) as wall_s "
+        "extract(epoch from finished_at - started_at) as wall_s, "
+        "extract(epoch from started_at - created_at) as queue_s "
         f"from jobs where id in ({ids})) t"
     )
     out = subprocess.run(
         ["docker", "exec", DB_CONTAINER, "psql", "-U", "mate", "-d", "mate", "-tAc", sql],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout
     rows = [json.loads(line) for line in out.splitlines() if line.strip()]
     return {r["id"]: r for r in rows}
@@ -175,25 +191,36 @@ class Client:
             time.sleep(2)
 
 
-def bench_log(c: Client, key: str, path: Path, module_timeout: float) -> dict[str, Any]:
+def bench_log(
+    c: Client, key: str, path: Path, module_timeout: float, roles: dict[str, str] | None
+) -> dict[str, Any]:
     print(f"[{key}] staging {path.name}", flush=True)
     with path.open("rb") as fh:
         staged = c.post("/event-logs/stage", files={"file": (path.name, fh)})
     with MemSampler(API_CONTAINER) as mem:
-        created = c.post(
-            "/event-logs", data={"staging_token": staged["staging_token"], "name": key}
-        )
+        form = {"staging_token": staged["staging_token"], "name": key}
+        if roles:
+            form["column_roles"] = json.dumps(roles)
+        created = c.post("/event-logs", data=form)
         job = c.wait_job(created["job_id"], timeout=4 * 3600)
     log_id = created["log_id"]
     detail = c.get(f"/event-logs/{log_id}")
     print(f"[{key}] import {job['status']}; peak api mem {mem.peak / 2**20:.0f} MiB", flush=True)
 
     result: dict[str, Any] = {
-        "key": key, "file": path.name, "file_bytes": path.stat().st_size,
-        "log_id": log_id, "import_job_id": created["job_id"], "import_status": job["status"],
-        "events": detail.get("events_count"), "cases": detail.get("cases_count"),
+        "key": key,
+        "file": path.name,
+        "file_bytes": path.stat().st_size,
+        "log_id": log_id,
+        "import_job_id": created["job_id"],
+        "import_status": job["status"],
+        "events": detail.get("events_count"),
+        "cases": detail.get("cases_count"),
         "variants": detail.get("variants_count"),
-        "peak_mem_bytes_import": mem.peak, "mem_samples_import": mem.samples,
+        "roles_pinned": roles or {},
+        "column_roles": detail.get("column_roles"),
+        "peak_mem_bytes_import": mem.peak,
+        "mem_samples_import": mem.samples,
         "modules": {},
     }
     if job["status"] != "completed":
@@ -211,24 +238,30 @@ def bench_log(c: Client, key: str, path: Path, module_timeout: float) -> dict[st
         t0 = time.monotonic()
         with MemSampler(API_CONTAINER) as mmem:
             final = c.wait_run(log_id, module_id, module_timeout)
-        print(f"[{key}] {module_id}: {final['status']} ({time.monotonic() - t0:.1f}s polled)",
-              flush=True)
+        print(
+            f"[{key}] {module_id}: {final['status']} ({time.monotonic() - t0:.1f}s polled)",
+            flush=True,
+        )
         result["modules"][module_id] = {
             "precompute": states[module_id].get("precompute"),
-            "status": final["status"], "job_id": final.get("job_id"),
-            "error": final.get("error"), "peak_mem_bytes": mmem.peak,
+            "status": final["status"],
+            "job_id": final.get("job_id"),
+            "error": final.get("error"),
+            "peak_mem_bytes": mmem.peak,
         }
 
-    db = jobs_from_db([created["job_id"]] + [
-        m["job_id"] for m in result["modules"].values() if m.get("job_id")
-    ])
+    db = jobs_from_db(
+        [created["job_id"]] + [m["job_id"] for m in result["modules"].values() if m.get("job_id")]
+    )
     imp = db.get(created["job_id"], {})
     result["import_wall_s"] = imp.get("wall_s")
+    result["import_queue_s"] = imp.get("queue_s")
     result["import_started_at"] = imp.get("started_at")
     result["import_finished_at"] = imp.get("finished_at")
     for m in result["modules"].values():
         row = db.get(m.get("job_id") or "", {})
         m["wall_s"] = row.get("wall_s")
+        m["queue_s"] = row.get("queue_s")
         m["job_status"] = row.get("status")
         m["started_at"] = row.get("started_at")
         m["finished_at"] = row.get("finished_at")
@@ -238,16 +271,36 @@ def bench_log(c: Client, key: str, path: Path, module_timeout: float) -> dict[st
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--log", action="append", required=True, help="key=path (repeatable)")
+    ap.add_argument(
+        "--roles",
+        action="append",
+        default=[],
+        help='key={"role": "column"} pins column roles for that log (repeatable)',
+    )
     ap.add_argument("-o", "--output", type=Path, required=True)
-    ap.add_argument("--module-timeout", type=float, default=3600,
-                    help="seconds before a module run is cancelled and recorded as timeout")
+    ap.add_argument(
+        "--module-timeout",
+        type=float,
+        default=3600,
+        help="seconds before a module run is cancelled and recorded as timeout",
+    )
     args = ap.parse_args()
 
+    pinned = {k: json.loads(v) for k, _, v in (r.partition("=") for r in args.roles)}
     c = Client()
-    out: dict[str, Any] = {"started_at": _now(), "machine": machine_spec(), "logs": []}
+    # A fresh account owns no modules until onboarding seeds the bundled defaults;
+    # this is the same idempotent call the UI's "Restore defaults" makes.
+    restored = c.post("/modules/restore-defaults")["restored"]
+    print(f"restored default modules: {restored}", flush=True)
+    out: dict[str, Any] = {
+        "started_at": _now(),
+        "machine": machine_spec(),
+        "modules_restored": restored,
+        "logs": [],
+    }
     for spec in args.log:
         key, _, p = spec.partition("=")
-        out["logs"].append(bench_log(c, key, Path(p), args.module_timeout))
+        out["logs"].append(bench_log(c, key, Path(p), args.module_timeout, pinned.get(key)))
         args.output.write_text(json.dumps(out, indent=2, default=str))
     out["finished_at"] = _now()
     args.output.write_text(json.dumps(out, indent=2, default=str))
