@@ -177,3 +177,48 @@ def test_manifest_rejects_paths_outside_its_folder(tmp_path: Path) -> None:
     path.write_text(json.dumps({"users": [], "logs": [{"file": "../outside.csv", "name": "x"}]}))
     with pytest.raises(ValueError, match="outside"):
         load_manifest(path)
+
+
+@pytest.mark.asyncio
+async def test_dead_import_is_replaced_not_awaited(client: AsyncClient, tmp_path: Path) -> None:
+    """A same-named log stuck in ``importing`` (a failed or interrupted import never
+    flips to ``failed``) is removed and imported afresh."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.db.models import EventLog, User
+
+    uid = "00000000-0000-7000-8000-0000000000s3"
+    manifest = _manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["users"] = [{"id": uid, "username": "reviewer-s3"}]
+    manifest.write_text(json.dumps(data))
+    async with get_sessionmaker()() as session:
+        session.add(User(id=uid, preferred_username="reviewer-s3"))
+        await session.flush()
+        session.add(
+            EventLog(
+                id="dead-import-s3",
+                user_id=uid,
+                name="Orders A",
+                source_format="csv",
+                source_filename="orders.csv",
+                status="importing",
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
+        await session.commit()
+
+    assert await _seed_all(manifest) == [True]
+    async with get_sessionmaker()() as session:
+        rows = (
+            await session.execute(
+                select(EventLog.id, EventLog.status, EventLog.deleted_at).where(
+                    EventLog.user_id == uid, EventLog.name == "Orders A"
+                )
+            )
+        ).all()
+    live = [r for r in rows if r.deleted_at is None]
+    assert len(live) == 1 and live[0].status == "ready" and live[0].id != "dead-import-s3"

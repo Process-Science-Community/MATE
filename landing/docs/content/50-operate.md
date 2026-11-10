@@ -179,7 +179,7 @@ Compressed uploads and archives unpack behind zip-bomb guards. The caps count by
 | `USER_TRACKING_ONBOARDING` | `force` | `force`, `on`, or `off` — see [Security and privacy](security-and-privacy.html#usage-analytics). |
 | `USER_TRACKING_EXEMPT_ROLES` / `_USERS` | `reviewer` / empty | Accounts never tracked, even under `force`: holders of these realm roles, plus listed usernames or Keycloak ids. |
 | `SAMPLE_CONTENT_MANIFEST` | empty | Manifest of accounts to seed with sample logs and a starter dashboard at start, once each. |
-| `MODULE_UPLOAD_BLOCKED_ROLES` | empty | Realm roles that may not upload modules (e.g. `reviewer`). |
+| `SANDBOXED_ROLES` | `reviewer` | Realm roles confined to their own account: no module upload, no watched folder on a custom path, no API tokens. |
 
 > [!NOTE]
 > Environment changes need a container **recreate** (`docker compose up -d`), not a restart: `restart` keeps the old environment.

@@ -55,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from mate.api.config import get_settings
 from mate.api.dashboard_templates import get_template
-from mate.api.db.models import Dashboard, EventLog, User, UserSetting
+from mate.api.db.models import Dashboard, EventLog, Job, User, UserSetting
 from mate.api.ingest.detect import detect_format, original_extension, sniff_format
 from mate.api.ingest.dispatch import IMPORT_JOB_TYPE
 from mate.api.ingest.storage import log_paths
@@ -66,7 +66,8 @@ from mate.api.modules.processing import ModuleProcessingCoordinator
 from mate.api.routes.dashboards import layout_blob
 from mate.api.routes.modules import reconcile_user_default_modules
 from mate.api.schemas.event_logs import CsvColumnMapping
-from mate.api.services.tracking_exemption import mark_tracking_exempt
+from mate.api.services.log_aggregates import delete_log_and_data
+from mate.api.services.tracking_exemption import invalidate_tracking_cache, mark_tracking_exempt
 from mate.api.uuid7 import uuid7_str
 
 log = structlog.get_logger(__name__)
@@ -129,6 +130,10 @@ async def seed_from_settings(
     if not raw:
         return
     path = Path(raw)
+    if not path.exists():
+        # Removed on purpose after the review (create-reviewer-accounts.sh delete).
+        log.info("sample_content.manifest_absent", path=str(path))
+        return
     try:
         manifest = await asyncio.to_thread(load_manifest, path)
     except Exception:
@@ -165,12 +170,16 @@ async def seed_user(
         # precompute plan only covers modules the account already has.
         await reconcile_user_default_modules(session, loader, user.id)
         await session.commit()
+    # Only after the commit: an earlier invalidation would let a recorder re-cache
+    # the pre-flag state.
+    invalidate_tracking_cache(user.id)
     get_settings().ensure_user_dirs(user.id)
 
-    log_ids: list[str] = []
-    for entry in manifest.logs:
-        log_ids.append(await _import_log(sessionmaker, runtime, root, user.id, entry))
-    await _wait_ready(sessionmaker, log_ids)
+    imports = [
+        await _import_log(sessionmaker, runtime, root, user.id, entry) for entry in manifest.logs
+    ]
+    await _wait_ready(sessionmaker, imports)
+    log_ids = [log_id for log_id, _job in imports]
 
     async with sessionmaker() as session:
         if manifest.dashboard is not None:
@@ -211,17 +220,30 @@ async def _import_log(
     root: Path,
     user_id: str,
     entry: SampleLog,
-) -> str:
-    """Submit an import for ``entry`` (or reuse an existing same-named log)."""
+) -> tuple[str, str | None]:
+    """Submit an import for ``entry``; returns ``(log_id, job_id)``.
+
+    A ready same-named log from an earlier, interrupted run is reused (job
+    ``None``). A same-named log that never became ready is a dead import: imports
+    are not resumed after a restart, and a failed one keeps ``importing``, so it is
+    deleted and imported afresh rather than waited on forever.
+    """
     async with sessionmaker() as session:
-        existing = await session.scalar(
-            select(EventLog.id)
-            .where(EventLog.user_id == user_id, EventLog.name == entry.name)
-            .where(EventLog.status != "failed")
-            .limit(1)
-        )
-        if existing is not None:
-            return existing
+        same_name = (
+            await session.scalars(
+                select(EventLog).where(
+                    EventLog.user_id == user_id,
+                    EventLog.name == entry.name,
+                    EventLog.deleted_at.is_(None),
+                )
+            )
+        ).all()
+        for row in same_name:
+            if row.status == "ready":
+                return row.id, None
+        for row in same_name:
+            log.info("sample_content.dead_import_removed", log_id=row.id, status=row.status)
+            await delete_log_and_data(session, runtime, row, user_id)
 
         source = (root / entry.file).resolve()
         filename = source.name
@@ -230,10 +252,14 @@ async def _import_log(
         paths = log_paths(log_id, user_id)
         paths.ensure()
         original = paths.original_for(original_extension(filename, coarse))
-        await asyncio.to_thread(shutil.copyfile, source, original)
-        source_format, ocel_flavor = await asyncio.to_thread(
-            sniff_format, original, coarse, filename=filename
-        )
+        try:
+            await asyncio.to_thread(shutil.copyfile, source, original)
+            source_format, ocel_flavor = await asyncio.to_thread(
+                sniff_format, original, coarse, filename=filename
+            )
+        except Exception:
+            await asyncio.to_thread(paths.remove)
+            raise
         session.add(
             EventLog(
                 id=log_id,
@@ -257,30 +283,46 @@ async def _import_log(
         "json_mapping": None,
         "column_roles": None,
     }
-    await runtime.submit(
+    job_id = await runtime.submit(
         type_=IMPORT_JOB_TYPE,
         user_id=user_id,
         title=f"Import - {entry.name}",
         subtitle=f"event_log.import · {source_format}",
         payload=payload,
     )
-    return log_id
+    return log_id, job_id
 
 
-async def _wait_ready(sessionmaker: async_sessionmaker[AsyncSession], log_ids: list[str]) -> None:
+_JOB_DEAD = frozenset({"failed", "cancelled"})
+
+
+async def _wait_ready(
+    sessionmaker: async_sessionmaker[AsyncSession], imports: list[tuple[str, str | None]]
+) -> None:
+    """Wait until every log is ``ready``; raise when its import job died.
+
+    The import handler never sets the log to ``failed`` - a failed import leaves
+    the log ``importing`` and only the job row says so - so the job is what is
+    watched for failure.
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + IMPORT_TIMEOUT_SECONDS
-    pending = set(log_ids)
+    pending = dict(imports)
     while pending:
         async with sessionmaker() as session:
             rows = await session.execute(
-                select(EventLog.id, EventLog.status).where(EventLog.id.in_(pending))
+                select(EventLog.id, EventLog.status).where(EventLog.id.in_(list(pending)))
             )
             for log_id, status in rows.all():
                 if status == "ready":
-                    pending.discard(log_id)
-                elif status == "failed":
-                    raise RuntimeError(f"sample log {log_id} import ended as {status!r}")
+                    pending.pop(log_id, None)
+            job_ids = [j for j in pending.values() if j is not None]
+            if job_ids:
+                dead = await session.execute(
+                    select(Job.id, Job.status).where(Job.id.in_(job_ids), Job.status.in_(_JOB_DEAD))
+                )
+                for job_id, status in dead.all():
+                    raise RuntimeError(f"sample log import job {job_id} ended as {status!r}")
         if not pending:
             return
         if loop.time() > deadline:

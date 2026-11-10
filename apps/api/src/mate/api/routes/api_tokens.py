@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from mate.api.auth import ADMIN_ROLE, CurrentUserDep, mint_token
+from mate.api.auth.dependencies import ensure_not_sandboxed
 from mate.api.config import get_settings
 from mate.api.db.models import ApiToken, UserSetting
 from mate.api.db.session import SessionDep
@@ -110,6 +111,9 @@ async def list_tokens(session: SessionDep, user: CurrentUserDep) -> list[TokenIn
 async def create_token(
     body: CreateTokenRequest, session: SessionDep, user: CurrentUserDep
 ) -> CreateTokenResponse:
+    # A PAT is checked against MATE only, so it would outlive a disabled Keycloak
+    # account (the reviewer expiry) - sandboxed accounts cannot mint one.
+    ensure_not_sandboxed(user, "Creating API tokens")
     policy = await get_mint_policy(session)
     if not may_mint(policy, ADMIN_ROLE in user.roles):
         raise HTTPException(

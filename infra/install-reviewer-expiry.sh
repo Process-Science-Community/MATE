@@ -26,16 +26,26 @@ SCRIPT="$MATE_DIR/infra/keycloak/create-reviewer-accounts.sh"
 [[ -x "$SCRIPT" ]] || { echo "✗ $SCRIPT not found or not executable" >&2; exit 1; }
 [[ -f "$MATE_DIR/.env" ]] || echo "! $MATE_DIR/.env not found – the script falls back to admin/admin for Keycloak" >&2
 
-KC_SERVER="${KC_SERVER:-http://localhost:8080/auth}"
 DEFAULTS=/etc/default/mate-reviewer-expiry
-: > "$DEFAULTS"
-chmod 644 "$DEFAULTS"
+# Merge: a value passed now wins, an earlier override is kept, KC_SERVER gets
+# the VM default. A re-run therefore never drops what an earlier run set.
+declare -A KEEP=()
+if [[ -f "$DEFAULTS" ]]; then
+  while IFS='=' read -r key value; do
+    [[ -n "$key" && "$key" != \#* ]] && KEEP[$key]="$value"
+  done < "$DEFAULTS"
+fi
+tmp="$(mktemp)"
 for var in KC_SERVER REVIEWER_EXPIRES REVIEWER_PREFIX REVIEWER_COUNT KC_CONTAINER REALM; do
-  if [[ -n "${!var:-}" ]]; then
-    echo "$var=${!var}" >> "$DEFAULTS"
-    echo "• $var=${!var}"
+  value="${!var:-${KEEP[$var]:-}}"
+  [[ "$var" == KC_SERVER && -z "$value" ]] && value=http://localhost:8080/auth
+  if [[ -n "$value" ]]; then
+    echo "$var=$value" >> "$tmp"
+    echo "• $var=$value"
   fi
 done
+install -m 644 "$tmp" "$DEFAULTS"
+rm -f "$tmp"
 
 echo "• installing units (MATE_DIR=$MATE_DIR)"
 for unit in mate-reviewer-expiry.service mate-reviewer-expiry.timer; do

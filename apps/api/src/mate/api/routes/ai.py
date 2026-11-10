@@ -46,6 +46,7 @@ from mate.api.ai_nav import (
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.db.models import UserSetting
 from mate.api.db.session import SessionDep
+from mate.api.sharing import user_can_access_log
 from mate.api.shutdown import is_shutting_down
 
 # Re-exported so any caller that previously imported these names from
@@ -510,7 +511,16 @@ async def chat(
                 if av_block:
                     parts.append(av_block)
 
-    context_block = await _build_context_block(payload.context, user.id)
+    # The context block reads the log's module results from disk; only for a log
+    # this user may read (own or shared), never a foreign or crafted id.
+    block_context = payload.context
+    if (
+        block_context is not None
+        and block_context.log_id
+        and not await user_can_access_log(session, block_context.log_id, user.id)
+    ):
+        block_context = None
+    context_block = await _build_context_block(block_context, user.id)
     if context_block:
         parts.append(context_block)
     if cfg.system_prompt:

@@ -115,8 +115,9 @@ services:
       # Sample logs + starter dashboard seeded into listed accounts at start
       # (written by infra/keycloak/create-reviewer-accounts.sh). Empty = off.
       SAMPLE_CONTENT_MANIFEST: ${SAMPLE_CONTENT_MANIFEST:-}
-      # Realm roles refused module upload (uploaded code runs in-process).
-      MODULE_UPLOAD_BLOCKED_ROLES: ${MODULE_UPLOAD_BLOCKED_ROLES:-}
+      # Realm roles confined to their own account: no module upload, no custom
+      # watched-folder path, no API tokens (see docs/REVIEWER_ACCESS.md).
+      SANDBOXED_ROLES: ${SANDBOXED_ROLES:-reviewer}
       DEMO_MODE: ${DEMO_MODE:-false}
       DEMO_ADMIN: ${DEMO_ADMIN:-false}
       # Allow the web container's browser-side origin (the host's port 3000).

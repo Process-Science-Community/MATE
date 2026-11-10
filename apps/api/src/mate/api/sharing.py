@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mate.api.db.models import Dashboard, DashboardShare, TeamMember, User
+from mate.api.db.models import Dashboard, DashboardShare, EventLog, TeamMember, User
 
 
 def user_label(u: User | None) -> str:
@@ -117,3 +117,12 @@ async def user_can_read_log(session: AsyncSession, log_id: str, user_id: str) ->
         .limit(1)
     )
     return (await session.execute(dash_stmt)).first() is not None
+
+
+async def user_can_access_log(session: AsyncSession, log_id: str, user_id: str) -> bool:
+    """Owner (log not deleted) or share recipient - the read gate for routes that
+    take a free-form ``log_id`` and hand it to the module context or a cache."""
+    row = await session.get(EventLog, log_id)
+    if row is None or row.deleted_at is not None:
+        return False
+    return row.user_id == user_id or await user_can_read_log(session, log_id, user_id)

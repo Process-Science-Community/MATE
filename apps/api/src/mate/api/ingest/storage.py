@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from mate.api.config import get_settings
+from mate.api.path_segments import safe_segment
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ class LogPaths:
 
 
 def log_paths(log_id: str, user_id: str) -> LogPaths:
-    root = get_settings().event_logs_dir_for(user_id) / log_id
+    root = get_settings().event_logs_dir_for(user_id) / safe_segment(log_id, "log id")
     ocel_dir = root / "ocel"
     return LogPaths(
         root=root,

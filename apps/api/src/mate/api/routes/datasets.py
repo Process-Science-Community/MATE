@@ -28,6 +28,7 @@ from mate.api.modules import get_module_loader
 from mate.api.modules.installs import user_module_ids, user_owns_module
 from mate.api.modules.loader import decode_event_filter_header
 from mate.api.schemas.event_logs import LogModel
+from mate.api.sharing import user_can_access_log
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -98,6 +99,13 @@ async def _assert_owns(session: SessionDep, user_id: str, module_id: str) -> Non
         raise HTTPException(status_code=404, detail=f"Module {module_id!r} is not installed.")
 
 
+async def _assert_can_read_log(session: SessionDep, user_id: str, log_id: str) -> None:
+    # The module context and result cache join log_id into on-disk paths, so a
+    # foreign (or crafted) id must stop here: own log, or one shared with you.
+    if not await user_can_access_log(session, log_id, user_id):
+        raise HTTPException(status_code=404, detail="Event log not found.")
+
+
 @router.get("/{module_id}/{dataset_id}", response_model=DatasetEnvelope)
 async def get_dataset(
     module_id: str,
@@ -110,6 +118,7 @@ async def get_dataset(
     """Resolve a module dataset to a canonical envelope (server-side). Honors the
     ephemeral ``X-FF-Event-Filter`` header exactly like the module's own route."""
     await _assert_owns(session, user.id, module_id)
+    await _assert_can_read_log(session, user.id, log_id)
     loader = get_module_loader()
     try:
         return await resolve_dataset(
@@ -140,6 +149,7 @@ async def transform_dataset(
 ) -> DatasetEnvelope:
     """Resolve a module dataset then apply an ordered transform chain over it."""
     await _assert_owns(session, user.id, module_id)
+    await _assert_can_read_log(session, user.id, body.log_id)
     loader = get_module_loader()
     try:
         env = await resolve_dataset(

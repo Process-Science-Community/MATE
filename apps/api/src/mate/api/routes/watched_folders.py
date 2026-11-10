@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
 from mate.api.auth import CurrentUserDep, get_owned_folder, get_owned_watched_folder
+from mate.api.auth.dependencies import ensure_not_sandboxed
 from mate.api.db.models import Folder, WatchedFolder, WatchedFolderFile
 from mate.api.db.session import SessionDep
 from mate.api.ingest.source import default_source_path, ensure_managed_dir, list_source
@@ -103,6 +104,10 @@ async def create_watched_folder(
 ) -> WatchedFolderSummary:
     watch_id = uuid7_str()
     managed = not (payload.source_path and payload.source_path.strip())
+    if not managed:
+        # A custom path can point anywhere on the host or bucket, other accounts'
+        # data included; sandboxed accounts get the managed per-account folder only.
+        ensure_not_sandboxed(user, "A watched folder on a custom path")
     source_path = (
         default_source_path(user.id, watch_id) if managed else payload.source_path.strip()  # type: ignore[union-attr]
     )

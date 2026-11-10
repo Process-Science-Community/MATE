@@ -89,13 +89,16 @@ class Settings(BaseSettings):
         description="SAMPLE_CONTENT_MANIFEST - path to a sample-content manifest seeded at start.",
     )
 
-    # Realm roles that may not upload modules (POST /modules/install). Uploaded
-    # module code runs inside the API process and can read every account's data,
-    # so an account that must stay sandboxed (e.g. `reviewer`) is listed here.
-    # Comma-separated; empty (default) lets every account upload.
-    module_upload_blocked_roles: str = Field(
-        default="",
-        description="MODULE_UPLOAD_BLOCKED_ROLES - realm roles refused module upload "
+    # Realm roles kept inside their own account (default `reviewer`, the role
+    # infra/keycloak/create-reviewer-accounts.sh grants). Holders cannot use the
+    # features that reach beyond it: uploading a module (its code runs inside
+    # the API process and can read every account's data), a watched folder on a
+    # custom host / bucket path (it can point at any directory, other accounts'
+    # data included), and minting API tokens (checked against MATE only, so they
+    # would outlive a disabled Keycloak account). Comma-separated; empty = none.
+    sandboxed_roles: str = Field(
+        default="reviewer",
+        description="SANDBOXED_ROLES - realm roles confined to their own account "
         "(comma-separated).",
     )
 
@@ -418,8 +421,8 @@ class Settings(BaseSettings):
         return _csv_set(self.user_tracking_exempt_users)
 
     @property
-    def module_upload_blocked_role_set(self) -> frozenset[str]:
-        return _csv_set(self.module_upload_blocked_roles)
+    def sandboxed_role_set(self) -> frozenset[str]:
+        return _csv_set(self.sandboxed_roles)
 
     @property
     def users_dir(self) -> Path:

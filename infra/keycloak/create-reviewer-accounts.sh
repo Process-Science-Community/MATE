@@ -8,8 +8,9 @@
 # What `create` does (all idempotent – safe to re-run):
 #   1. Creates the realm role `reviewer` if missing. The API reads it from the
 #      token: a reviewer is never usage-tracked (USER_TRACKING_EXEMPT_ROLES,
-#      default `reviewer`), and MODULE_UPLOAD_BLOCKED_ROLES=reviewer keeps
-#      reviewers from uploading module code.
+#      default `reviewer`), and SANDBOXED_ROLES (default `reviewer`) keeps
+#      reviewers inside their own account (no module upload, no custom
+#      watched-folder path, no API tokens).
 #   2. Creates or updates each user: enabled, no required actions, first/last
 #      name "Reviewer" / "<n>" (needed by Keycloak's default user profile, so
 #      no profile form appears on first login). Grants `reviewer`, removes
@@ -33,7 +34,8 @@
 #   enable   re-enable every account
 #   expire   `disable`, but only once today >= REVIEWER_EXPIRES (default
 #            2026-12-15) – run daily by infra/systemd/mate-reviewer-expiry.timer
-#   delete   delete the Keycloak accounts (their MATE data stays until an admin
+#   delete   delete the Keycloak accounts, their credentials-file entries and the
+#            sample-content manifest (their MATE data stays until an admin
 #            deletes the users under Admin → Users)
 #
 # Requirements: docker (Keycloak running in a container), python3 on the host.
@@ -47,6 +49,8 @@
 #   KC_SERVER=http://localhost:8080/auth ./infra/keycloak/create-reviewer-accounts.sh
 #
 set -euo pipefail
+# Most kcadm calls are silenced; say which one failed instead of exiting mutely.
+trap 'echo "✗ failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 CMD="${1:-create}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +83,8 @@ ROTATE="${ROTATE:-0}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/mate-secrets/reviewer-credentials.txt}"
 PUBLIC_URL="${PUBLIC_URL:-https://mate.uni-muenster.de}"
 # Sample content: host folder under the api's ./data bind mount (/app/data).
-SAMPLE_REL="sample-content/reviewers"
+# One folder per account set (prefix `reviewer` -> sample-content/reviewers).
+SAMPLE_REL="sample-content/${REVIEWER_PREFIX}s"
 SAMPLE_DIR="$MATE_DIR/data/$SAMPLE_REL"
 SAMPLE_SRC="$MATE_DIR/simulated_data/input/autonomous"
 
@@ -93,6 +98,11 @@ case "$CMD" in
   create|status|disable|enable|expire|delete) ;;
   *) echo "✗ unknown command '$CMD' (create|status|disable|enable|expire|delete)." >&2; exit 1 ;;
 esac
+# expire before the date: done without touching Keycloak (the daily timer run).
+if [ "$CMD" = "expire" ] && [[ "$(date +%F)" < "$REVIEWER_EXPIRES" ]]; then
+  echo "✓ Reviewer accounts stay active until $REVIEWER_EXPIRES (today $(date +%F))."
+  exit 0
+fi
 if ! [[ "$REVIEWER_COUNT" =~ ^[1-9][0-9]?$ ]]; then
   echo "✗ REVIEWER_COUNT must be 1-99." >&2
   exit 1
@@ -158,12 +168,8 @@ kc config credentials --server "$KC_SERVER" --realm master \
   --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD" >/dev/null 2>&1 \
   || { echo "✗ kcadm login failed (check KC_SERVER / KEYCLOAK_ADMIN_PASSWORD)." >&2; exit 1; }
 
-# ── expire: no-op before the date ───────────────────────────────────────────
+# ── expire: the date is reached (checked above) ─────────────────────────────
 if [ "$CMD" = "expire" ]; then
-  if [[ "$(date +%F)" < "$REVIEWER_EXPIRES" ]]; then
-    echo "✓ Reviewer accounts stay active until $REVIEWER_EXPIRES (today $(date +%F))."
-    exit 0
-  fi
   echo "→ $REVIEWER_EXPIRES reached – disabling reviewer accounts"
   CMD=disable
 fi
@@ -200,6 +206,21 @@ if [ "$CMD" != "create" ]; then
         ;;
     esac
   done < <(usernames)
+  if [ "$CMD" = "delete" ]; then
+    # Forget the passwords, and stop the API from re-seeding the deleted accounts.
+    cred_file="$(python3 -c "import os,sys;print(os.path.abspath(os.path.expanduser(sys.argv[1])))" "$CREDENTIALS_FILE")"
+    if [ -f "$cred_file" ]; then
+      prefix_re="^${REVIEWER_PREFIX}[0-9]+ "
+      grep -Ev "$prefix_re" "$cred_file" >"$cred_file.tmp" || true
+      mv "$cred_file.tmp" "$cred_file"
+      chmod 600 "$cred_file"
+      echo "  removed the passwords from $cred_file"
+    fi
+    if [ -f "$SAMPLE_DIR/manifest.json" ]; then
+      rm -f "$SAMPLE_DIR/manifest.json"
+      echo "  removed $SAMPLE_DIR/manifest.json (unset SAMPLE_CONTENT_MANIFEST too)"
+    fi
+  fi
   if [ "$CMD" = "status" ]; then
     echo "  expiry: disabled from $REVIEWER_EXPIRES (expire command / systemd timer)"
     CLEAR_IDP_REDIRECTOR=0 check_redirector
@@ -308,6 +329,7 @@ n=0
 while read -r name; do
   n=$((n + 1))
   uid="$(user_id_of "$name")"
+  created=0
   if [ -n "$uid" ]; then
     echo "→ Updating user '$name' ($uid)"
     user_json "$name" "$n" | kc_pipe update "users/$uid" -r "$REALM" -f - >/dev/null 2>&1
@@ -315,6 +337,7 @@ while read -r name; do
     echo "→ Creating user '$name'"
     user_json "$name" "$n" | kc_pipe create users -r "$REALM" -f - >/dev/null 2>&1
     uid="$(user_id_of "$name")"
+    created=1
   fi
   if [ -z "$uid" ]; then
     echo "✗ user '$name' not found after create – aborting." >&2
@@ -322,7 +345,9 @@ while read -r name; do
   fi
   IDS[$name]="$uid"
 
-  if [ "$ROTATE" = "1" ] || [ -z "$(stored_password "$name")" ]; then
+  # A new account always gets a fresh password (a stale line in the file, e.g.
+  # after `delete` or a Keycloak reset, must not leave it without one).
+  if [ "$created" = "1" ] || [ "$ROTATE" = "1" ] || [ -z "$(stored_password "$name")" ]; then
     pw="$(gen_password)"
     # Through stdin, so the password never shows up in a process list.
     PW="$pw" python3 -c "import json,os;print(json.dumps({'type':'password','value':os.environ['PW'],'temporary':False}))" \
@@ -407,6 +432,5 @@ echo "  Expiry:     run 'sudo ./infra/install-reviewer-expiry.sh' once (disables
 echo
 echo "  Add to the VM .env (once), then recreate the api so it seeds the sample content:"
 echo "    SAMPLE_CONTENT_MANIFEST=/app/data/$SAMPLE_REL/manifest.json"
-echo "    MODULE_UPLOAD_BLOCKED_ROLES=$REVIEWER_ROLE"
 echo "    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api"
 echo "  ('restart' does NOT re-read .env)"

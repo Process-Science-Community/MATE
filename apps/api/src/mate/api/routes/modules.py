@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.auth import CurrentUserDep, get_owned_event_log
+from mate.api.auth.dependencies import ensure_not_sandboxed
 from mate.api.config import get_settings
 from mate.api.db.models import ModuleConfig, ModuleLayout, UserSetting
 from mate.api.db.session import SessionDep
@@ -519,13 +520,9 @@ async def install_from_upload(
     stream progress (`GET /api/v1/events` SSE filtered by `job.*`).
     """
     # Uploaded module code runs in the API process and can read every account's
-    # data, so sandboxed accounts (MODULE_UPLOAD_BLOCKED_ROLES, e.g. `reviewer`)
-    # may use the installed modules but not add their own.
-    if get_settings().module_upload_blocked_role_set.intersection(user.roles):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Module upload is not available for this account.",
-        )
+    # data, so sandboxed accounts (SANDBOXED_ROLES, e.g. `reviewer`) may use the
+    # installed modules but not add their own.
+    ensure_not_sandboxed(user, "Module upload")
     filename = file.filename or "upload"
     if not _has_allowed_upload_suffix(filename):
         raise HTTPException(

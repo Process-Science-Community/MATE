@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from mate.api.config import get_settings
+from mate.api.path_segments import safe_segment
 from mate.api.storage import eviction
 from mate.api.storage import sync as storage_sync
 
@@ -29,7 +30,7 @@ class ResultCache:
         variant: str | None = None,
     ) -> None:
         base = root or get_settings().module_results_dir_for(user_id)
-        self.dir = base / log_id / module_id
+        self.dir = base / safe_segment(log_id, "log id") / safe_segment(module_id, "module id")
         # ``variant`` isolates an ephemeral dataset view (a dashboard's
         # column/time filter) into its own sub-namespace. Without it a
         # filtered request would collide with - and serve - the unfiltered

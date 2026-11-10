@@ -23,12 +23,12 @@ university login. On <https://mate.uni-muenster.de/login> the same door is the
 
 | Piece | Where | What it does |
 |---|---|---|
-| Accounts | `infra/keycloak/create-reviewer-accounts.sh` | Uses kcadm against the running Keycloak and is idempotent. It creates `reviewer1..5` with the realm role `reviewer` and a generated 20-character password (not temporary, no required actions). It sets first/last name to "Reviewer" / "N" and no email. If the realm's user profile requires an email, it sets a placeholder `reviewerN@reviewers.invalid` (non-routable, marked verified) instead, so that no profile form appears and asks a reviewer for their real address. |
+| Accounts | `infra/keycloak/create-reviewer-accounts.sh` | Uses kcadm against the running Keycloak and is idempotent. It creates `reviewer1..5` with the realm role `reviewer` and a generated password (4 × 5 random letters/digits joined by `-`, ~119 bits) (not temporary, no required actions). It sets first/last name to "Reviewer" / "N" and no email. If the realm's user profile requires an email, it sets a placeholder `reviewerN@reviewers.invalid` (non-routable, marked verified) instead, so that no profile form appears and asks a reviewer for their real address. |
 | Login door | `/login/start?local=1` (`apps/web/app/(auth)/login/start/route.ts`, already existed) | Starts the sign-in without `kc_idp_hint`, so Keycloak shows its own form. The normal **Login** button still sends `KEYCLOAK_IDP_HINT`, so university users keep going straight to SSO. |
 | Tracking exemption | `apps/api/src/mate/api/services/tracking_exemption.py` | Applies even under `USER_TRACKING_ONBOARDING=force`. An account is exempt if it holds a role from `USER_TRACKING_EXEMPT_ROLES` (default `reviewer`), is listed in `USER_TRACKING_EXEMPT_USERS`, or carries the persisted `analytics.exempt` flag. Nothing is recorded for an exempt account: no client events, request events, job outcomes or MCP audit. `GET /usage/config` returns `enabled: false`, so the browser does not capture either. Tests: `apps/api/tests/test_tracking_exemption.py`. |
 | Demo content | `apps/api/src/mate/api/services/sample_content.py`, `SAMPLE_CONTENT_MANIFEST` | At API start, each account in the manifest is seeded once. It imports the logs through the normal import job, so discovery precomputes eagerly, then creates the dashboard from the `process-overview` template and asks for the dashboard's other modules to compute. The script writes the manifest and the sample CSVs to `data/sample-content/reviewers/`. Tests: `apps/api/tests/test_sample_content.py`. |
 | Expiry | `infra/systemd/mate-reviewer-expiry.{service,timer}`, `infra/install-reviewer-expiry.sh` | Runs `create-reviewer-accounts.sh expire` daily. It does nothing before `REVIEWER_EXPIRES` (2026-12-15). From that date it disables the accounts and ends their sessions. |
-| Sandbox | `MODULE_UPLOAD_BLOCKED_ROLES=reviewer` | Reviewers can use every installed module but cannot upload their own. Uploaded module code runs inside the API process and could read other accounts' data. |
+| Sandbox | `SANDBOXED_ROLES` (default `reviewer`) | Reviewers can use every installed module, but cannot upload modules (that code runs inside the API process), create a watched folder on a custom host/bucket path (only the managed per-account folder), or mint API tokens (a token is checked against MATE only, so it would outlive the disabled Keycloak account). |
 
 `DEMO_MODE` is **not** reused. It bypasses Keycloak entirely and signs everyone
 in as one shared `demo-user`, so it has no login, puts all reviewers into one
@@ -43,14 +43,21 @@ A reviewer cannot see another reviewer's data or anyone else's:
   `sub`. A foreign id returns 404. `test_seeded_content_is_isolated` checks this
   for reviewer vs. reviewer and reviewer vs. a regular account.
 - Each reviewer gets its own copy of the samples rather than a share.
-- The only cross-account feature is dashboard sharing. It needs a common team,
-  and only admins can create teams. Reviewers are in no team, so they can share
-  nothing and see no other users.
+- The only sanctioned cross-account read is a shared dashboard. It needs a
+  common team, and only admins create teams. Reviewers are in no team, so they
+  can share nothing and see no other users.
 - Reviewers do not hold the `admin` role. The script removes it if someone
   grants it.
 - Live events (SSE) are filtered per user server-side.
-- Module upload, the one path to running code in-process, is blocked for the
-  `reviewer` role (see above).
+- The paths that could reach beyond the account are closed for the `reviewer`
+  role (see *Sandbox* above): module upload, custom watched-folder paths, and
+  API tokens.
+- Routes that take a free-form `log_id` now check it before it reaches a file
+  path: the module dataset routes and the AI chat context check read access
+  (own or shared), and every log/result path rejects ids that are not a single
+  plain path segment (no `../`). Before this change, a crafted `log_id` there
+  could read another account's files. That affected every account, not only
+  reviewers.
 
 Keep it that way: do not add reviewers to a team, do not grant `admin`, and keep
 `DEMO_MODE=false`.
@@ -68,8 +75,12 @@ submission if needed.
 
 On the VM only, in **`~/mate-secrets/reviewer-credentials.txt`** (mode `600`,
 outside the `~/mate` checkout; `CREDENTIALS_FILE` overrides the path). The
-script refuses a path inside the repository and never prints a password or
-passes one on a command line. Send the passwords to the PC chairs through the
+script refuses a path inside the repository and never prints a reviewer
+password or passes one on a command line (they go to Keycloak through stdin).
+The Keycloak *admin* password is passed to `kcadm config credentials` as an
+argument, as in the other `infra/keycloak` scripts, so it is briefly visible to
+local users in `ps`. The daily expiry run only contacts Keycloak on and after the
+expiry date. Send the passwords to the PC chairs through the
 review system or another confidential channel, never by plain email next to
 the URL.
 
@@ -94,10 +105,11 @@ The VM checkout is `~/mate`; `DC="docker compose -f docker-compose.yml -f docker
    `KEYCLOAK_IDP_HINT=keycloak-oidc` on the default button. Leave the flag out
    if you only want the script to report it. `configure-university-idp.sh` no
    longer sets it unless you pass `SET_DEFAULT_PROVIDER=1`.
-4. Add to `~/mate/.env`, then recreate the API (`restart` does not re-read `.env`):
+4. Add to `~/mate/.env`, then recreate the API (`restart` does not re-read `.env`).
+   `USER_TRACKING_EXEMPT_ROLES` and `SANDBOXED_ROLES` already default to
+   `reviewer`, so they need no entry:
    ```bash
    SAMPLE_CONTENT_MANIFEST=/app/data/sample-content/reviewers/manifest.json
-   MODULE_UPLOAD_BLOCKED_ROLES=reviewer
    ```
    ```bash
    $DC up -d api
@@ -121,6 +133,8 @@ After the review:
 - `create-reviewer-accounts.sh disable` disables the accounts early.
 - `enable` re-enables them, for example to extend access. Also set
   `REVIEWER_EXPIRES=YYYY-MM-DD` in `/etc/default/mate-reviewer-expiry`.
-- `delete` removes the Keycloak accounts. Delete their MATE data under
-  Admin → Users.
+- `delete` removes the Keycloak accounts, their lines in the credentials file
+  and the sample-content manifest. Then remove `SAMPLE_CONTENT_MANIFEST` from
+  `.env`. Otherwise a later API start would seed the accounts again once their
+  MATE data is deleted. Finally, delete the MATE data under Admin → Users.
 - `sudo systemctl disable --now mate-reviewer-expiry.timer` removes the timer.

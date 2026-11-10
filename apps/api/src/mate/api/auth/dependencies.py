@@ -27,7 +27,7 @@ from mate.api.auth.jwks import get_signing_key
 from mate.api.config import get_settings
 from mate.api.db.models import User
 from mate.api.db.session import SessionDep
-from mate.api.services.tracking_exemption import sync_role_exemption
+from mate.api.services.tracking_exemption import invalidate_tracking_cache, sync_role_exemption
 
 
 @dataclass(frozen=True)
@@ -149,7 +149,18 @@ async def _jit_sync_user(session: AsyncSession, user: CurrentUser) -> None:
 
     # Persist a tracking exemption carried by the token's roles (e.g. `reviewer`)
     # so recorders that only know the user id honour it too.
-    await sync_role_exemption(session, user.id, user.roles)
+    exemption_changed = await sync_role_exemption(session, user.id, user.roles)
+    # Commit the sync now, before the id counts as seen: otherwise a first request
+    # that fails would roll the exemption flag (and the users row) back while
+    # later requests skip the sync, and recorders running in other sessions would
+    # not see the flag until the request ended.
+    try:
+        await session.commit()
+    except IntegrityError:
+        # A parallel first request committed the same rows first - theirs stand.
+        await session.rollback()
+    if exemption_changed:
+        invalidate_tracking_cache(user.id)
 
     _seen_user_ids.add(user.id)
     # Ensure the on-disk per-user dirs exist before any handler tries to write
@@ -221,6 +232,20 @@ async def require_admin(user: CurrentUserDep) -> CurrentUser:
 
 
 AdminUserDep = Annotated[CurrentUser, Depends(require_admin)]
+
+
+def is_sandboxed(roles: tuple[str, ...]) -> bool:
+    """True if ``roles`` include one of ``SANDBOXED_ROLES`` (default ``reviewer``)."""
+    return bool(get_settings().sandboxed_role_set.intersection(roles))
+
+
+def ensure_not_sandboxed(user: CurrentUser, action: str) -> None:
+    """403 for a sandboxed account trying to reach beyond its own data."""
+    if is_sandboxed(user.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{action} is not available for this account.",
+        )
 
 
 def evict_user_from_jit_cache(user_id: str) -> None:

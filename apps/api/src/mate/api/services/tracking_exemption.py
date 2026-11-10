@@ -61,19 +61,27 @@ async def is_tracking_exempt(session: AsyncSession, user_id: str) -> bool:
 
 async def mark_tracking_exempt(
     session: AsyncSession, user_id: str, *, source: ExemptSource
-) -> None:
-    """Persist the exemption flag for ``user_id``. Flushes, does not commit."""
+) -> bool:
+    """Persist the exemption flag for ``user_id``; True if it was added.
+
+    Flushes, does not commit. The caller commits and then calls
+    :func:`invalidate_tracking_cache`: invalidating before the commit would let
+    a recorder in another session re-cache the pre-flag state.
+    """
     row = await session.get(UserSetting, (user_id, TRACKING_EXEMPT_KEY))
-    if row is None:
-        session.add(
-            UserSetting(user_id=user_id, key=TRACKING_EXEMPT_KEY, value_json={"source": source})
-        )
-        await session.flush()
-    _invalidate(user_id)
+    if row is not None:
+        return False
+    session.add(
+        UserSetting(user_id=user_id, key=TRACKING_EXEMPT_KEY, value_json={"source": source})
+    )
+    await session.flush()
+    return True
 
 
-async def sync_role_exemption(session: AsyncSession, user_id: str, roles: Iterable[str]) -> None:
-    """Align the persisted flag with the token's roles. Flushes, does not commit.
+async def sync_role_exemption(session: AsyncSession, user_id: str, roles: Iterable[str]) -> bool:
+    """Align the persisted flag with the token's roles; True if it changed.
+
+    Flushes, does not commit (see :func:`mark_tracking_exempt`).
 
     An exempt role sets the flag. A flag that came from a role is cleared when
     the role is gone. A flag the seeder wrote (``source=manifest``) is never
@@ -82,8 +90,8 @@ async def sync_role_exemption(session: AsyncSession, user_id: str, roles: Iterab
     row = await session.get(UserSetting, (user_id, TRACKING_EXEMPT_KEY))
     if roles_exempt(roles):
         if row is None:
-            await mark_tracking_exempt(session, user_id, source="role")
-        return
+            return await mark_tracking_exempt(session, user_id, source="role")
+        return False
     if (
         row is not None
         and isinstance(row.value_json, dict)
@@ -91,10 +99,12 @@ async def sync_role_exemption(session: AsyncSession, user_id: str, roles: Iterab
     ):
         await session.delete(row)
         await session.flush()
-        _invalidate(user_id)
+        return True
+    return False
 
 
-def _invalidate(user_id: str) -> None:
+def invalidate_tracking_cache(user_id: str) -> None:
+    """Drop the cached consent state for ``user_id``; call after committing a change."""
     # Imported lazily: routes.analytics depends on the auth layer, which calls
     # into this module, so a top-level import would be circular.
     from mate.api.routes.analytics import invalidate_consent_cache

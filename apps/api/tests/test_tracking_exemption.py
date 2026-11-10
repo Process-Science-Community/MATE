@@ -271,6 +271,60 @@ async def test_module_upload_blocked_for_configured_role(
     reviewer_client: AsyncClient, env: dict[str, str | None]
 ) -> None:
     files = {"file": ("mod.zip", b"PK\x05\x06" + b"\x00" * 18, "application/zip")}
-    env["MODULE_UPLOAD_BLOCKED_ROLES"] = "reviewer"
+    env["SANDBOXED_ROLES"] = "reviewer"  # the default, set explicitly
     resp = await reviewer_client.post("/api/v1/modules/install", files=files)
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_jit_flag_survives_a_failing_first_request(client: AsyncClient) -> None:
+    """The flag is committed by the JIT sync itself, not by the (failing) request."""
+    from mate.api.auth.dependencies import CurrentUser, _jit_sync_user, _seen_user_ids
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.services.tracking_exemption import is_tracking_exempt
+
+    reviewer = CurrentUser(
+        id=REVIEWER_ID, email=None, preferred_username="r", name=None, roles=("reviewer",)
+    )
+    _seen_user_ids.discard(REVIEWER_ID)
+    async with get_sessionmaker()() as session:
+        await _jit_sync_user(session, reviewer)
+        await session.rollback()  # what _yield_session does when the handler raises
+    async with get_sessionmaker()() as session:
+        assert await is_tracking_exempt(session, REVIEWER_ID)
+
+
+@pytest.mark.asyncio
+async def test_sandboxed_role_stays_in_its_account(reviewer_client: AsyncClient) -> None:
+    # Default SANDBOXED_ROLES=reviewer.
+    custom = await reviewer_client.post(
+        "/api/v1/watched-folders", json={"name": "w", "source_path": "/"}
+    )
+    assert custom.status_code == 403
+    managed = await reviewer_client.post("/api/v1/watched-folders", json={"name": "mine"})
+    assert managed.status_code == 201
+    await reviewer_client.delete(f"/api/v1/watched-folders/{managed.json()['id']}")
+    token = await reviewer_client.post("/api/v1/api-tokens", json={"name": "t"})
+    assert token.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_dataset_routes_refuse_foreign_and_crafted_log_ids(client: AsyncClient) -> None:
+    from mate.api.path_segments import safe_segment
+
+    for bad in ("../x", "a/b", "..", "", "x/../../y"):
+        with pytest.raises(ValueError):
+            safe_segment(bad)
+    assert safe_segment("01a1c648-b005-7206-9eaa-b764228a3076") == (
+        "01a1c648-b005-7206-9eaa-b764228a3076"
+    )
+    # The read gate the dataset + AI-context routes now apply before a log id
+    # reaches the module context / cache paths.
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.sharing import user_can_access_log
+
+    async with get_sessionmaker()() as session:
+        assert not await user_can_access_log(
+            session, f"../../{REVIEWER_ID}/event_logs/x", TEST_USER_ID
+        )
+        assert not await user_can_access_log(session, "no-such-log", TEST_USER_ID)

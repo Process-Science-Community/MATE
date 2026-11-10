@@ -1,5 +1,6 @@
 [Unit]
 Description=Disable the MATE reviewer accounts once their expiry date is reached
+StartLimitIntervalSec=0
 Documentation=https://github.com/Process-Science-Community/MATE/blob/main/docs/REVIEWER_ACCESS.md
 After=docker.service
 Requires=docker.service
@@ -13,6 +14,10 @@ ExecStart=__MATE_DIR__/infra/keycloak/create-reviewer-accounts.sh expire
 # docker exec into the Keycloak container needs the docker socket.
 User=root
 TimeoutStartSec=300
+# Keycloak down or a failed admin login on the day: retry every 30 min, not
+# only at tomorrow's timer run.
+Restart=on-failure
+RestartSec=30min
 
 [Install]
 WantedBy=multi-user.target
