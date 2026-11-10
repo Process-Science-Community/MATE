@@ -5,7 +5,9 @@ rendered by the platform's generic visualization layer instead of a
 module-authored widget. This router only exposes the **catalog**; the data
 itself is fetched by the frontend straight from the module's own route
 (``GET /api/v1/modules/{module_id}{route}``), so the per-request ephemeral
-event filter and result-cache variant apply unchanged - no new data path.
+event filter and result-cache variant apply unchanged - no new data path. A
+cache-only dataset (no route) is read by artifact ref instead
+(``GET /api/v1/artifacts/content``).
 
 Mirrors ``GET /api/v1/modules/cards`` (the widget catalog): it returns every
 owned module's datasets with their ``log_models`` and the Dashboards palette
@@ -19,7 +21,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from mate.api.auth import CurrentUserDep
+from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.datasets.adapters import resolve_dataset
 from mate.api.datasets.envelope import DatasetEnvelope
 from mate.api.datasets.transforms import TransformError, apply_transforms
@@ -46,9 +48,14 @@ class DatasetCatalogEntry(BaseModel):
     icon: str | None = None
     # Data shape this dataset produces - drives which generic viz can render it.
     shape: Literal["table", "graph", "kpi", "tree", "blob"]
+    # What the data is, as an artifact type id (`petri_net`); None when untyped.
+    artifact_type: str | None = None
     # Module sub-route (leading slash) the frontend calls under
-    # /api/v1/modules/{module_id} to fetch the data.
-    route: str
+    # /api/v1/modules/{module_id} to fetch the data. None for a cache-only dataset.
+    route: str | None = None
+    # Set when `route` is None: the cache key the frontend reads the data by,
+    # `GET /api/v1/artifacts/content?ref={log_id}/{module_id}/{content_ref_key}`.
+    content_ref_key: str | None = None
     # Log model(s) this dataset applies to. The palette only offers a dataset
     # whose models include the board's model (case-centric vs OCEL).
     log_models: list[LogModel] = Field(default_factory=lambda: ["case_centric"])
@@ -85,7 +92,9 @@ async def list_datasets(session: SessionDep, user: CurrentUserDep) -> list[Datas
                     description=d.description,
                     icon=d.icon,
                     shape=d.shape,
+                    artifact_type=d.artifact_type,
                     route=d.route,
+                    content_ref_key=d.cache_key if d.route is None else None,
                     log_models=d.log_models,
                     params_schema=d.params_schema,
                 )
@@ -106,10 +115,15 @@ async def get_dataset(
     session: SessionDep,
     user: CurrentUserDep,
     x_ff_event_filter: str | None = Header(default=None, alias="X-FF-Event-Filter"),
+    variant: str | None = None,
 ) -> DatasetEnvelope:
     """Resolve a module dataset to a canonical envelope (server-side). Honors the
-    ephemeral ``X-FF-Event-Filter`` header exactly like the module's own route."""
+    ephemeral ``X-FF-Event-Filter`` header exactly like the module's own route.
+    ``variant`` reads a cache-backed dataset from one of the module's run variants
+    (``…/module-runs/{module_id}/variants``) - on your own logs only."""
     await _assert_owns(session, user.id, module_id)
+    if variant is not None:
+        await get_owned_event_log(session, log_id, user.id)
     loader = get_module_loader()
     try:
         return await resolve_dataset(
@@ -119,6 +133,7 @@ async def get_dataset(
             log_id,
             user.id,
             filter_override=decode_event_filter_header(x_ff_event_filter),
+            variant=variant,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

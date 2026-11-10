@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -40,9 +40,14 @@ import {
   CanvasSettings,
   CanvasSettingsSegmented,
 } from "@/components/visualizations/canvases/shared/canvas-toolbar";
+import { BpmnView, type BpmnViewer } from "@/components/visualizations/artifacts/bpmn";
 
-import { ComparisonBpmnCanvas } from "./ComparisonBpmnCanvas";
-import { buildActivityMap } from "./comparison-decorate";
+import {
+  applyComparisonOverlay,
+  buildActivityMap,
+  injectComparisonStyles,
+} from "./comparison-decorate";
+import { BPMN_ENGINE } from "./bpmn-engine";
 import { DELTA_COLOR, DiffDfgCanvas, STATUS_COLOR, type DfgColorMode } from "./DiffDfgCanvas";
 import { SideBySideDfg } from "./SideBySideDfg";
 import {
@@ -599,6 +604,14 @@ function BpmnPane({
   /** Popover body of this pane's canvas control cluster. */
   settings?: ReactNode;
 }) {
+  const decorate = useCallback(
+    (viewer: BpmnViewer) => {
+      if (!map) return;
+      injectComparisonStyles();
+      applyComparisonOverlay(viewer, { map, heatmap: true, labels: true });
+    },
+    [map],
+  );
   return (
     <div className="space-y-1.5">
       <PaneHeader name={name} swatch={swatch} />
@@ -606,11 +619,12 @@ function BpmnPane({
           the web app's build doesn't emit those, so the class was dropped and the
           pane collapsed to 0 height (the BPMN "rendered too small"). */}
       <div style={{ height }} className="w-full overflow-hidden rounded-xl border bg-card">
-        {/* Re-mount on side change: the canvas ignores xml updates after mount. */}
-        <ComparisonBpmnCanvas
+        {/* Re-mount on side change: a fresh viewer per compared side. */}
+        <BpmnView
           key={paneKey}
+          engine={BPMN_ENGINE}
           xml={xml}
-          map={map}
+          decorate={decorate}
           refitKey={refitKey}
           settings={settings}
         />

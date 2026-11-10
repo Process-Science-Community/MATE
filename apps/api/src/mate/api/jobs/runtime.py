@@ -49,6 +49,9 @@ from mate.sdk import Cancelled as SdkCancelled
 
 log = structlog.get_logger(__name__)
 
+# The error `_reconcile_orphan_running` stamps on a job a crash killed mid-run.
+WORKER_LOST = "Worker terminated before job completed."
+
 
 def _utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
@@ -332,6 +335,9 @@ class JobRuntime:
         # survive a process restart (the queue isn't rebuilt from SQLite).
         self._paused_users: set[str] = set()
         self._deferred: dict[str, list[str]] = {}
+        # Job ids this process has queued, parked or is running (`is_live`): a
+        # queued/running row missing here was left behind by an earlier process.
+        self._live: set[str] = set()
         self._cancel_tokens: dict[str, CancelToken] = {}
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         # Live JobHandles for currently-executing jobs, keyed by job-id. Mirrors
@@ -365,6 +371,11 @@ class JobRuntime:
         # than a user-cancel. Both cleared in `_run_one`'s finally.
         self._timeout_tasks: dict[str, asyncio.Task[None]] = {}
         self._timed_out: set[str] = set()
+        # Types registered `detached=True`: each job runs in its own task, never on a
+        # worker slot - an orchestrator waiting on jobs it submitted would otherwise
+        # hold the slot they need (a deadlock at `WORKER_CONCURRENCY=1`).
+        self._detached_types: set[str] = set()
+        self._detached_tasks: set[asyncio.Task[None]] = set()
 
     def set_subprocess_soft_canceller(
         self, fn: Callable[[str, str], Awaitable[None]] | None
@@ -561,7 +572,9 @@ class JobRuntime:
         that also ships the module's import metadata (see `run_offloaded`)."""
         return await self.run_offloaded(None, fn, *args, **kwargs)
 
-    def register(self, type_: str, handler: JobHandler, *, replace: bool = False) -> None:
+    def register(
+        self, type_: str, handler: JobHandler, *, replace: bool = False, detached: bool = False
+    ) -> None:
         """Bind *handler* to *type_*.
 
         Duplicate registration is an error by default - two callers claiming one
@@ -570,10 +583,14 @@ class JobRuntime:
         after a reload: the handler closes over the module instance, so keeping
         the original would run every future job against the previous instance
         (for a subprocess module, one whose worker has already been stopped).
+        `detached=True` runs every job of the type outside the worker pool
+        (`_run_detached`): for a handler that only waits on other jobs.
         """
         if type_ in self._handlers and not replace:
             raise RuntimeError(f"Job type already registered: {type_}")
         self._handlers[type_] = handler
+        if detached:
+            self._detached_types.add(type_)
 
     async def start(self) -> None:
         if self._running:
@@ -629,7 +646,7 @@ class JobRuntime:
                 .where(Job.status == "running")
                 .values(
                     status="failed",
-                    error="Worker terminated before job completed.",
+                    error=WORKER_LOST,
                     finished_at=_utcnow_naive(),
                 )
             )
@@ -669,6 +686,7 @@ class JobRuntime:
         resumable = [jid for (jid, jtype) in rows if jtype in self._handlers]
         unhandled = {jtype for (_jid, jtype) in rows if jtype not in self._handlers}
         for job_id in resumable:
+            self._live.add(job_id)
             await self._queue.put(job_id)
         if resumable or unhandled:
             log.info(
@@ -814,6 +832,11 @@ class JobRuntime:
     def is_paused(self, user_id: str) -> bool:
         return user_id in self._paused_users
 
+    def is_live(self, job_id: str) -> bool:
+        """Whether this process holds the job - queued, parked or running. A job row
+        still queued/running that is not live was lost in a restart."""
+        return job_id in self._live
+
     def paused_user_ids(self) -> list[str]:
         """Snapshot of users whose queue is currently paused (admin monitoring)."""
         return sorted(self._paused_users)
@@ -853,6 +876,7 @@ class JobRuntime:
         if type_ not in self._handlers:
             raise RuntimeError(f"No handler registered for job type: {type_}")
         job_id = job_id or uuid7_str()
+        self._live.add(job_id)  # before the row exists, so no reader sees it queued and dead
         sm = get_sessionmaker()
         async with sm() as session:
             session.add(
@@ -884,8 +908,24 @@ class JobRuntime:
                 "parent_job_id": parent_job_id,
             },
         )
-        await self._queue.put(job_id)
+        if type_ in self._detached_types:
+            task = asyncio.create_task(self._run_detached(job_id))
+            self._detached_tasks.add(task)
+            task.add_done_callback(self._detached_tasks.discard)
+        else:
+            await self._queue.put(job_id)
         return job_id
+
+    async def _run_detached(self, job_id: str) -> None:
+        """Run a detached-type job in its own task: no worker slot, no execution
+        timeout (it waits on jobs that each have their own) and no per-user pause
+        (the jobs it submits are paused). A shutdown cancels it like any job."""
+        try:
+            await self._run_one(job_id, get_sessionmaker(), reap=False)
+        except Exception as exc:
+            log.exception("job_runtime.unexpected_error", job_id=job_id, error=str(exc))
+        finally:
+            self._live.discard(job_id)
 
     async def cancel(self, job_id: str) -> bool:
         """Mark a job cancelled. Returns True if it was queued or running.
@@ -1174,7 +1214,10 @@ class JobRuntime:
                 # re-enqueues the parked ids.
                 if await self._maybe_defer(job_id, sm):
                     continue
-                await self._run_one(job_id, sm)
+                try:
+                    await self._run_one(job_id, sm)
+                finally:
+                    self._live.discard(job_id)
             except Exception as exc:
                 log.exception("job_runtime.unexpected_error", job_id=item, error=str(exc))
             finally:
@@ -1194,7 +1237,7 @@ class JobRuntime:
             return True
         return False
 
-    async def _run_one(self, job_id: str, sm: async_sessionmaker) -> None:
+    async def _run_one(self, job_id: str, sm: async_sessionmaker, *, reap: bool = True) -> None:
         bus = self._ensure_bus()
 
         async with sm() as session:
@@ -1272,7 +1315,7 @@ class JobRuntime:
         self._running_tasks[job_id] = handler_task
         self._running_handles[job_id] = handle
         timeout = self.settings.job_execution_timeout_seconds
-        if timeout and timeout > 0:
+        if reap and timeout and timeout > 0:
             self._timeout_tasks[job_id] = asyncio.create_task(
                 self._reap_after_timeout(job_id, float(timeout))
             )

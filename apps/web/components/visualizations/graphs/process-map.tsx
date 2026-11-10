@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { MarkerType, Position, type Edge, type Node } from "@xyflow/react";
 import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
 
@@ -94,14 +94,25 @@ async function layout(g: GraphData): Promise<{ nodes: Node[]; edges: Edge[] }> {
   return { nodes, edges };
 }
 
-/** Read-only node-link process map for a `graph`-shaped dataset (DFG, heuristics
- * net, Petri net), laid out with ELK and rendered with React Flow. Node shade =
- * frequency, edge width = transition frequency. */
-export function ProcessMapViz({ dataset }: VizComponentProps) {
-  const graph = dataset.shape === "graph" ? (dataset.data as GraphData) : null;
-  // `dataset` is memoized per fetch by the card, so `graph` is a stable ref and
-  // the layout effect runs once per data change (not every render).
+/** Read-only node-link process map, laid out with ELK and rendered with React
+ * Flow. Node shade = frequency, edge width = transition frequency. `graph` must
+ * be a stable reference – the layout effect runs once per change. */
+export function ProcessMap({
+  graph,
+  emptyMessage,
+  settings,
+  busy,
+}: {
+  graph: GraphData | null;
+  emptyMessage?: string;
+  /** Popover body of the canvas control cluster. */
+  settings?: ReactNode;
+  /** A refetch is in flight while the current map stays on screen. */
+  busy?: boolean;
+}) {
   const [state, setState] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  // A re-layout keeps the previous map on screen with the busy chip.
+  const [laying, setLaying] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -109,29 +120,40 @@ export function ProcessMapViz({ dataset }: VizComponentProps) {
       setState(null);
       return;
     }
+    setLaying(true);
     layout(graph)
       .then((r) => alive && setState(r))
-      .catch(() => alive && setState(null));
+      .catch(() => alive && setState(null))
+      .finally(() => alive && setLaying(false));
     return () => {
       alive = false;
     };
   }, [graph]);
 
   if (!graph || graph.nodes.length === 0) {
-    return <VizEmpty message={dataset.meta?.note ?? "No process model."} />;
+    return <VizEmpty message={emptyMessage ?? "No process model."} />;
   }
   if (!state) return <VizEmpty message="Laying out…" />;
 
   // Standard canvas shell: fit / zoom / fullscreen toolbar, idle-fade minimap
   // and dotted grid, all shared with every other graph canvas. The map is
   // read-only (nodes/edges opt out of drag + select in `layout`). No border/card
-  // here — the viz card already frames it, so fill it edge-to-edge.
+  // here — the owner frames it, so fill it edge-to-edge.
   return (
     <CanvasShell
       nodes={state.nodes}
       edges={state.edges}
       className="h-full w-full overflow-hidden"
       fitViewKey={state.nodes.length}
+      settings={settings}
+      busy={busy || laying}
     />
   );
+}
+
+/** Generic viz for a `graph`-shaped dataset (DFG, heuristics net, Petri net). */
+export function ProcessMapViz({ dataset }: VizComponentProps) {
+  // `dataset` is memoized per fetch by the card, so `graph` is a stable ref.
+  const graph = dataset.shape === "graph" ? (dataset.data as GraphData) : null;
+  return <ProcessMap graph={graph} emptyMessage={dataset.meta?.note} />;
 }

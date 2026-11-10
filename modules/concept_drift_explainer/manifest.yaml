@@ -1,6 +1,6 @@
 id: concept_drift_explainer
 name: Concept Drift Explainer
-version: 1.0.0
+version: 2.0.0
 category: advanced
 description: >-
   Explains why your process changed. It takes the drift points found by CV4CDD,
@@ -24,7 +24,7 @@ source:
       J. Schaffner, "Explaining concept drifts in business processes: An
       LLM-based approach to context-aware sense-making in process mining,"
       master's thesis, University of Münster, 2025
-artifacts:
+links:
   - name: Concept Drift Explainer
     url: https://github.com/janschaffner/concept_drift_explainer
 license: MIT
@@ -43,11 +43,16 @@ requirements:
     min_cases: 20
   modules: [cv4cdd]
 
+# cv4cdd's detections, read from its cache; cv4cdd runs first.
+inputs:
+  - id: drifts
+    artifact_type: drift_points
+    from: cv4cdd
+    required: true
+    description: The concept drifts CV4CDD detected in this log.
+
 provides:
   - concept_drift_explainer.explanations
-
-consumes:
-  - cv4cdd.completed
 
 dependencies:
   python:
@@ -167,3 +172,4 @@ config_schema:
       default: 0.25
       ui:
         widget: slider
+        scope: dataset

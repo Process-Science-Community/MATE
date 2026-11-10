@@ -1,0 +1,28 @@
+id: "$id"
+name: "$name"
+version: 0.1.0
+category: other
+description: "TODO - one line on what $name shows."
+license: MIT
+# Runs entirely locally - safe to use against confidential event logs.
+isConfidentialSafe: true
+
+requirements:
+  event_log:
+    log_model: case_centric
+    required_columns: [case_id, activity, timestamp]
+
+provides: []
+consumes:
+  - log.imported
+
+dependencies:
+  python:
+    requires-python: ">=3.12"
+    packages: []
+    inherit: []
+    isolation: in_process
+
+permissions:
+  - read:event_log
+  - write:module_results

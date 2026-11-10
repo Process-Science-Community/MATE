@@ -45,7 +45,7 @@ Paste your OpenAI key and click **Check**. A verified key reads "Key verified" w
 | Maximum ranked causes | 3 | The most causes shown for one drift (1 to 10). An analysis uses at most four documents and writes one cause for each, so four is the practical limit. |
 | Cause confidence threshold | 0.25 | Causes with a confidence below this value are dropped (0 to 1 in steps of 0.05). |
 
-Both limits apply when an analysis runs and are stored with its result. Changing them does not change an explanation that already exists; run the analysis again.
+Both limits apply when an analysis runs and are stored with its result. Changing them does not change an explanation that already exists; run the analysis again. Cause confidence threshold is the default for every process; **Parameters for this log** on the module's page for a process overrides it there.
 
 ## Reading the results
 

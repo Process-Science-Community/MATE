@@ -359,8 +359,14 @@ export interface DatasetCatalogEntry {
   icon: string | null;
   /** The data shape – drives which generic viz can render it. */
   shape: "table" | "graph" | "kpi" | "tree" | "blob";
-  /** Module sub-route (leading slash) the card fetches the data from. */
-  route: string;
+  /** What the data is, as an artifact type id (`petri_net`); null when untyped. */
+  artifact_type: string | null;
+  /** Module sub-route (leading slash) the card fetches the data from; null for a
+   *  dataset only the precompute writes (read by `content_ref_key` instead). */
+  route: string | null;
+  /** Cache key of a route-less dataset: the card reads
+   *  `GET /api/v1/artifacts/content?ref={log_id}/{module_id}/{content_ref_key}`. */
+  content_ref_key?: string | null;
   log_models: LogModel[];
   params_schema: WidgetConfigSchema | null;
 }
@@ -444,6 +450,45 @@ export function useUpdateDashboard(id: string) {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: dashboardKeys.all() });
+    },
+  });
+}
+
+/** A module's own board for one log (manifest `frontend.board`). The server
+ * creates it lazily from the manifest seed on first GET; it is an ordinary
+ * dashboard row, so edits go through `useUpdateDashboard`. */
+function moduleBoardPath(logId: string, moduleId: string): string {
+  return `/api/v1/event-logs/${logId}/modules/${moduleId}/board`;
+}
+
+// Top-level key on purpose: `["dashboards"]` is invalidated after every
+// autosave and `["event-logs"]` on every job, neither of which changes the id.
+const moduleBoardKey = (logId: string, moduleId: string) =>
+  ["module-board", logId, moduleId] as const;
+
+export function useModuleBoard(logId: string, moduleId: string) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: moduleBoardKey(logId, moduleId),
+    queryFn: async () => {
+      const board = await api<DashboardDetail>(moduleBoardPath(logId, moduleId));
+      // Seed the detail cache the shared DashboardView reads, so it mounts
+      // without a second round trip.
+      qc.setQueryData(dashboardKeys.detail(board.id), board);
+      return board;
+    },
+  });
+}
+
+/** Re-seed the module's board from its manifest (`POST …/board/reset`). */
+export function useResetModuleBoard(logId: string, moduleId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<DashboardDetail>(`${moduleBoardPath(logId, moduleId)}/reset`, { method: "POST" }),
+    onSuccess: (board) => {
+      qc.setQueryData(dashboardKeys.detail(board.id), board);
+      qc.setQueryData(moduleBoardKey(logId, moduleId), board);
     },
   });
 }

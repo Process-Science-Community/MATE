@@ -9,8 +9,9 @@
  *
  * `CardShell` is more than chrome: when a widget has no result it renders a
  * self-serve empty state ("Run simulation" starts the job right from the
- * dashboard) and, while a simulate job for the log is queued/running –
- * whoever started it – a live progress state instead. Compact by design: a
+ * dashboard; a shared board's viewer gets an owner-only hint instead, since
+ * their POST would 403) and, while a simulate job for the log is
+ * queued/running – whoever started it – a live progress state instead. Compact by design: a
  * default-size dashboard card gives the body roughly 110px of height, so no
  * big icon circle, no py-16 (the platform `EmptyState` is panel-sized).
  */
@@ -18,7 +19,7 @@ import type { ReactNode } from "react";
 import { Bot, Loader2, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { seriesColor } from "@/components/dashboards/kit";
+import { seriesColor, useCardReadOnly } from "@/components/dashboards/kit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -56,9 +57,11 @@ export function CardShell({
   refreshing?: boolean;
   children: ReactNode;
 }) {
+  const readOnly = useCardReadOnly();
   // Only watch the jobs list while the card would otherwise be empty – a card
-  // that is showing charts doesn't poll at all.
-  const gate = useSimulationGate(logId, { watch: Boolean(empty) });
+  // that is showing charts doesn't poll at all. A viewer's jobs list never holds
+  // the owner's run, so it isn't watched either.
+  const gate = useSimulationGate(logId, { watch: Boolean(empty) && !readOnly });
   if (loading) return <Skeleton className="h-full min-h-24 w-full" />;
   if (empty && (gate.activeJob || gate.starting)) {
     return <SimulationRunning job={gate.activeJob} />;
@@ -66,7 +69,7 @@ export function CardShell({
   if (empty && (gate.checking || refreshing)) {
     return <Skeleton className="h-full min-h-24 w-full" />;
   }
-  if (empty) return <SimulationPrompt logId={logId} gate={gate} />;
+  if (empty) return <SimulationPrompt logId={logId} gate={gate} readOnly={readOnly} />;
   return <div className="h-full">{children}</div>;
 }
 
@@ -108,9 +111,12 @@ function SimulationRunning({ job }: { job: SimJob | null }) {
 function SimulationPrompt({
   logId,
   gate,
+  readOnly,
 }: {
   logId: string;
   gate: ReturnType<typeof useSimulationGate>;
+  /** Shared board: no run/configure buttons, the viewer can't start a job. */
+  readOnly: boolean;
 }) {
   const router = useRouter();
   const failed = gate.job?.status === "failed";
@@ -138,26 +144,32 @@ function SimulationPrompt({
           Could not start the simulation – open the module page to check.
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-center gap-1.5">
-        <Button size="sm" onClick={gate.start} disabled={gate.starting}>
-          {gate.starting ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Play className="h-3.5 w-3.5" />
-          )}
-          Run simulation
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-muted-foreground"
-          onClick={() =>
-            router.push(`/processes/${encodeURIComponent(logId)}/modules/agentsimulator`)
-          }
-        >
-          Configure
-        </Button>
-      </div>
+      {readOnly ? (
+        <p className="max-w-72 text-[11px] text-muted-foreground">
+          Only the owner can run the simulation.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <Button size="sm" onClick={gate.start} disabled={gate.starting}>
+            {gate.starting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            Run simulation
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground"
+            onClick={() =>
+              router.push(`/processes/${encodeURIComponent(logId)}/modules/agentsimulator`)
+            }
+          >
+            Configure
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

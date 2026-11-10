@@ -121,7 +121,7 @@ sends one notification:
   "handlers": [
     {
       "attr": "discover",                       // unique handler name (dispatch key)
-      "route": {"method": "GET", "path": "/model", "name": null},          // optional
+      "route": {"method": "GET", "path": "/model", "name": null, "viewer_safe": false}, // optional
       "on_event": {"topic": "log.imported"},                                // optional
       "job": {                                                              // optional
         "progress": true,        // handler reports progress ticks
@@ -142,6 +142,11 @@ sends one notification:
   (a precompute job per event); at least one of the three keys must be set.
 - `route.method` ∈ `GET|POST|PUT|PATCH|DELETE`; `route.path` starts with `/`
   and is mounted at `/api/v1/modules/{module_id}{path}`.
+- `route.viewer_safe` (optional bool, absent = `false`; added without a version
+  bump, §1): the host answers a non-GET route called with `read_only` (§6) with
+  403 before any `call` - or job - unless the route is viewer-safe. Set it only
+  on a route that reads, or caches a result derived deterministically from the
+  owner's data and the request; never on one that changes owner state.
 - `job.title`/`subtitle` are static strings or `null` (`null` = the platform
   falls back to a generic label; dynamic per-payload labels are a
   Python-in-process-only feature and cannot cross the socket).
@@ -204,10 +209,12 @@ Immutable per-call facts the worker answers locally, without a round-trip:
 | `workdir` | string | Absolute path of a per-call scratch directory on a filesystem **shared with the host**. Deleted by the host when the call ends. |
 | `config` | object | The module's per-user config values (validated against the manifest's `config_schema`). |
 | `capabilities` | string[] | Module ids + capability names visible to the calling user - answers `registry.has(...)` locally. |
+| `read_only` | bool? | `true` when the calling user is not the log's owner (a log reached through a shared dashboard): reads see the owner's data, but a handler must not change durable owner state - the host refuses `ctx.cache.set`/`delete` of reserved `__*` keys with an error whose `message` contains `ReadOnlyContextError: `, and the API answers such a call with 403 (a non-GET route that is not `viewer_safe`, §4, is refused with 403 before it is called at all). Added without a version bump (§1); absent from older hosts = `false`. |
 | `events_path` | string? | Absolute path of the log's raw `events.parquet`. |
 | `cases_path` | string? | Absolute path of `cases.parquet` (when the log has one). |
 | `active_filter` | array? | The committed event-filter definition (JSON), `null`/absent = no filter. NOTE: `events_path` is the **unfiltered** file - use `ctx.event_log.materialize` or the `events` SQL view for filter-aware data. |
-| `cache_dir` | string? | Absolute path of the module's result-cache directory for this log (shared filesystem). |
+| `cache_dir` | string? | Absolute path of the module's result-cache directory for this log (shared filesystem) - for a run variant's job, that variant's own `_r_<key>` sub-directory. |
+| `inputs` | object? | The manifest's `inputs:` ports: `{port_id: {artifact_type, format, path, ref}}`. `path` is the absolute path of the bound producer's cache file (shared filesystem, read-only for the worker), `format` how to read it: `"json"`, `"parquet"` or `"bytes"`. Both are `null` while the port is unbound or the producer has not produced the artifact; `ref` (`log_id/module_id[@variant]/key`) is `null` while unbound; a run variant's explicit binding may point `path` into another variant's directory or another log of the same user. Added without a version bump (§1); absent from older hosts = no ports. |
 
 **Data-wall rule:** the optional keys may be **absent** (AI/restricted
 contexts deliberately omit the raw-data paths). An SDK MUST surface "absent"

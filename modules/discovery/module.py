@@ -671,7 +671,9 @@ class DiscoveryModule(Module):
         # older caches that don't have it (v2 added durations).
         return await _cached_or_compute(ctx, "dfg", lambda: self._compute_dfg(ctx), min_version=3)
 
-    @route.post("/dfg/layout")
+    # Viewer-safe: a read keyed by its full input (`_layout_cache_key`) - a shared
+    # dashboard's viewer only ever adds a cache entry the owner would compute alike.
+    @route.post("/dfg/layout", viewer_safe=True)
     async def dfg_layout(
         self, ctx: ModuleContext, *, body: DfgLayoutRequest | None = None
     ) -> dict[str, Any]:

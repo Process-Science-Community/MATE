@@ -1,0 +1,42 @@
+id: board_mod
+name: Board Module
+version: 0.1.0
+category: other
+description: Test fixture - a panel-less module whose page is a board seeded from the manifest.
+license: MIT
+
+datasets:
+  - id: counts
+    shape: table
+    route: /counts
+
+frontend:
+  board:
+    items:
+      - id: counts-table
+        viz: table
+        dataset: counts
+        title: Counts
+        x: 0
+        y: 0
+        w: 6
+        h: 8
+      - id: counts-bar
+        viz: bar
+        dataset: counts
+        mapping:
+          x: activity
+          y: count
+        options:
+          top_n: 5
+        x: 6
+        y: 0
+        w: 6
+        h: 8
+
+dependencies:
+  python:
+    inherit:
+      - duckdb
+      - pandas
+    isolation: in_process

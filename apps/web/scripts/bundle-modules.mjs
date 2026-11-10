@@ -205,7 +205,9 @@ async function bundleModule(folder) {
   if (ONLY_IDS.size && !ONLY_IDS.has(moduleId)) return [];
   const entries = entriesForModule(folder, manifest);
   if (!entries.length) {
-    if (manifest.frontend) {
+    // A board-only frontend (frontend.board, no panel/widgets) has nothing to bundle.
+    const f = manifest.frontend;
+    if (f && (f.panel || (f.widgets && f.widgets.length))) {
       console.warn(`[bundle-modules] ${moduleId}: manifest declares frontend but no entry found.`);
     }
     return [];

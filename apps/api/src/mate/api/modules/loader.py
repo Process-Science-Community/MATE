@@ -38,17 +38,19 @@ from pydantic import BaseModel
 
 from mate.api.auth import CurrentUser, CurrentUserDep
 from mate.api.db.engine import get_sessionmaker
-from mate.api.db.models import EventLog, ModuleConfig
+from mate.api.db.models import EventLog
 from mate.api.events import EventBus
 from mate.api.jobs.runtime import JobHandle, JobRuntime
 from mate.api.modules.availability import Availability
 from mate.api.modules.availability import evaluate as evaluate_availability
-from mate.api.modules.cache import ResultCache
+from mate.api.modules.cache import ResultCache, run_variant_key
+from mate.api.modules.content_hash import module_compute_hash
 from mate.api.modules.discovery import DiscoveredModule, discover, topo_sort
 from mate.api.modules.event_filters import FILTER_OPS
 from mate.api.modules.event_log_access import EventLogAccess
 from mate.api.modules.finder import get_finder, module_namespace, reset_finder
 from mate.api.modules.guides import warn_on_guide_problems
+from mate.api.modules.inputs import ModuleInputs, resolve_refs
 from mate.api.modules.installer import ModuleInstallError, venv_site_packages
 from mate.api.modules.installs import user_module_ids, user_owns_module
 from mate.api.modules.job_logs import get_job_log_buffer
@@ -59,6 +61,7 @@ from mate.api.modules.runtimes import runtime_for
 from mate.api.modules.subprocess_host import SubprocessBridge
 from mate.api.sharing import user_can_read_log
 from mate.api.tasks import spawn
+from mate.sdk.artifacts import ArtifactRef, check_contract
 from mate.sdk.context import ModuleContext
 from mate.sdk.decorators import (
     JobSpec,
@@ -67,6 +70,7 @@ from mate.sdk.decorators import (
     get_job_spec,
     get_route_spec,
 )
+from mate.sdk.errors import ReadOnlyContextError
 from mate.sdk.manifest import Manifest
 from mate.sdk.module import Module
 
@@ -80,10 +84,25 @@ log = structlog.get_logger(__name__)
 # loader submits for every event, as it always did.
 PrecomputeDispatcher = Callable[[str, str, str, str, dict[str, Any]], Awaitable[None]]
 
+# 403 detail for a shared dashboard's viewer (`ctx.read_only`) hitting a write route.
+READ_ONLY_DETAIL = "Read-only: this log is shared with you"
+
 
 def _event_job_type(module_id: str, topic: str) -> str:
     """The `JobRuntime` type a module's job-backed `@on_event(topic)` runs under."""
     return f"module.{module_id}.event.{topic.replace('.', '_')}"
+
+
+def _route_job_type(module_id: str, method: str, path: str) -> str:
+    """The `JobRuntime` type a job-backed `@route` runs under: `module.<id>.<method>.<path>`.
+
+    The method keeps a GET and a POST `@job` on one path apart - under one type the
+    last-bound handler served both, so a viewer's ungated GET ran the POST. Route jobs
+    of the old `module.<id>.<path>` type are not resumed after a restart (only
+    precompute is, `JobRuntime.resume_interrupted_precompute`) and their retry is
+    refused (`routes.jobs.retry_job`), so none run under the new code.
+    """
+    return f"module.{module_id}.{method.lower()}.{path.lstrip('/').replace('/', '.') or 'root'}"
 
 
 def _topic_matches(pattern: str, topic: str) -> bool:
@@ -115,6 +134,8 @@ class LoadedModule:
     discovered: DiscoveredModule
     instance: Module
     sub_router: APIRouter
+    # `module_compute_hash` of the folder, taken once at load (the run fingerprint).
+    compute_hash: str
     handlers: dict[str, Callable[..., Awaitable[Any]]] = field(default_factory=dict)
     capabilities: list[str] = field(default_factory=list)
 
@@ -597,10 +618,12 @@ class ModuleLoader:
         discovered = discover(self.modules_dir, self.uploaded_modules_dir)
         # Snapshot which ids are repo defaults by *root* (not manifest source):
         # an upload already present on disk at boot must not be mistaken for a
-        # default just because it discovers as "filesystem".
+        # default just because it discovers as "filesystem". Compare the entry's
+        # parent, not the resolved folder: a symlinked entry (`make module-dev`)
+        # resolves outside the root but is still a default.
         defaults_root = self.modules_dir.resolve()
         self.default_module_ids = {
-            d.id for d in discovered if d.folder.resolve().is_relative_to(defaults_root)
+            d.id for d in discovered if d.folder.parent.resolve() == defaults_root
         }
         if not discovered:
             log.info("modules.loader.no_modules", dir=str(self.modules_dir))
@@ -638,6 +661,7 @@ class ModuleLoader:
                 discovered=d,
                 instance=instance,
                 sub_router=APIRouter(prefix=f"/modules/{d.id}", tags=[f"module:{d.id}"]),
+                compute_hash=await asyncio.to_thread(module_compute_hash, d.folder),
             )
             self._bind(loaded)
             self.loaded[d.id] = loaded
@@ -645,6 +669,9 @@ class ModuleLoader:
             await self._seed_module_config(d.manifest)
 
         self._warn_unprovided_precompute_subscriptions()
+        # Warn only: a broken artifact contract leaves the affected inputs unbound.
+        for problem in check_contract(self.manifests()):
+            log.warning("modules.loader.artifact_contract", problem=problem)
 
         if self.api_app is not None:
             self._mount_router = APIRouter(prefix="/api/v1")
@@ -728,6 +755,7 @@ class ModuleLoader:
             discovered=d,
             instance=instance,
             sub_router=APIRouter(prefix=f"/modules/{d.id}", tags=[f"module:{d.id}"]),
+            compute_hash=await asyncio.to_thread(module_compute_hash, folder),
         )
         self._bind(loaded)
         self.loaded[d.id] = loaded
@@ -894,19 +922,18 @@ class ModuleLoader:
         """
         roots = self.precompute_subscriber_module_ids(import_topic) & owned_ids
         nodes: set[str] = set(roots)
-        edges: dict[str, set[str]] = {}
         frontier: list[str] = list(roots)
         while frontier:
             producer = frontier.pop()
             for consumer in self._precompute_consumers(producer, owned_ids):
-                edges.setdefault(consumer, set()).add(producer)
                 if consumer not in nodes:
                     nodes.add(consumer)
                     frontier.append(consumer)
-        return nodes, edges
+        return nodes, self.precompute_edges(nodes)
 
     def precompute_edges(self, nodes: set[str]) -> dict[str, set[str]]:
-        """Consumer→producer dependency edges *among* a fixed `nodes` set.
+        """Consumer→producer dependency edges *among* a fixed `nodes` set: the
+        event chain plus each manifest `inputs:` producer.
 
         Lets the processing coordinator reason about cascade-skips over the
         frozen expected-module set without recomputing the whole closure.
@@ -914,6 +941,9 @@ class ModuleLoader:
         edges: dict[str, set[str]] = {}
         for producer in nodes:
             for consumer in self._precompute_consumers(producer, nodes):
+                edges.setdefault(consumer, set()).add(producer)
+        for consumer in nodes:
+            for producer in self.input_producers(consumer, nodes):
                 edges.setdefault(consumer, set()).add(producer)
         return edges
 
@@ -949,15 +979,33 @@ class ModuleLoader:
             and module_id in self._precompute_consumers(producer, {module_id})
         }
 
+    def input_producers(self, module_id: str, owned_ids: set[str]) -> set[str]:
+        """Modules in `owned_ids` that `module_id`'s *required* manifest `inputs:`
+        read from. An optional port is best effort: its producer is read if it has
+        produced, but never runs first and never gates the consumer (conformance
+        with an uploaded model must not wait on, or fail with, discovery)."""
+        loaded = self.loaded.get(module_id)
+        if loaded is None:
+            return set()
+        return {
+            producer
+            for port in loaded.manifest.inputs
+            if port.required
+            and (producer := port.from_) is not None
+            and producer in owned_ids
+            and producer != module_id
+        }
+
     def precompute_deps(self, module_id: str, owned_ids: set[str]) -> list[str]:
         """Every module that must have computed before `module_id` is usable,
         itself included when it has a precompute, in dependency order.
 
-        Follows the chained-producer edges *and* the manifest's hard
-        `requirements.modules` (restricted to `owned_ids` - a module the user never
-        installed cannot run for them). A module with no precompute anywhere in
-        that closure yields `[]` and needs no gate: it computes inline on demand,
-        or on an explicit user action, exactly as before.
+        Follows the chained-producer edges, the producers its required manifest
+        `inputs:` read from, *and* the manifest's hard `requirements.modules` (all
+        restricted to `owned_ids` - a module the user never installed cannot run for
+        them; an input producer never affects availability). A module with no
+        precompute anywhere in that closure yields `[]` and needs no gate: it
+        computes inline on demand, or on an explicit user action, exactly as before.
         """
         order: list[str] = []
         seen: set[str] = set()
@@ -968,9 +1016,11 @@ class ModuleLoader:
             seen.add(mid)
             for producer in sorted(self.chained_producers(mid, owned_ids)):
                 visit(producer)
+            for producer in sorted(self.input_producers(mid, owned_ids)):
+                visit(producer)
             loaded = self.loaded.get(mid)
             if loaded is not None:
-                for required in loaded.manifest.requirements.modules:
+                for required in loaded.manifest.requirements.module_ids:
                     if required in owned_ids:
                         visit(required)
             if self.has_precompute(mid):
@@ -989,6 +1039,7 @@ class ModuleLoader:
         *,
         parent_job_id: str | None = None,
         subtitle: str | None = None,
+        run_spec: dict[str, Any] | None = None,
     ) -> str:
         """Submit the job behind `module_id`'s job-backed `@on_event(topic)`.
 
@@ -996,6 +1047,7 @@ class ModuleLoader:
         the one place that turns such a subscription into a `Job` - the bus runner
         (legacy path) and the processing coordinator both come through here, so a
         job carries the same type, title and priority however it was triggered.
+        A canonical `run_spec` makes it a run variant's job (`modules.variants`).
         Returns the job id.
         """
         spec = self._precompute_job_specs.get((module_id, topic))
@@ -1008,7 +1060,11 @@ class ModuleLoader:
             subtitle=subtitle
             or _resolve_dynamic(spec.subtitle, log_id, module_id, f"{module_id} · on {topic}"),
             module_id=module_id,
-            payload={"log_id": log_id, "_event_payload": event_payload},
+            payload={
+                "log_id": log_id,
+                "_event_payload": event_payload,
+                **({"_run_spec": run_spec} if run_spec is not None else {}),
+            },
             priority=spec.priority,
             parent_job_id=parent_job_id,
         )
@@ -1187,10 +1243,11 @@ class ModuleLoader:
     ) -> None:
         module_id = loaded.id
         router = loaded.sub_router
-        # Resolve the implementation per call (see `_live_handler`) - the route
-        # registered here outlives every reload, so it must never capture the
-        # instance it was bound against.
-        attr_name = bound_method.__name__
+        # Resolve the implementation and its spec per call (see `_require_live_route`) -
+        # the route registered here outlives every reload, so it must never capture the
+        # instance it was bound against, nor gate on the spec it was bound with.
+        # shortcut: a reload that toggles @job or changes a handler's params keeps the
+        # first-bound endpoint shape until restart; rebuild the mount if that matters.
 
         # Forward any handler kwargs (besides `ctx`) to FastAPI as query
         # params so module routes can take typed inputs without each module
@@ -1200,14 +1257,20 @@ class ModuleLoader:
         if job_spec is None:
 
             async def _endpoint(**kwargs: Any) -> Any:
-                handler = self._require_live_handler(module_id, attr_name)
+                handler, live = self._require_live_route(module_id, spec)
                 log_id = kwargs.pop("log_id", None)
                 user: CurrentUser = kwargs.pop("__ff_user")
                 filter_override = _decode_event_filter_header(kwargs.pop("__ff_event_filter", None))
+                await self._refuse_viewer_write(live, log_id or "", user.id)
                 ctx = await self._make_context(
                     module_id, log_id or "", user.id, filter_override=filter_override
                 )
-                return await self._invoke_handler(handler, ctx, **kwargs)
+                try:
+                    return await self._invoke_handler(handler, ctx, **kwargs)
+                except ReadOnlyContextError as exc:
+                    # A shared viewer's write to the owner's durable state (see
+                    # `ModuleContext.read_only`): a permission problem, not a 500.
+                    raise HTTPException(status_code=403, detail=str(exc)) from exc
 
             _endpoint.__signature__ = _build_endpoint_signature(extras)  # type: ignore[attr-defined]
         else:
@@ -1220,18 +1283,26 @@ class ModuleLoader:
             # Map of extra-arg name → annotation so the job runner can
             # re-hydrate Pydantic models from the serialized payload.
             extras_by_name = {p.name: p.annotation for p in extras}
-            job_type = f"module.{module_id}.{spec.path.lstrip('/').replace('/', '.') or 'root'}"
+            job_type = _route_job_type(module_id, spec.method, spec.path)
 
             async def _job_handler(handle: JobHandle) -> None:
-                handler = self._live_handler(module_id, attr_name)
-                if handler is None:
+                live = self._current_routes(module_id, spec.path).get(spec.method.upper())
+                if live is None:
                     raise RuntimeError(
-                        f"Module {module_id!r} is not loaded - it was unloaded "
-                        f"before this job ran. Retry once it is back."
+                        f"Module {module_id!r} is not loaded (or no longer serves "
+                        f"{spec.method.upper()} {spec.path}) - it changed before this job "
+                        f"ran. Retry once it is back."
                     )
+                handler, live_spec = live
+                job_log_id = handle.payload.get("log_id", "")
+                # The submit-time gate again, on the spec live now: a reload may have
+                # dropped `viewer_safe` while this job queued, and a retry resubmits
+                # without the endpoint's gate.
+                if await self._is_viewer_write(live_spec, job_log_id, handle.user_id):
+                    raise ReadOnlyContextError(READ_ONLY_DETAIL)
                 ctx = await self._make_context(
                     module_id,
-                    handle.payload.get("log_id", ""),
+                    job_log_id,
                     handle.user_id,
                     progress=_JobProgressAdapter(handle),
                     cancellation=_JobCancellation(handle),
@@ -1253,7 +1324,11 @@ class ModuleLoader:
                         rebuilt[name] = ann.model_validate(value)
                     else:
                         rebuilt[name] = value
-                await self._invoke_handler(handler, ctx, **rebuilt)
+                try:
+                    await self._invoke_handler(handler, ctx, **rebuilt)
+                except ReadOnlyContextError as exc:
+                    # A viewer-safe job that touched the owner's state: fail with why.
+                    raise ReadOnlyContextError(f"{READ_ONLY_DETAIL}: {exc}") from exc
 
             # Bound once per (re)bind, not lazily on first request: a reload has
             # to overwrite the previous closure (`replace=True`), or the runtime
@@ -1264,8 +1339,9 @@ class ModuleLoader:
                 ctx_log_id = kwargs.pop("log_id", None) or ""
                 user: CurrentUser = kwargs.pop("__ff_user")
                 filter_override = _decode_event_filter_header(kwargs.pop("__ff_event_filter", None))
-                # 404 rather than queueing a job that can only fail.
-                self._require_live_handler(module_id, attr_name)
+                # 404/405 rather than queueing a job that can only fail.
+                _, live = self._require_live_route(module_id, spec)
+                await self._refuse_viewer_write(live, ctx_log_id, user.id)
 
                 # Serialize forwarded args into the job payload. Pydantic
                 # models dump to dicts; primitives pass through. This is the
@@ -1317,6 +1393,26 @@ class ModuleLoader:
             name=spec.name or f"{module_id}_{method}_{spec.path}",
             response_model=spec.response_model,
         )
+
+    async def _refuse_viewer_write(self, spec: RouteSpec, log_id: str, user_id: str) -> None:
+        """403 a shared dashboard's viewer on a non-GET route before it runs or queues."""
+        if await self._is_viewer_write(spec, log_id, user_id):
+            raise HTTPException(status_code=403, detail=READ_ONLY_DETAIL)
+
+    async def _is_viewer_write(self, spec: RouteSpec, log_id: str, user_id: str) -> bool:
+        """Whether *spec* is a write a shared dashboard's viewer may not run on *log_id*.
+
+        Same predicate as `ctx.read_only` (`_make_context`): the log is someone else's
+        and reached through a share. A write or compute route would change - or
+        recompute over - the owner's results; `viewer_safe` routes opt out.
+        """
+        if spec.method.upper() in ("GET", "HEAD") or spec.viewer_safe or not log_id:
+            return False
+        async with get_sessionmaker()() as session:
+            row = await session.get(EventLog, log_id)
+            if row is None or row.user_id == user_id:
+                return False
+            return await user_can_read_log(session, log_id, user_id)
 
     def _bind_event(
         self,
@@ -1399,7 +1495,9 @@ class ModuleLoader:
                 handle.user_id,
                 progress=_JobProgressAdapter(handle),
                 cancellation=_JobCancellation(handle),
+                filter_override=handle.payload.get("_filter_override"),
                 job_id=handle.id,
+                run_spec=handle.payload.get("_run_spec"),
             )
             ctx._ff_job_id = handle.id  # type: ignore[attr-defined]
             await self._invoke_handler(handler, ctx, event_payload)
@@ -1468,7 +1566,8 @@ class ModuleLoader:
 
         Resolving per call means a reload swaps the implementation. `None` =
         the module is gone (unloaded) or no longer declares that handler; the
-        caller turns that into a 404 / a failed job with a clear message.
+        caller turns that into a failed job with a clear message. Routes resolve by
+        method + path instead (`_require_live_route`).
         """
         loaded = self.loaded.get(module_id)
         if loaded is None:
@@ -1476,14 +1575,46 @@ class ModuleLoader:
         handler = getattr(loaded.instance, attr_name, None)
         return handler if callable(handler) else None
 
-    def _require_live_handler(self, module_id: str, attr_name: str) -> Callable[..., Any]:
-        handler = self._live_handler(module_id, attr_name)
-        if handler is None:
+    def _current_routes(
+        self, module_id: str, path: str
+    ) -> dict[str, tuple[Callable[..., Any], RouteSpec]]:
+        """``{METHOD: (bound handler, spec)}`` the loaded *module_id* declares at *path*
+        now - empty when it is not loaded or no longer has that path."""
+        loaded = self.loaded.get(module_id)
+        if loaded is None:
+            return {}
+        inst = loaded.instance
+        found: dict[str, tuple[Callable[..., Any], RouteSpec]] = {}
+        for name in dir(inst):
+            spec = get_route_spec(getattr(type(inst), name, None))
+            if spec is not None and spec.path == path:
+                found.setdefault(spec.method.upper(), (getattr(inst, name), spec))
+        return found
+
+    def _require_live_route(
+        self, module_id: str, mounted: RouteSpec
+    ) -> tuple[Callable[..., Any], RouteSpec]:
+        """The handler serving *mounted*'s method and path now, with its *current* spec.
+
+        A mount outlives reloads and Starlette keeps matching the first one (see
+        `_live_handler`), so it must neither run a handler that moved nor gate on the
+        spec it was bound with: 404 when the path is gone, 405 when only other methods
+        serve it, and the caller applies the live spec (`viewer_safe`, method).
+        """
+        routes = self._current_routes(module_id, mounted.path)
+        method = mounted.method.upper()
+        if method in routes:
+            return routes[method]
+        if routes:
             raise HTTPException(
-                status_code=404,
-                detail=f"Module {module_id!r} is not loaded (or no longer has {attr_name!r}).",
+                status_code=405,
+                detail=f"Module {module_id!r} no longer serves {method} {mounted.path}.",
+                headers={"Allow": ", ".join(sorted(routes))},
             )
-        return handler
+        raise HTTPException(
+            status_code=404,
+            detail=f"Module {module_id!r} is not loaded (or no longer serves {mounted.path}).",
+        )
 
     async def _invoke_handler(
         self,
@@ -1539,18 +1670,12 @@ class ModuleLoader:
         result (the dataset layer normalizes it into an envelope).
         ``restrict_event_log=True`` wires the AI/MCP data wall: the handler sees
         its result cache but every raw event-log accessor raises."""
-        loaded = self.loaded.get(module_id)
-        if loaded is None:
+        if module_id not in self.loaded:
             raise ValueError(f"Module {module_id!r} is not loaded.")
-        inst = loaded.instance
-        handler: Callable[..., Any] | None = None
-        for name in dir(inst):
-            spec = get_route_spec(getattr(type(inst), name, None))
-            if spec is not None and spec.path == route and spec.method.lower() == method.lower():
-                handler = getattr(inst, name)
-                break
-        if handler is None:
+        live = self._current_routes(module_id, route).get(method.upper())
+        if live is None:
             raise ValueError(f"No {method.upper()} route {route!r} on module {module_id!r}.")
+        handler = live[0]
         ctx = await self._make_context(
             module_id,
             log_id,
@@ -1558,7 +1683,10 @@ class ModuleLoader:
             filter_override=filter_override,
             restrict_event_log=restrict_event_log,
         )
-        return await self._invoke_handler(handler, ctx, **(params or {}))
+        try:
+            return await self._invoke_handler(handler, ctx, **(params or {}))
+        except ReadOnlyContextError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     def _uses_worker_execution(self, module_id: str) -> bool:
         """Whether *module_id* is an in-process module that opted into per-job
@@ -1624,11 +1752,26 @@ class ModuleLoader:
         filter_override: list[dict[str, Any]] | None = None,
         job_id: str | None = None,
         restrict_event_log: bool = False,
+        run_spec: dict[str, Any] | None = None,
     ) -> ModuleContext:
         # workdir is per-invocation; for v1 we use a temp dir scoped to the
         # process. A future enhancement: clean up after the call returns
         # (would need a context manager around the handler).
         workdir = Path(tempfile.mkdtemp(prefix=f"ff-mod-{module_id}-"))
+        # A run variant's job (`modules.variants`): its spec's params join the config,
+        # its explicit input refs override the default binding, its filter replaces the
+        # committed one and `ctx.cache` is the variant's own `_r_<key>` namespace. Unlike
+        # a plain context, failing to apply any of it raises instead of degrading.
+        spec_params: dict[str, Any] | None = None
+        spec_refs: dict[str, str] = {}
+        run_variant: str | None = None
+        if run_spec is not None:
+            run_variant = run_variant_key(run_spec)
+            spec_params = run_spec.get("params") or {}
+            spec_refs = run_spec.get("inputs") or {}
+            if run_spec.get("filter") is not None:
+                filter_override = run_spec["filter"]
+        explicit_refs: dict[str, ArtifactRef] = {}
 
         cfg_json: dict[str, Any] = {}
         owned_ids: set[str] = set()
@@ -1637,45 +1780,14 @@ class ModuleLoader:
         # Whose data dir the bound log's Parquet is read from. Equals user_id for
         # an owned log; for a log reached through a shared dashboard it becomes
         # the owner's id so path resolution points at the owner's data. This is
-        # the single sanctioned cross-account read widening - every other facet
-        # of the context (config, owned modules, cache, bus) stays scoped to the
-        # requesting user. See mate.api.sharing.user_can_read_log.
+        # the single sanctioned cross-account read widening - the cache and the
+        # declared non-secret config follow it (so a viewer computes, and caches,
+        # what the owner would); owned modules, secrets and the bus stay scoped to
+        # the requesting user. See mate.api.sharing.user_can_read_log.
         storage_user_id = user_id
         try:
             sm = get_sessionmaker()
             async with sm() as session:
-                # Per-user config is always the base; each admin-locked settings
-                # card (mate.api.modules.cards) overlays only the config_json
-                # slice it owns, so locking one card never drops another card's
-                # per-user value (the old whole-module lock replaced the entire
-                # blob and silently dropped the AI/model selection). A locked
-                # model card additionally gets the __model_admin_locked__
-                # sentinel so the module's /models route renders read-only. Each
-                # card resolves defensively inside resolve_card_overlays, so a
-                # single failed lookup degrades to the per-user value.
-                row = await session.get(ModuleConfig, (user_id, module_id))
-                if row is not None and row.config_json:
-                    cfg_json = dict(row.config_json)
-                loaded_mod = self.loaded.get(module_id)
-                if loaded_mod is not None:
-                    from mate.api.modules.cards import (
-                        AI_LOCK_SENTINEL,
-                        CARD_AI,
-                        CARD_MODEL,
-                        MODEL_LOCK_SENTINEL,
-                        resolve_card_overlays,
-                    )
-
-                    cfg_json, controlled_cards = await resolve_card_overlays(
-                        session, loaded_mod.manifest, cfg_json, user_id
-                    )
-                    if controlled_cards.get(CARD_MODEL):
-                        cfg_json[MODEL_LOCK_SENTINEL] = True
-                    # AI card locked → inject the ai sentinel so a module's
-                    # action routes (e.g. CDE's Pinecone rebuild, which uses the
-                    # admin-pinned embedding dimension) can refuse.
-                    if controlled_cards.get(CARD_AI):
-                        cfg_json[AI_LOCK_SENTINEL] = True
                 # Modules this user has installed - scopes ctx.registry so
                 # cross-module RPC can only reach the user's own modules.
                 owned_ids = await user_module_ids(session, user_id)
@@ -1693,7 +1805,68 @@ class ModuleLoader:
                             session, log_id, user_id
                         ):
                             storage_user_id = log_row.user_id
-        except Exception:
+                # The effective config (mate.api.modules.log_config): the user's
+                # module config (a viewer's with the owner's declared non-secret
+                # values on top), the log owner's per-log overrides, then each
+                # admin-locked settings card (mate.api.modules.cards) overlays only
+                # the config_json slice it owns, so locking one card never drops
+                # another card's value. A locked model card additionally gets the
+                # __model_admin_locked__ sentinel so the module's /models route
+                # renders read-only. Each card resolves defensively inside
+                # resolve_card_overlays, so a single failed lookup degrades to the
+                # per-user value.
+                loaded_mod = self.loaded.get(module_id)
+                if loaded_mod is not None:
+                    from mate.api.modules.cards import (
+                        AI_LOCK_SENTINEL,
+                        CARD_AI,
+                        CARD_MODEL,
+                        MODEL_LOCK_SENTINEL,
+                    )
+                    from mate.api.modules.log_config import effective_config
+
+                    cfg_json, controlled_cards = await effective_config(
+                        session,
+                        loaded_mod.manifest,
+                        user_id,
+                        log_id or None,
+                        owner_id=storage_user_id,
+                        params=spec_params,
+                    )
+                    if controlled_cards.get(CARD_MODEL):
+                        cfg_json[MODEL_LOCK_SENTINEL] = True
+                    # AI card locked → inject the ai sentinel so a module's
+                    # action routes (e.g. CDE's Pinecone rebuild, which uses the
+                    # admin-pinned embedding dimension) can refuse.
+                    if controlled_cards.get(CARD_AI):
+                        cfg_json[AI_LOCK_SENTINEL] = True
+                    if spec_refs:
+                        explicit_refs, problems = await resolve_refs(
+                            session,
+                            user_id=storage_user_id,
+                            log_id=log_id,
+                            ports=loaded_mod.manifest.inputs,
+                            owned_producers={
+                                mid: lm.manifest
+                                for mid, lm in self.loaded.items()
+                                if mid in owned_ids
+                            },
+                            refs=spec_refs,
+                        )
+                        if problems:
+                            # Checked when the variant was requested; unbound now means
+                            # an uninstall or log delete since.
+                            raise LookupError("; ".join(problems))
+        except Exception as exc:
+            if run_spec is not None:
+                # A variant runs with its spec or not at all: the default config or
+                # binding would settle it `ready` with a spec it never used.
+                raise RuntimeError(f"Cannot apply the run spec: {exc}") from exc
+            if storage_user_id != user_id:
+                # A viewer computes into the owner's cache: with a default config it
+                # would cache numbers the owner never asked for. Fail the request.
+                raise RuntimeError(f"Cannot read the module config: {exc}") from exc
+            log.warning("modules.loader.context_read_failed", module_id=module_id, exc_info=True)
             cfg_json = {}
 
         # A dashboard's ephemeral filter *replaces* the committed Events-tab
@@ -1709,10 +1882,11 @@ class ModuleLoader:
         cache_variant: str | None = None
         if filter_override is not None:
             active_filter = filter_override
-            digest = hashlib.sha1(
-                json.dumps(filter_override, sort_keys=True, default=str).encode()
-            ).hexdigest()
-            cache_variant = digest[:16]
+            if run_variant is None:
+                digest = hashlib.sha1(
+                    json.dumps(filter_override, sort_keys=True, default=str).encode()
+                ).hexdigest()
+                cache_variant = digest[:16]
 
         # The sanctioned cross-log accessor (ctx.open_event_log). Modules that
         # compare logs need a *second* EventLogAccess; minting it here keeps the
@@ -1731,7 +1905,14 @@ class ModuleLoader:
             sm_ = get_sessionmaker()
             async with sm_() as session:
                 other = await session.get(EventLog, other_log_id)
-            if other is None or other.user_id != user_id:
+            # A shared log's viewer (`read_only`) reaches that one log, from its owner's
+            # dir, and nothing else: a comparison over the viewer's own logs would land
+            # in the owner's cache, one over the owner's other logs reads unshared data.
+            if (
+                other is None
+                or other.user_id != storage_user_id
+                or (storage_user_id != user_id and other_log_id != log_id)
+            ):
                 # Same response whether missing or another tenant's - never
                 # confirm the existence of a log the caller doesn't own.
                 raise PermissionError(f"Event log {other_log_id} not found.")
@@ -1741,7 +1922,7 @@ class ModuleLoader:
                     "open_event_log only serves case-centric logs."
                 )
             applied = (other.active_filter or None) if filters is None else (filters or None)
-            return EventLogAccess(other_log_id, user_id, applied)
+            return EventLogAccess(other_log_id, storage_user_id, applied)
 
         # Object-centric (OCEL) logs bind `object_log` and leave `event_log`
         # unbound; case-centric logs do the opposite. A module only ever runs
@@ -1765,6 +1946,26 @@ class ModuleLoader:
         else:
             event_log_access = _UnboundEventLog()
             object_log_access = None
+        loaded_self = self.loaded.get(module_id)
+        inputs = ModuleInputs.bind(
+            loaded_self.manifest.inputs if loaded_self is not None else [],
+            {mid: lm.manifest for mid, lm in self.loaded.items() if mid in owned_ids},
+            log_id,
+            storage_user_id,
+            explicit_refs,
+        )
+        # The requester reads the owner's data through a shared dashboard - see
+        # ModuleContext.read_only and ResultCache.read_only.
+        read_only = storage_user_id != user_id
+        if run_spec is not None:
+            # Checked at request time too; gone now means a producer variant deleted or
+            # evicted, or a producer's log deleted, since - never run on a None input.
+            missing = await asyncio.to_thread(inputs.missing)
+            if missing:
+                raise RuntimeError(
+                    "Cannot apply the run spec: "
+                    + "; ".join(f"input {p!r} not produced" for p in missing)
+                )
         return ModuleContext(
             log_id=log_id,
             module_id=module_id,
@@ -1780,7 +1981,14 @@ class ModuleLoader:
                 # viewer's own id instead pointed at an always-empty directory, so
                 # every card on a shared dashboard read as uncomputed for anyone
                 # but the owner.
-                ResultCache(log_id, module_id, storage_user_id, variant=cache_variant)
+                ResultCache(
+                    log_id,
+                    module_id,
+                    storage_user_id,
+                    variant=cache_variant,
+                    run_variant=run_variant,
+                    read_only=read_only,
+                )
                 if log_id
                 else _UnboundCache()
             ),
@@ -1797,6 +2005,8 @@ class ModuleLoader:
             workdir=workdir,
             run_in_process=self._bind_run_in_process(module_id),  # type: ignore[arg-type]
             open_event_log=_open_event_log,  # type: ignore[arg-type]
+            inputs=inputs,
+            read_only=read_only,
         )
 
 

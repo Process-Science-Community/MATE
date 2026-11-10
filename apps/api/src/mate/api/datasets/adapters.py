@@ -1,15 +1,22 @@
-"""Server-side ``kind -> DatasetEnvelope`` adapters + module-dataset resolution.
+"""Server-side ``artifact type -> DatasetEnvelope`` adapters + module-dataset resolution.
 
 Python port of ``apps/web/lib/visualizations/adapters.ts``. Resolves a module
 dataset by invoking its route handler through the loader (reusing the module's
-result cache + the per-request ephemeral filter) and normalizes the response
-into the canonical :class:`DatasetEnvelope`.
+result cache + the per-request ephemeral filter) - or, for a cache-only dataset,
+by reading the module's precomputed cache entry - and normalizes the result into
+the canonical :class:`DatasetEnvelope`. A dataset's declared ``artifact_type``
+picks the adapter; the raw ``kind`` tag in the payload is only the fallback for
+untyped datasets.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
 from typing import Any
+
+import structlog
 
 from mate.api.datasets.envelope import (
     ColumnSpec,
@@ -27,6 +34,10 @@ from mate.api.datasets.envelope import (
     TreeData,
     TreeNode,
 )
+from mate.api.modules.cache import ResultCache
+from mate.sdk.artifacts import get_artifact_type, validate_artifact
+
+log = structlog.get_logger(__name__)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?")
 _NUMERIC: frozenset[ColumnType] = frozenset({"number", "integer", "duration"})
@@ -202,13 +213,41 @@ def _tree_from_prefix(raw: dict[str, Any]) -> TreeData:
     return TreeData(root=root or TreeNode(id="root", label="start"))
 
 
-def adapt(shape: str, raw: Any) -> DatasetEnvelope:
-    """Normalize a module route response into the declared ``shape``."""
+def _source_kind(obj: dict[str, Any], raw: Any, artifact_type: str | None) -> str:
+    """What *raw* is: the declared artifact type's id (validated, problems logged but
+    never fatal), else - for an untyped dataset - the payload's own ``kind`` tag."""
+    tag = obj.get("kind")
+    raw_kind = tag if isinstance(tag, str) else ""
+    if artifact_type is None:
+        return raw_kind
+    known = get_artifact_type(artifact_type)
+    if known is None:
+        log.warning("datasets.unknown_artifact_type", artifact_type=artifact_type)
+        return raw_kind
+    # None = not produced yet; that is no contract violation.
+    problems = validate_artifact(known.id, raw) if raw is not None else []
+    if problems:
+        log.warning("datasets.artifact_invalid", artifact_type=str(known), problems=problems[:5])
+    return known.id
+
+
+def _guessing(shape: str, kind: str) -> None:
+    log.warning("datasets.adapter_guess", shape=shape, kind=kind or None)
+
+
+def adapt(shape: str, raw: Any, artifact_type: str | None = None) -> DatasetEnvelope:
+    """Normalize a module route response (or cache entry) into the declared ``shape``,
+    reading it as *artifact_type* when the dataset declares one."""
     obj: dict[str, Any] = raw if isinstance(raw, dict) else {}
-    kind = obj.get("kind") if isinstance(obj.get("kind"), str) else ""
+    kind = _source_kind(obj, raw, artifact_type)
 
     if shape == "graph":
-        g = _graph_from_petri(obj) if kind == "petri_net" else _graph_from_dfg(obj)
+        if kind == "petri_net":
+            g = _graph_from_petri(obj)
+        else:
+            if kind != "dfg":
+                _guessing(shape, kind)
+            g = _graph_from_dfg(obj)
         return DatasetEnvelope(shape="graph", data=g, meta=DatasetMeta(sourceKind=kind))
 
     if shape == "tree":
@@ -218,7 +257,7 @@ def adapt(shape: str, raw: Any) -> DatasetEnvelope:
     if shape == "kpi":
         items: list[KpiMeasure] = []
         note: str | None = None
-        if kind == "conformance":
+        if kind in ("conformance", "conformance_result"):
             if obj.get("ran") is False or not isinstance(obj.get("kpis"), dict):
                 note = "No conformance run yet - run conformance on this log first."
             else:
@@ -247,13 +286,18 @@ def adapt(shape: str, raw: Any) -> DatasetEnvelope:
     # table (default)
     rows: list[dict[str, Any]] = []
     note = None
-    if kind == "conformance":
+    if kind in ("conformance", "conformance_result"):
         rows = obj.get("per_activity") or []
         if not rows and obj.get("ran") is False:
             note = "No conformance run yet."
     elif isinstance(obj.get("drifts"), list):
         rows = obj["drifts"]
+    elif kind == "table" and (to_json := getattr(raw, "to_json", None)) is not None:
+        # A Parquet-stored `table` artifact arrives as a DataFrame; to_json maps NaN to
+        # null and timestamps to ISO strings, so the rows stay JSON-safe.
+        rows = json.loads(to_json(orient="records", date_format="iso"))
     else:
+        _guessing(shape, kind)
         for v in obj.values():
             if isinstance(v, list) and v and isinstance(v[0], dict):
                 rows = v
@@ -281,23 +325,46 @@ async def resolve_dataset(
     filter_override: list[dict[str, Any]] | None = None,
     params: dict[str, Any] | None = None,
     restrict_event_log: bool = False,
+    variant: str | None = None,
 ) -> DatasetEnvelope:
     """Resolve a module dataset to a canonical envelope by invoking its route
-    handler through the loader (reuses the module's result cache + filtering).
-    ``restrict_event_log=True`` walls off raw event rows (AI/MCP callers)."""
+    handler through the loader (reuses the module's result cache + filtering), or
+    for a cache-only dataset by reading the module's precomputed ``cache_key`` entry.
+    ``variant`` reads that entry from a run variant instead (the caller checked that
+    *user_id* owns the log). ``restrict_event_log=True`` walls off raw event rows
+    (AI/MCP callers)."""
     loaded = loader.loaded.get(module_id)
     if loaded is None:
         raise ValueError(f"Module {module_id!r} is not loaded.")
     entry = next((d for d in loaded.manifest.datasets if d.id == dataset_id), None)
     if entry is None:
         raise ValueError(f"Module {module_id!r} has no dataset {dataset_id!r}.")
-    raw = await loader.run_dataset_route(
-        module_id,
-        entry.route,
-        log_id,
-        user_id,
-        filter_override=filter_override,
-        params=params,
-        restrict_event_log=restrict_event_log,
-    )
-    return adapt(entry.shape, raw)
+    if variant is None and entry.route is not None:
+        raw = await loader.run_dataset_route(
+            module_id,
+            entry.route,
+            log_id,
+            user_id,
+            filter_override=filter_override,
+            params=params,
+            restrict_event_log=restrict_event_log,
+        )
+    else:
+        if variant is not None:
+            if entry.cache_key is None:
+                raise ValueError(f"Dataset {module_id}/{dataset_id} has no run variants.")
+            raw = await ResultCache(log_id, module_id, user_id, run_variant=variant).get(
+                entry.cache_key
+            )
+        else:
+            # No route to recompute under a filter: serve the default (unfiltered) cache
+            # variant. The context resolves whose cache that is (a shared log's owner).
+            ctx = await loader._make_context(module_id, log_id, user_id)
+            try:
+                raw = await ctx.cache.get(entry.cache_key)
+            finally:
+                shutil.rmtree(ctx.workdir, ignore_errors=True)
+        if restrict_event_log and raw is not None and not isinstance(raw, dict | list):
+            # Data wall: row-shaped (Parquet/bytes) artifacts never reach AI/MCP callers.
+            raise ValueError(f"Dataset {module_id}/{dataset_id} is not served to AI/MCP callers.")
+    return adapt(entry.shape, raw, entry.artifact_type)

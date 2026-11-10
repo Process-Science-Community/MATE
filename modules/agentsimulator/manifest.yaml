@@ -1,6 +1,6 @@
 id: agentsimulator
 name: AgentSimulator
-version: 1.0.0
+version: 1.0.1
 category: advanced
 description: >-
   Simulates your process as a team of interacting agents. It learns each
@@ -24,7 +24,7 @@ source:
       "AgentSimulator: An agent-based approach for data-driven business process
       simulation," in Proc. ICPM, Kgs. Lyngby, Denmark, 2024, pp. 97-104
     url: https://doi.org/10.1109/ICPM63005.2024.10680660
-artifacts:
+links:
   - name: AgentSimulator reference implementation (L. Kirchdorfer)
     url: https://github.com/lukaskirchdorfer/AgentSimulator
 license: MIT

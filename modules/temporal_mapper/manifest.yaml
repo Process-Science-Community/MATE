@@ -1,6 +1,6 @@
 id: temporal_mapper
 name: Temporal Mapper
-version: 0.1.0
+version: 0.1.1
 license: MIT
 category: advanced
 description: Explore recurring activity patterns and their evolution across calendar periods.
@@ -26,7 +26,7 @@ source:
       Workshops (BPM 2024), Lecture Notes in Business Information Processing, vol. 534. Springer,
       2025, pp. 338-349
     url: https://doi.org/10.1007/978-3-031-78666-2_26
-artifacts:
+links:
   - name: GraphExplain Temporal Mapper adaptation
     url: https://github.com/atancredi/graphexplain
 keywords: [temporal mapper, recurring patterns, process evolution, daily patterns]

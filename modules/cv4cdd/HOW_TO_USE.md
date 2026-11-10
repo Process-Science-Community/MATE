@@ -31,7 +31,7 @@ The panel has no controls. The settings sit on the module's page: open **Module 
 
 ### Configuration card
 
-Save the values with **Save configuration**. An administrator can lock the card, which makes it read-only. Saving does not start a run and does not change detections that already exist: new values apply the next time detection runs, for example after the log's data has changed.
+Save the values with **Save configuration**. An administrator can lock the card, which makes it read-only. Saving does not start a run. Detections made with other values, or with another model, count as outdated and are recomputed the next time you open the module for a process. Both values are the default for every process; **Parameters for this log** on the module's page for a process overrides them there.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |

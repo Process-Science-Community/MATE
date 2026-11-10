@@ -110,7 +110,11 @@ async def cancel_all_jobs(session: SessionDep, user: CurrentUserDep) -> dict[str
 async def retry_job(job_id: str, session: SessionDep, user: CurrentUserDep) -> dict[str, str]:
     await get_owned_job(session, job_id, user.id)
     runtime = get_job_runtime()
-    new_id = await runtime.retry(job_id)
+    try:
+        new_id = await runtime.retry(job_id)
+    except RuntimeError as exc:
+        # Its type has no handler now: the module is gone, or a pre-upgrade job type.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if new_id is None:
         raise HTTPException(
             status_code=409,

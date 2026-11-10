@@ -34,8 +34,9 @@ meta-analysis) and DOCX report generation are not yet ported.
 
 ## Costs and guardrails
 
-- The pipeline auto-refreshes the drift list when cv4cdd finishes, but it
-  never auto-runs the LLM stages – explanation runs are user-driven.
+- The drift list is read from cv4cdd's detections (manifest `inputs: drifts`)
+  on every request, but the LLM stages never auto-run – explanation runs are
+  user-driven.
 - Only the finished explanation of a drift (`explanations`) and the chat history
   per drift are cached. The LLM response caches live inside one pipeline
   invocation, so every **Run analysis** calls OpenAI again.

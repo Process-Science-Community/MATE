@@ -14,6 +14,7 @@ Gated on `settings.env == "dev"` because:
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import tempfile
 import time
@@ -59,22 +60,55 @@ def _is_ignored(relative: Path) -> bool:
     )
 
 
+def _symlinked_entries(modules_dir: Path) -> dict[Path, str]:
+    """Real folder -> entry name for each symlinked module entry under
+    ``modules_dir`` (`make module-dev` staging). watchdog doesn't follow
+    symlinks, so each real folder gets a watch of its own. Only module folders:
+    the tracked ``modules/node_modules`` link must not pull in the web deps."""
+    return {
+        entry.resolve(): entry.name
+        for entry in modules_dir.iterdir()
+        if entry.is_symlink() and (entry / "manifest.yaml").is_file()
+    }
+
+
+def _module_relative(path: Path, modules_dir: Path, links: dict[Path, str]) -> Path | None:
+    """``path`` as ``<entry>/...`` relative to ``modules_dir`` - mapping a path
+    inside a symlinked entry's real folder back to the entry - or None."""
+    path = path.resolve()
+    for real, name in links.items():
+        if path.is_relative_to(real):
+            return name / path.relative_to(real)
+    try:
+        return path.relative_to(modules_dir.resolve())
+    except ValueError:
+        return None
+
+
 class _ModuleEventHandler(FileSystemEventHandler):
-    def __init__(self, loader: ModuleLoader, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        loader: ModuleLoader,
+        loop: asyncio.AbstractEventLoop,
+        links: dict[Path, str],
+    ) -> None:
         self._loader = loader
         self._loop = loop
+        self._links = links
         self._pending: dict[str, float] = {}
         self._lock_set: set[str] = set()
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        # The event path is somewhere under modules/<id>/...
+        # The event path is somewhere under modules/<id>/... (or a linked real folder).
         try:
-            relative = (
-                Path(event.src_path).resolve().relative_to(self._loader.modules_dir.resolve())
+            relative = _module_relative(
+                Path(os.fsdecode(event.src_path)), self._loader.modules_dir, self._links
             )
-        except (ValueError, OSError):
+        except OSError:
+            return
+        if relative is None:
             return
         parts = relative.parts
         if not parts:
@@ -144,12 +178,17 @@ class HotReload:
             log.info("modules.hot_reload.no_modules_dir", dir=str(modules_dir))
             return
         loop = asyncio.get_running_loop()
-        handler = _ModuleEventHandler(self._loader, loop)
+        # shortcut: links are read once here, so an entry symlinked after boot isn't
+        # watched - restart the API after adding one.
+        links = _symlinked_entries(modules_dir)
+        handler = _ModuleEventHandler(self._loader, loop, links)
         observer = Observer()
         observer.schedule(handler, str(modules_dir), recursive=True)
+        for real in links:
+            observer.schedule(handler, str(real), recursive=True)
         observer.start()
         self._observer = observer
-        log.info("modules.hot_reload.started", dir=str(modules_dir))
+        log.info("modules.hot_reload.started", dir=str(modules_dir), linked=len(links))
 
     def stop(self) -> None:
         if self._observer is None:

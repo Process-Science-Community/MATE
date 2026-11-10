@@ -2,6 +2,7 @@
 
 Routes (mounted at /api/v1/modules/conformance):
   GET    /model              → active reference BPMN as {kind:"bpmn", xml, name}
+                                (discovery's Petri net as BPMN when none is uploaded)
   GET    /models             → list uploaded reference models
   POST   /model              → upload one reference BPMN (multipart), make it active
   DELETE /model/{name}       → remove a reference model
@@ -15,8 +16,10 @@ the log's processing→ready transition.
 
 The reference model is stored per-(user, log) on disk next to the log's
 events.parquet - it is specific to one log, unlike cv4cdd's platform-shared
-`model_store`. Results are cached per (model_hash, technique) so swapping the
-model or the technique recomputes.
+`model_store`. Without an uploaded model, discovery's mined Petri net (manifest
+`inputs: reference_model`) is converted to BPMN and used instead. Results are
+cached per (model_hash, technique) so swapping the model or the technique
+recomputes.
 """
 
 from __future__ import annotations
@@ -35,10 +38,17 @@ from fastapi import HTTPException, UploadFile
 
 from mate.sdk import Module, ModuleContext, job, route
 
-from .conformance import _conformance_worker, _precision_token_worker, validate_bpmn_file
+from .conformance import (
+    _conformance_worker,
+    _precision_token_worker,
+    petri_net_to_bpmn_file,
+    validate_bpmn_file,
+)
 
 MODELS_SUBDIR = "conformance_models"
 _VALID_SUFFIXES = {".bpmn", ".xml"}
+# Shown as the model name when discovery's Petri net stands in for an upload.
+_DISCOVERED_NAME = "Discovered Petri net (Discovery)"
 
 
 # ── per-(user, log) model storage ────────────────────────────────────────────
@@ -97,6 +107,16 @@ def _remove_from_index(models_dir: Path, name: str) -> str | None:
         active = models[-1]["name"] if models else None
     _write_index(models_dir, {"active": active, "models": models})
     return active
+
+
+def _require_owner(ctx: ModuleContext) -> None:
+    """403 for a shared dashboard's viewer: the reference models are the owner's."""
+    if ctx.read_only:
+        raise HTTPException(
+            status_code=403,
+            detail="This log is shared with you read-only: only its owner can change "
+            "its reference models.",
+        )
 
 
 def _hash_file(path: Path) -> str:
@@ -168,25 +188,44 @@ class ConformanceModule(Module):
             )
         return {"models": out, "active": active}
 
-    @route.get("/model")
-    async def get_model(self, ctx: ModuleContext) -> dict[str, Any]:
+    async def _active_model(self, ctx: ModuleContext) -> tuple[Path, str, str] | None:
+        """``(bpmn_path, name, model_hash)`` of the model a run checks against: the
+        active uploaded BPMN, else discovery's Petri net as BPMN, else None."""
         async with ctx.event_log as log:
             models_dir = _models_dir(log.events_path)
         active = _read_index(models_dir).get("active")
-        if not active:
+        if active and (models_dir / active).exists():
+            return models_dir / active, active, _hash_file(models_dir / active)
+        net = await ctx.inputs.get("reference_model")
+        if not isinstance(net, dict):
+            return None
+        canonical = json.dumps(net, sort_keys=True).encode("utf-8")
+        model_hash = hashlib.blake2b(canonical, digest_size=8).hexdigest()
+        # Uploads can never start with "_" (`_safe_name`), so this never shadows one.
+        path = models_dir / f"_discovered_{model_hash}.bpmn"
+        if not path.exists():
+            models_dir.mkdir(parents=True, exist_ok=True)
+            for old in models_dir.glob("_discovered_*.bpmn"):
+                old.unlink(missing_ok=True)
+            await asyncio.to_thread(petri_net_to_bpmn_file, net, str(path))
+        return path, _DISCOVERED_NAME, model_hash
+
+    @route.get("/model")
+    async def get_model(self, ctx: ModuleContext) -> dict[str, Any]:
+        model = await self._active_model(ctx)
+        if model is None:
             raise HTTPException(status_code=404, detail="No reference model uploaded yet.")
-        p = models_dir / active
-        if not p.exists():
-            raise HTTPException(status_code=404, detail="Reference model file is missing.")
+        path, name, _model_hash = model
         return {
             "kind": "bpmn",
             "version": 1,
-            "name": active,
-            "xml": p.read_text(encoding="utf-8"),
+            "name": name,
+            "xml": path.read_text(encoding="utf-8"),
         }
 
     @route.post("/model")
     async def upload_model(self, ctx: ModuleContext, file: UploadFile) -> dict[str, Any]:
+        _require_owner(ctx)
         if not file.filename:
             raise HTTPException(status_code=422, detail="filename missing")
         if Path(file.filename).suffix.lower() not in _VALID_SUFFIXES:
@@ -224,6 +263,7 @@ class ConformanceModule(Module):
 
     @route.delete("/model/{name}")
     async def delete_model(self, ctx: ModuleContext, name: str) -> dict[str, Any]:
+        _require_owner(ctx)
         safe = _safe_name(name)
         async with ctx.event_log as log:
             models_dir = _models_dir(log.events_path)
@@ -235,6 +275,7 @@ class ConformanceModule(Module):
 
     @route.post("/model/{name}/activate")
     async def activate_model(self, ctx: ModuleContext, name: str) -> dict[str, Any]:
+        _require_owner(ctx)
         safe = _safe_name(name)
         async with ctx.event_log as log:
             models_dir = _models_dir(log.events_path)
@@ -257,15 +298,10 @@ class ConformanceModule(Module):
         threshold = float(cfg.get("conforming_fitness_threshold", 1.0))
 
         await ctx.progress.update(0.0, "Loading reference model")
-        async with ctx.event_log as log:
-            models_dir = _models_dir(log.events_path)
-        active = _read_index(models_dir).get("active")
-        if not active:
+        model = await self._active_model(ctx)
+        if model is None:
             raise HTTPException(status_code=404, detail="Upload a reference BPMN first.")
-        bpmn_path = models_dir / active
-        if not bpmn_path.exists():
-            raise HTTPException(status_code=404, detail="Reference model file is missing.")
-        model_hash = _hash_file(bpmn_path)
+        bpmn_path, model_name, model_hash = model
 
         if technique == "alignments":
             await self._guard_alignments_size(ctx, cfg)
@@ -288,7 +324,7 @@ class ConformanceModule(Module):
             result["precision_skipped"] = note
 
         result["model_hash"] = model_hash
-        result["model_name"] = active
+        result["model_name"] = model_name
 
         await ctx.progress.update(0.97, "Saving results")
         await ctx.cache.set(_results_key(model_hash, technique), result)
@@ -374,19 +410,18 @@ class ConformanceModule(Module):
             )
 
     async def _cached_results(
-        self, ctx: ModuleContext, *, technique: str | None = None
+        self,
+        ctx: ModuleContext,
+        *,
+        technique: str | None = None,
+        model: tuple[Path, str, str] | None = None,
     ) -> dict[str, Any] | None:
         cfg = ctx.config.value or {}
         technique = _norm_technique(technique or cfg.get("technique"))
-        async with ctx.event_log as log:
-            models_dir = _models_dir(log.events_path)
-        active = _read_index(models_dir).get("active")
-        if not active:
+        model = model or await self._active_model(ctx)
+        if model is None:
             return None
-        bpmn_path = models_dir / active
-        if not bpmn_path.exists():
-            return None
-        key = _results_key(_hash_file(bpmn_path), technique)
+        key = _results_key(model[2], technique)
         if await ctx.cache.exists(key):
             cached = await ctx.cache.get(key)
             if isinstance(cached, dict):
@@ -397,19 +432,17 @@ class ConformanceModule(Module):
     async def results(self, ctx: ModuleContext, *, technique: str | None = None) -> dict[str, Any]:
         cfg = ctx.config.value or {}
         technique = _norm_technique(technique or cfg.get("technique"))
-        async with ctx.event_log as log:
-            models_dir = _models_dir(log.events_path)
-        active = _read_index(models_dir).get("active")
-        if not active or not (models_dir / active).exists():
+        model = await self._active_model(ctx)
+        if model is None:
             return {"kind": "conformance", "ran": False, "has_model": False, "technique": technique}
-        cached = await self._cached_results(ctx, technique=technique)
+        cached = await self._cached_results(ctx, technique=technique, model=model)
         if cached is not None:
             return {"ran": True, "has_model": True, **cached}
         return {
             "kind": "conformance",
             "ran": False,
             "has_model": True,
-            "model_name": active,
+            "model_name": model[1],
             "technique": technique,
         }
 

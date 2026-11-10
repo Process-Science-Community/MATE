@@ -52,8 +52,9 @@ COPY --from=builder /repo/apps/web/public /app/apps/web/public
 #
 # The bundler must also resolve any npm dep a module panel *bundles* (i.e. is
 # NOT in runtime-externals.json). Today that's only bpmn-js/bpmn-auto-layout/
-# diagram-js-minimap, which the discovery panel bundles deliberately (Turbopack
-# mis-bundles bpmn-moddle – see modules/discovery/.../BpmnCanvas.tsx). These
+# diagram-js-minimap, which the BPMN panels bundle deliberately and hand to the
+# platform BpmnView (Turbopack mis-bundles bpmn-moddle – see
+# apps/web/components/visualizations/artifacts/bpmn.tsx). These
 # are client-only and never enter Next's standalone trace, so they must be
 # installed here. Keep versions in sync with apps/web/package.json.
 RUN mkdir -p /opt/ff-bundler \

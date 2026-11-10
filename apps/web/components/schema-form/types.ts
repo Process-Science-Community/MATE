@@ -42,6 +42,9 @@ export interface PropSchema {
     /** Longer explanation shown behind a ⓘ rather than always-on helper text.
      * Use for the "why", and `description` for the "what". */
     help?: string;
+    /** `dataset`: the user may override the value per event log; the module-wide
+     * value is then the default every log inherits. Default `module`. */
+    scope?: "module" | "dataset";
   };
 }
 

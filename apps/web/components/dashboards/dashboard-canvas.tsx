@@ -27,7 +27,7 @@ import {
   type WidgetConfigSchema,
 } from "@/lib/dashboard-queries";
 import type { CardPatch } from "@/components/dashboards/dashboard-card";
-import { defaultVizForShape, vizRegistry } from "@/lib/visualizations/registry";
+import { defaultVizFor, vizRegistry } from "@/lib/visualizations/registry";
 
 import "react-grid-layout/css/styles.css";
 
@@ -182,7 +182,7 @@ export type AddStarter = (req: AddRequest, e: React.PointerEvent) => void;
  * viz's default geometry for a dataset (sized by its shape's default viz). */
 function addGeometry(req: AddRequest): { w: number; h: number } {
   if (req.kind === "widget") return { w: req.card.default_w, h: req.card.default_h };
-  const d = vizRegistry[defaultVizForShape(req.dataset.shape)]?.defaults;
+  const d = vizRegistry[defaultVizFor(req.dataset.shape, req.dataset.artifact_type)]?.defaults;
   return { w: d?.w ?? 6, h: d?.h ?? 8 };
 }
 
@@ -206,7 +206,7 @@ function buildAddItem(req: AddRequest, i: string, x: number, y: number): Dashboa
     };
   }
   const ds = req.dataset;
-  const vizId = defaultVizForShape(ds.shape);
+  const vizId = defaultVizFor(ds.shape, ds.artifact_type);
   const g = vizRegistry[vizId]?.defaults;
   return {
     i,
@@ -1023,14 +1023,20 @@ export function DashboardCanvas({
   useEffect(() => {
     if (!freeReflow) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      // Never hijack typing. Covers inputs, textareas, contenteditable, and
-      // anything inside a Radix popover (the card settings form lives there).
-      const el = document.activeElement as HTMLElement | null;
+      // Never hijack typing or a focused control's own keys. Covers inputs,
+      // textareas, contenteditable, anything inside a Radix popover/dialog/sheet
+      // (card settings, "Parameters for this log") and widgets that use arrows or
+      // Backspace themselves. Focus elsewhere still counts: selecting a card by its
+      // header (the drag handle preventDefaults the pointerdown) keeps focus where
+      // it was, e.g. on the Edit button.
+      const el = e.target as HTMLElement;
       if (
-        el &&
-        (el.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
-          el.closest("[data-radix-popper-content-wrapper]"))
+        el.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
+        el.closest(
+          '[data-radix-popper-content-wrapper], [role="dialog"], [role="slider"], ' +
+            '[role="switch"], [role="combobox"], [role="listbox"], [role="menu"]',
+        )
       ) {
         return;
       }

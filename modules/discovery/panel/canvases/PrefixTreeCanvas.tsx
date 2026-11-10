@@ -14,8 +14,7 @@ import {
 } from "@xyflow/react";
 
 import { cn } from "@/lib/cn";
-import { treeLayout } from "../layout/tree";
-import { mapEdgeType } from "../layout/direction";
+import { mapEdgeType, treeLayout } from "@/components/visualizations/artifacts/layout";
 import type { PrefixTreeData, PrefixTreeNodeFlat } from "../types";
 import { CanvasShell } from "@/components/visualizations/canvases/shared/canvas-shell";
 import { CanvasLayoutSkeleton } from "@/components/visualizations/canvases/shared/canvas-skeleton";

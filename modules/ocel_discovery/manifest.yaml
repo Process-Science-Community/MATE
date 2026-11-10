@@ -1,6 +1,6 @@
 id: ocel_discovery
 name: Object-Centric Discovery
-version: 1.0.0
+version: 1.0.1
 category: foundation
 description: >-
   Discovers a process from object-centric (OCEL) logs, showing the object types,

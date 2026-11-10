@@ -12,7 +12,16 @@ import {
   CanvasSettingsSwitch,
 } from "@/components/visualizations/canvases/shared/canvas-toolbar";
 
-import type { BpmnDecor } from "./canvases/BpmnCanvas";
+export interface BpmnDecor {
+  heatmap: boolean;
+  freqLabels: boolean;
+}
+
+/** Overlay defaults – also what the cluster's reset restores the tab to. */
+export const DEFAULT_BPMN_DECOR: BpmnDecor = {
+  heatmap: true,
+  freqLabels: true,
+};
 
 /** BPMN settings – popover body of the canvas control cluster. */
 export function BpmnCanvasSettings({

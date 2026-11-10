@@ -4,10 +4,20 @@
  * Each `VizSpec` declares which dataset shape(s) it accepts, its field-mapping
  * (Power-BI-style column binding), optional non-field options (card
  * `config_schema` dialect), default sizing, and the React component. Rendered
- * by dashboard generic-viz cards.
+ * by dashboard generic-viz cards. Artifact viewers (`acceptsArtifactTypes`)
+ * are offered – and picked by default – only for datasets that declare a
+ * matching `artifact_type`; untyped datasets keep the shape-based vizzes.
  */
 
+import { artifactTypeId } from "./adapters";
 import type { ColumnType, DatasetShape, VizSpec } from "./types";
+
+import {
+  BpmnArtifactViz,
+  DfgArtifactViz,
+  PetriNetArtifactViz,
+  ProcessTreeArtifactViz,
+} from "@/components/visualizations/artifacts/artifact-vizzes";
 
 import { HeatmapViz } from "@/components/visualizations/charts/heatmap-viz";
 import {
@@ -266,11 +276,64 @@ export const vizRegistry: Record<string, VizSpec> = {
     defaults: { w: 3, h: 10, minW: 2, minH: 6 },
     Component: TreeViz,
   },
+  "dfg-view": {
+    id: "dfg-view",
+    title: "Directly-follows graph",
+    icon: "Workflow",
+    group: "graph",
+    accepts: ["graph"],
+    acceptsArtifactTypes: ["dfg"],
+    fields: [],
+    defaults: { w: 4, h: 12, minW: 3, minH: 8 },
+    Component: DfgArtifactViz,
+  },
+  "petri-net-view": {
+    id: "petri-net-view",
+    title: "Petri net",
+    icon: "Workflow",
+    group: "graph",
+    accepts: ["graph"],
+    acceptsArtifactTypes: ["petri_net"],
+    fields: [],
+    defaults: { w: 6, h: 12, minW: 3, minH: 8 },
+    Component: PetriNetArtifactViz,
+  },
+  "process-tree-view": {
+    id: "process-tree-view",
+    title: "Process tree",
+    icon: "ListTree",
+    group: "tree",
+    accepts: ["tree"],
+    acceptsArtifactTypes: ["process_tree"],
+    fields: [],
+    defaults: { w: 6, h: 12, minW: 3, minH: 8 },
+    Component: ProcessTreeArtifactViz,
+  },
+  "bpmn-view": {
+    id: "bpmn-view",
+    title: "BPMN model",
+    icon: "Workflow",
+    group: "graph",
+    accepts: ["blob"],
+    acceptsArtifactTypes: ["bpmn"],
+    fields: [],
+    defaults: { w: 6, h: 12, minW: 3, minH: 8 },
+    Component: BpmnArtifactViz,
+  },
 };
+
+/** Can `spec` render a dataset of `shape` (typed as `artifactType`)? */
+export function vizAccepts(spec: VizSpec, shape: DatasetShape, artifactType?: string | null): boolean {
+  if (spec.acceptsArtifactTypes) {
+    const type = artifactTypeId(artifactType);
+    return type !== null && spec.acceptsArtifactTypes.includes(type);
+  }
+  return spec.accepts.includes(shape);
+}
 
 /** The viz auto-selected when a dataset of `shape` is first dropped (needs no
  * field-mapping, so it renders immediately). */
-export function defaultVizForShape(shape: DatasetShape): string {
+function defaultVizForShape(shape: DatasetShape): string {
   switch (shape) {
     case "graph":
       return "process-map";
@@ -283,7 +346,15 @@ export function defaultVizForShape(shape: DatasetShape): string {
   }
 }
 
-/** Every viz that can render a dataset of `shape` - powers the viz picker. */
-export function vizzesForShape(shape: DatasetShape): VizSpec[] {
-  return Object.values(vizRegistry).filter((v) => v.accepts.includes(shape));
+/** The viz auto-selected for a dropped dataset: its artifact viewer when the
+ * dataset is typed and one exists, else the shape default. */
+export function defaultVizFor(shape: DatasetShape, artifactType?: string | null): string {
+  const type = artifactTypeId(artifactType);
+  const viewer = type && Object.values(vizRegistry).find((v) => v.acceptsArtifactTypes?.includes(type));
+  return viewer ? viewer.id : defaultVizForShape(shape);
+}
+
+/** Every viz that can render a dataset - powers the viz picker. */
+export function vizzesFor(shape: DatasetShape, artifactType?: string | null): VizSpec[] {
+  return Object.values(vizRegistry).filter((v) => vizAccepts(v, shape, artifactType));
 }

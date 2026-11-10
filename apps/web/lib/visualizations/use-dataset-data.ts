@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
+import type { ArtifactTablePreview } from "@/lib/api-types";
 import { useDashboardFilterOptional } from "@/components/dashboards/dashboard-filter";
 import {
   EVENT_FILTER_HEADER,
@@ -19,21 +20,44 @@ import type { DatasetEnvelope, DatasetShape } from "@/lib/visualizations/types";
 export interface DatasetDataResult {
   envelope?: DatasetEnvelope;
   shape?: DatasetShape;
+  /** The dataset's declared artifact type (`petri_net`), null when untyped. */
+  artifactType?: string | null;
   isLoading: boolean;
   isError: boolean;
   /** The item's dataset_ref points at a module/dataset not in the catalog
    * (module uninstalled or dataset removed). */
   missing: boolean;
+  /** A precomputed dataset while a board or card filter is active: it shows the
+   * whole log, since a cached result can't be refiltered. */
+  unfiltered: boolean;
+  /** A precomputed table served as a preview: `shown` of `total` rows. */
+  truncated: { shown: number; total: number } | null;
+}
+
+function useCatalogEntry(item: DashboardItem) {
+  const ref = item.dataset_ref ?? null;
+  const { data: catalog } = useDatasetCatalog();
+  const entry = catalog?.find(
+    (e) => e.module_id === ref?.module_id && e.dataset_id === ref?.dataset_id,
+  );
+  return { ref, catalog, entry, precomputed: Boolean(entry && !entry.route && entry.content_ref_key) };
+}
+
+/** True for a dataset only the precompute writes (no route): it is read from the
+ * cache as computed, so a filter commit neither refetches nor dims its card. */
+export function usePrecomputedDataset(item: DashboardItem): boolean {
+  return useCatalogEntry(item).precomputed;
 }
 
 /**
  * Fetch + normalize a viz card's dataset. The catalog supplies the module
  * `route` + `shape` (so the placement only stores the `dataset_ref`); the data
- * is fetched straight from the module route via `api()`. Runs inside the
+ * is fetched straight from the module route via `api()`, or - for a dataset only
+ * the precompute writes (no route) - as the cached artifact by its ref. Runs inside the
  * dashboard's widget QueryClient (the card mounts within `DashboardWidgetScope`),
- * so a filter commit resets + refetches it exactly like a module widget.
- * React-query dedups the fetch so the card body and its settings form share one
- * request.
+ * so a filter commit resets + refetches it exactly like a module widget - except a
+ * precomputed one, which no filter reaches (`unfiltered` flags it). React-query
+ * dedups the fetch so the card body and its settings form share one request.
  *
  * Filtering follows the single precedence rule in `effectiveWidgetFilterHeader`:
  * when a board-global filter is active it already rides the ambient
@@ -44,14 +68,17 @@ export interface DatasetDataResult {
  * editing it refetches; global toggles refetch via the provider's resetQueries.
  */
 export function useDatasetData(item: DashboardItem, logId: string | null): DatasetDataResult {
-  const ref = item.dataset_ref ?? null;
-  const { data: catalog } = useDatasetCatalog();
-  const entry = catalog?.find(
-    (e) => e.module_id === ref?.module_id && e.dataset_id === ref?.dataset_id,
-  );
-  const route = entry?.route;
+  const { ref, catalog, entry, precomputed } = useCatalogEntry(item);
   const shape = entry?.shape as DatasetShape | undefined;
-  const enabled = Boolean(ref && route && logId);
+  const artifactType = entry?.artifact_type ?? null;
+  const path = !ref || !entry
+    ? null
+    : entry.route
+      ? `/api/v1/modules/${ref.module_id}${entry.route}?log_id=${logId}`
+      : entry.content_ref_key
+        ? `/api/v1/artifacts/content?ref=${encodeURIComponent(`${logId}/${ref.module_id}/${entry.content_ref_key}`)}`
+        : null;
+  const enabled = Boolean(path && logId);
 
   // Precedence (global wins) is computed centrally in `widget-filter.ts`.
   const board = useDashboardFilterOptional();
@@ -67,26 +94,43 @@ export function useDatasetData(item: DashboardItem, logId: string | null): Datas
     : null;
 
   const q = useQuery({
-    queryKey: ["dataset-data", ref?.module_id, ref?.dataset_id, logId, widgetKey],
-    queryFn: () =>
-      api<unknown>(
-        `/api/v1/modules/${ref!.module_id}${route}?log_id=${logId}`,
-        filterHeader ? { headers: { [EVENT_FILTER_HEADER]: filterHeader } } : undefined,
-      ),
+    queryKey: ["dataset-data", ref?.module_id, ref?.dataset_id, logId, precomputed ? null : widgetKey],
+    queryFn: async () => {
+      try {
+        return await api<unknown>(
+          path!,
+          filterHeader && !precomputed ? { headers: { [EVENT_FILTER_HEADER]: filterHeader } } : undefined,
+        );
+      } catch (e) {
+        // No cache entry yet (the precompute hasn't written it): empty, not an error.
+        if (precomputed && e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
     enabled,
     staleTime: 30_000,
+    // The board's filter commit skips it (`dashboard-filter.tsx`): nothing would change.
+    meta: { precomputed },
   });
 
   const envelope = useMemo(
-    () => (q.data !== undefined && shape ? normalize(shape, q.data) : undefined),
-    [q.data, shape],
+    () => (q.data !== undefined && shape ? normalize(shape, q.data, artifactType) : undefined),
+    [q.data, shape, artifactType],
   );
+
+  // A Parquet table arrives as a `{columns, rows, total_rows}` preview.
+  const preview = precomputed ? (q.data as Partial<ArtifactTablePreview> | null) : null;
+  const shown = Array.isArray(preview?.rows) ? preview.rows.length : 0;
+  const total = preview?.total_rows ?? 0;
 
   return {
     envelope,
     shape,
+    artifactType,
     isLoading: enabled && q.isLoading,
     isError: q.isError,
     missing: Boolean(catalog && ref && !entry),
+    unfiltered: precomputed && (globalActive || hasWidgetFilter(widgetFilter)),
+    truncated: total > shown ? { shown, total } : null,
   };
 }

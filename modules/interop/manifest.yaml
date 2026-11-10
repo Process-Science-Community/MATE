@@ -1,0 +1,147 @@
+id: interop
+name: Model Interop
+version: 0.1.0
+category: other
+description: >-
+  Converts process models between process tree, Petri net and BPMN, and imports
+  or exports them as PNML and BPMN files.
+about: >-
+  Combine models from different modules and tools: this module turns a process
+  tree into a Petri net, a Petri net into BPMN and BPMN back into a Petri net,
+  exports Petri nets as PNML and BPMN models as BPMN XML, and imports PNML or
+  BPMN files from other tools such as ProM, so other modules can work with them.
+keywords: ["interop", "convert", "conversion", "pnml", "bpmn", "petri net", "process tree", "import model", "export model", "prom"]
+source:
+  - title: "PM4Py: A process mining library for Python"
+    fullCitation: >-
+      A. Berti, S. van Zelst, and D. Schuster, "PM4Py: A process mining library
+      for Python," Softw. Impacts, vol. 17, 100556, 2023
+    url: https://doi.org/10.1016/j.simpa.2023.100556
+links:
+  - name: pm4py
+    url: https://github.com/process-intelligence-solutions/pm4py
+license: MIT
+# Runs entirely locally - safe to use against confidential event logs.
+isConfidentialSafe: true
+
+requirements:
+  event_log:
+    # Models belong to a case-centric log; the module never reads its events.
+    log_model: case_centric
+  optional_modules:
+    - id: discovery
+      reason: >-
+        Its Inductive-miner Petri net is converted to BPMN and its process tree to a
+        Petri net, which can be exported as PNML.
+
+# All optional: the precompute converts whichever of them is bound and produced.
+# Optional ports never run their producer first; the `discovery.completed` chain
+# does. A run variant may bind any port to another artifact of its type.
+inputs:
+  - id: process_tree
+    artifact_type: process_tree
+    from: discovery
+    dataset: process_tree
+    description: Process tree converted to a Petri net.
+  - id: petri_net
+    artifact_type: petri_net
+    from: discovery
+    dataset: petri_net
+    description: Petri net converted to BPMN and exported as PNML.
+  - id: bpmn
+    artifact_type: bpmn
+    # Unbound by default: Discovery declares no cached bpmn artifact yet.
+    description: BPMN model converted to a Petri net.
+
+provides: []
+# The precompute runs after Discovery's (and again whenever Discovery recomputes).
+consumes:
+  - discovery.completed
+
+dependencies:
+  python:
+    requires-python: ">=3.12"
+    packages: []
+    inherit:
+      - pm4py
+      # Safe pre-parse of uploaded XML; already in the platform venv.
+      - lxml
+    isolation: in_process
+
+# Each cache_key is written by the precompute (converters) or the import routes;
+# an upload is also kept under the reserved `__<cache_key>` entry the precompute
+# rebuilds it from. Each route serves that entry to the board and dashboard cards.
+datasets:
+  - id: petri_net_from_process_tree
+    title: Petri net (from process tree)
+    description: The bound process tree converted to a Petri net.
+    icon: Workflow
+    artifact_type: petri_net
+    cache_key: petri_net_from_process_tree
+  - id: bpmn_from_petri_net
+    title: BPMN (from Petri net)
+    description: The bound Petri net converted to a BPMN model.
+    icon: Workflow
+    artifact_type: bpmn
+    cache_key: bpmn_from_petri_net
+  - id: petri_net_from_bpmn
+    title: Petri net (from BPMN)
+    description: The bound BPMN model converted to a Petri net.
+    icon: Workflow
+    artifact_type: petri_net
+    cache_key: petri_net_from_bpmn
+  - id: imported_petri_net
+    title: Imported Petri net
+    description: The last PNML file imported for this log.
+    icon: Upload
+    artifact_type: petri_net
+    cache_key: imported_petri_net
+  - id: imported_bpmn
+    title: Imported BPMN model
+    description: The last BPMN file imported for this log.
+    icon: Upload
+    artifact_type: bpmn
+    cache_key: imported_bpmn
+
+# The module page (no panel) shows this board: converted models on top, imports
+# below, Petri nets left and BPMN right. `petri_net_from_bpmn` is left off - only
+# a run variant fills it, and the board shows the log's default results.
+frontend:
+  board:
+    items:
+      - id: petri-net-from-process-tree
+        viz: petri-net-view
+        dataset: petri_net_from_process_tree
+        title: Petri net (from process tree)
+        x: 0
+        y: 0
+        w: 6
+        h: 12
+      - id: bpmn-from-petri-net
+        viz: bpmn-view
+        dataset: bpmn_from_petri_net
+        title: BPMN (from Petri net)
+        x: 6
+        y: 0
+        w: 6
+        h: 12
+      - id: imported-petri-net
+        viz: petri-net-view
+        dataset: imported_petri_net
+        title: Imported Petri net
+        x: 0
+        y: 12
+        w: 6
+        h: 12
+      - id: imported-bpmn
+        viz: bpmn-view
+        dataset: imported_bpmn
+        title: Imported BPMN model
+        x: 6
+        y: 12
+        w: 6
+        h: 12
+
+permissions:
+  - read:event_log
+  - write:module_results

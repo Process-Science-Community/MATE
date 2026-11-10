@@ -21,6 +21,7 @@ export { KpiTile, KpiGrid } from "@/components/dashboards/kit/kpi";
 export { ChartFrame, LegendDot } from "@/components/dashboards/kit/chart-frame";
 export { InfoHint } from "@/components/dashboards/kit/info-hint";
 export { WidgetHelpBody, hasHelp } from "@/components/dashboards/kit/help";
+export { CardReadOnlyProvider, useCardReadOnly } from "@/components/dashboards/kit/read-only";
 export {
   SERIES_SLOTS,
   SERIES_COLORS,

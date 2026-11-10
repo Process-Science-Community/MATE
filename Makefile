@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install check-env preflight dev dev-api dev-web up up-dev down build test typecheck fmt clean codegen docs deploy
+.PHONY: help install check-env preflight dev dev-api dev-web module-dev check-module-versions up up-dev down build test typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -17,7 +17,7 @@ check-env: ## Validate the root environment file before starting Docker
 	@sh ./scripts/check-local-env.sh true
 
 preflight: ## Validate local env, free $(PORT), and reap stale workers
-	@sh ./scripts/check-local-env.sh
+	@[ -n "$(SKIP_ENV_CHECK)" ] || sh ./scripts/check-local-env.sh
 	@pids=$$(lsof -nP -tiTCP:$(PORT) -sTCP:LISTEN 2>/dev/null); \
 	if [ -n "$$pids" ]; then echo "preflight: freeing :$(PORT) (pids $$pids)"; kill -9 $$pids 2>/dev/null || true; fi
 	@pkill -9 -f "uvicorn mate.api.main" 2>/dev/null || true
@@ -38,6 +38,20 @@ dev-api: preflight ## Run only the API (with --reload)
 
 dev-web: preflight ## Run only the web dev server
 	set -a; . ./.env; set +a; cd apps/web && pnpm dev
+
+# Validate MODULE before preflight kills anything. module-dev forces DEMO_MODE itself
+# and works without .env, so preflight skips the env check.
+module-dev: ## Run one module on a demo-mode stack: make module-dev MODULE=modules/<folder>
+	@[ -n "$(MODULE)" ] && [ -f "$(MODULE)/manifest.yaml" ] || { \
+		echo "usage: make module-dev MODULE=modules/<folder>  (the folder needs a manifest.yaml)" >&2; exit 2; }
+	@$(MAKE) --no-print-directory preflight SKIP_ENV_CHECK=1
+	@PORT=$(PORT) sh ./scripts/module-dev.sh "$(MODULE)"
+
+# Base ref for check-module-versions. Override with `make check-module-versions BASE=main`.
+BASE ?= origin/main
+
+check-module-versions: ## Fail when a changed module under modules/ lacks the version bump its contract change needs
+	uv run python scripts/check-module-versions.py --base $(BASE)
 
 up: check-env ## docker compose up (production-style images)
 	docker compose up -d --build

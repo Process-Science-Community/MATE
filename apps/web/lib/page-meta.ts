@@ -8,7 +8,7 @@
 // generic label until the data lands. Keep this in sync with the routes under
 // apps/web/app/(platform).
 
-import type { ManifestArtifact, ManifestSource } from "@/lib/api-types";
+import type { ManifestLink, ManifestSource } from "@/lib/api-types";
 
 /** Rich module "About" payload — manifest-sourced, rendered by the topbar ⓘ. */
 export interface ModuleAbout {
@@ -21,7 +21,7 @@ export interface ModuleAbout {
   /** Cited works (max 20) — title + full citation + optional DOI link. */
   sources?: ManifestSource[] | null;
   /** Named links (max 20) — code repo, dataset, demo, released model. */
-  artifacts?: ManifestArtifact[] | null;
+  links?: ManifestLink[] | null;
   license?: string | null;
   version?: string | null;
 }
@@ -37,6 +37,7 @@ export interface PageMeta {
 export interface ResolvePageCtx {
   logNames?: Map<string, string>;
   dashboardNames?: Map<string, string>;
+  flowNames?: Map<string, string>;
   /** Module id → about payload, for both /modules/:id and …/processes/:id/modules/:id. */
   modules?: Map<string, ModuleAbout>;
 }
@@ -63,6 +64,15 @@ const STATIC: Record<string, PageMeta> = {
   "/dashboards": {
     title: "Dashboards",
     description: "Compose cards from any module into a saved, reopenable board.",
+  },
+  "/artifacts": {
+    title: "Artifacts",
+    description:
+      "Models and tables your modules produced or you imported. View, pin, export, and feed them into other modules.",
+  },
+  "/flows": {
+    title: "Flows",
+    description: "Chain modules into a pipeline and run it on any event log.",
   },
   "/modules": {
     title: "Modules",
@@ -195,6 +205,14 @@ export function resolvePageMeta(pathname: string, ctx: ResolvePageCtx = {}): Pag
     return {
       title: ctx.dashboardNames?.get(parts[1]) ?? "Dashboard",
       description: "A saved board of module cards bound to one event log.",
+    };
+  }
+
+  // /flows/:flowId
+  if (parts[0] === "flows" && parts.length >= 2 && UUID_RE.test(parts[1])) {
+    return {
+      title: ctx.flowNames?.get(parts[1]) ?? "Flow",
+      description: "A pipeline of modules: sources feed modules, outputs land in your workspace.",
     };
   }
 

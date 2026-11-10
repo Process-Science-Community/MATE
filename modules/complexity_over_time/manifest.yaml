@@ -1,6 +1,6 @@
 id: complexity_over_time
 name: Complexity Over Time
-version: 1.0.0
+version: 1.0.1
 category: advanced
 description: >-
   Tracks how your process complexity changes over time. It splits the log into
@@ -127,6 +127,7 @@ config_schema:
       ui:
         widget: number
         affects: compute
+        scope: dataset
     default_slices:
       type: integer
       title: Default number of slices
@@ -147,3 +148,4 @@ config_schema:
       ui:
         widget: number
         affects: compute
+        scope: dataset

@@ -42,14 +42,18 @@ export function SchemaForm({
   /** Render only these keys, in this order. Used by the card inspector to show
    * just the knobs the selected view actually exposes. */
   only,
+  /** Rendered beside a field's label, e.g. its per-log inherit/override state. */
+  fieldExtra,
   className,
 }: {
   schema: ConfigSchema | null | undefined;
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
-  disabled?: boolean;
+  /** All fields, or per field via a predicate (e.g. only the admin-locked ones). */
+  disabled?: boolean | ((key: string) => boolean);
   density?: SchemaFormDensity;
   only?: readonly string[];
+  fieldExtra?: (key: string, prop: PropSchema) => React.ReactNode;
   className?: string;
 }) {
   const all = schema?.properties ?? {};
@@ -76,8 +80,9 @@ export function SchemaForm({
               prop={prop}
               value={values[key]}
               onChange={(v) => onChange(key, v)}
-              disabled={disabled}
+              disabled={typeof disabled === "function" ? disabled(key) : disabled}
               density={density}
+              extra={fieldExtra?.(key, prop)}
             />
           ))}
         </div>
@@ -110,6 +115,7 @@ export function SchemaField({
   onChange,
   disabled = false,
   density = "comfortable",
+  extra,
 }: {
   fieldKey: string;
   prop: PropSchema;
@@ -117,6 +123,7 @@ export function SchemaField({
   onChange: (value: unknown) => void;
   disabled?: boolean;
   density?: SchemaFormDensity;
+  extra?: React.ReactNode;
 }) {
   const control = controlFor(prop);
   const compact = density === "compact";
@@ -132,13 +139,16 @@ export function SchemaField({
           {label}
           {prop.ui?.help && <InfoHint label={`About ${label}`}>{prop.ui.help}</InfoHint>}
         </Label>
-        {/* A slider with no read-out is unusable — you can see the handle move
-            but not what you set it to. */}
-        {control === "slider" && (
-          <span className="text-[11px] tabular-nums text-muted-foreground">
-            {formatNumeric(current, prop)}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {extra}
+          {/* A slider with no read-out is unusable — you can see the handle move
+              but not what you set it to. */}
+          {control === "slider" && (
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {formatNumeric(current, prop)}
+            </span>
+          )}
+        </div>
       </div>
 
       {prop.description && !compact && (

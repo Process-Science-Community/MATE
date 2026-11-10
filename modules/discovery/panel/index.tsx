@@ -1,25 +1,42 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { CanvasComputingState } from "@/components/visualizations/canvases/shared/canvas-skeleton";
+import { BpmnView, type BpmnViewer } from "@/components/visualizations/artifacts/bpmn";
+import { PetriNetView } from "@/components/visualizations/artifacts/petri-net";
+import { ProcessTreeView } from "@/components/visualizations/artifacts/process-tree";
 
-import { BpmnCanvas, DEFAULT_BPMN_DECOR, type BpmnDecor } from "./canvases/BpmnCanvas";
-import { buildFrequencyMaps, heatColor, HEAT_BUCKETS } from "./bpmn-decorate";
-import { BpmnCanvasSettings } from "./bpmn-canvas-controls";
+import {
+  applyBpmnOverlay,
+  buildFrequencyMaps,
+  heatColor,
+  injectBpmnStyles,
+  HEAT_BUCKETS,
+} from "./bpmn-decorate";
+import { BPMN_ENGINE } from "./bpmn-engine";
+import { BpmnCanvasSettings, DEFAULT_BPMN_DECOR, type BpmnDecor } from "./bpmn-canvas-controls";
 import { DfgCanvas } from "./canvases/DfgCanvas";
 import { HeuristicsNetCanvas } from "./canvases/HeuristicsNetCanvas";
-import { PetriNetCanvas } from "./canvases/PetriNetCanvas";
 import { PetriCanvasSettings, type PetriAlgo } from "./petri-canvas-controls";
 import { PrefixTreeCanvas } from "./canvases/PrefixTreeCanvas";
-import { ProcessTreeCanvas } from "./canvases/ProcessTreeCanvas";
 import { ProcessTreeCanvasSettings, type TreeAlgo } from "./process-tree-canvas-controls";
 import { DfgDetailsPanel } from "./dfg-details-panel";
-import { DiscoverySettingsProvider, useHeuristicsRenderSettings } from "./discovery-settings-context";
+import {
+  DiscoverySettingsProvider,
+  useGeneralSettings,
+  useHeuristicsRenderSettings,
+  useNodePositions,
+  usePersistNodePositions,
+  usePetriSettings,
+  useProcessTreeSettings,
+  useResetPositions,
+} from "./discovery-settings-context";
 
 import {
   downloadBpmn,
@@ -205,6 +222,11 @@ function PetriTab({ logId }: { logId: string }) {
     : algo === "ilp" ? ilp
     : inductive;
   const shown = useSticky(q.data);
+  const general = useGeneralSettings();
+  const [petri] = usePetriSettings();
+  const positions = useNodePositions("petri");
+  const persist = usePersistNodePositions("petri");
+  const resetPositions = useResetPositions();
 
   const settings = (
     <PetriCanvasSettings
@@ -220,7 +242,16 @@ function PetriTab({ logId }: { logId: string }) {
 
   return (
     <CanvasFrame>
-      <PetriNetCanvas data={shown} settings={settings} busy={q.isFetching} />
+      <PetriNetView
+        net={shown}
+        petri={petri}
+        general={general}
+        positions={positions}
+        onPositionsChange={persist}
+        onResetPositions={() => resetPositions("petri")}
+        settings={settings}
+        busy={q.isFetching}
+      />
     </CanvasFrame>
   );
 }
@@ -234,6 +265,11 @@ function ProcessTreeTab({ logId }: { logId: string }) {
 
   const q = algo === "imf" ? imf : inductive;
   const shown = useSticky(q.data);
+  const general = useGeneralSettings();
+  const [render] = useProcessTreeSettings();
+  const positions = useNodePositions("process_tree");
+  const persist = usePersistNodePositions("process_tree");
+  const resetPositions = useResetPositions();
 
   const settings = (
     <ProcessTreeCanvasSettings
@@ -249,7 +285,16 @@ function ProcessTreeTab({ logId }: { logId: string }) {
 
   return (
     <CanvasFrame>
-      <ProcessTreeCanvas data={shown} settings={settings} busy={q.isFetching} />
+      <ProcessTreeView
+        tree={shown}
+        render={render}
+        general={general}
+        positions={positions}
+        onPositionsChange={persist}
+        onResetPositions={() => resetPositions("process_tree")}
+        settings={settings}
+        busy={q.isFetching}
+      />
     </CanvasFrame>
   );
 }
@@ -311,6 +356,18 @@ function BpmnTab({ logId }: { logId: string }) {
 
   const [decor, setDecor] = useState<BpmnDecor>(DEFAULT_BPMN_DECOR);
   const [search, setSearch] = useState<{ q: string; nonce: number }>({ q: "", nonce: 0 });
+  const decorate = useCallback(
+    (viewer: BpmnViewer) => {
+      injectBpmnStyles();
+      applyBpmnOverlay(viewer, {
+        freq,
+        heatmap: decor.heatmap,
+        freqLabels: decor.freqLabels,
+        formatNumber,
+      });
+    },
+    [freq, decor],
+  );
 
   const settings = (
     <BpmnCanvasSettings
@@ -342,10 +399,10 @@ function BpmnTab({ logId }: { logId: string }) {
       <CanvasFrame>
         {/* No `key` on the canvas: it re-imports new XML in place, so a re-mine
             keeps the viewer – and this settings popover – mounted. */}
-        <BpmnCanvas
+        <BpmnView
+          engine={BPMN_ENGINE}
           xml={shown.xml}
-          freq={freq}
-          decor={decor}
+          decorate={decorate}
           searchQuery={search.q}
           searchNonce={search.nonce}
           onSearchResult={(found) => {
@@ -360,7 +417,11 @@ function BpmnTab({ logId }: { logId: string }) {
             setFreqFilter(0);
             setDecor(DEFAULT_BPMN_DECOR);
           }}
+          resetLabel="Reset view"
+          resetTitle="Reset BPMN view?"
+          resetDescription="The frequency filter and the overlay toggles go back to their defaults and the diagram is re-framed. Clearing a non-zero filter re-mines the model."
           busy={q.isFetching}
+          busyLabel="Re-mining…"
         />
         {decor.heatmap && freq.maxActivity > 0 && <HeatLegend maxActivity={freq.maxActivity} />}
       </CanvasFrame>

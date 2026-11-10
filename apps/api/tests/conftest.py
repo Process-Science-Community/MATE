@@ -43,6 +43,8 @@ def _configure_env(session_data_dir: Path) -> Iterator[None]:
     os.environ["DATA_DIR"] = str(session_data_dir)
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{session_data_dir}/metadata.db"
     os.environ["WORKER_CONCURRENCY"] = "1"
+    # The startup backfill would race every test's own index (tests call it directly).
+    os.environ["ARTIFACTS_BACKFILL"] = "false"
     # Default modules dir: an empty subdir so unrelated tests don't see the fixture mod.
     empty_modules = session_data_dir / "modules-empty"
     empty_modules.mkdir(exist_ok=True)
@@ -191,18 +193,29 @@ async def _seed_module_installs_for_test_user() -> None:
 
 @contextlib.asynccontextmanager
 async def _sample_mod_client(
-    tmp_path: Path, *, seed: bool, mod: str = "sample_mod", admin: bool = False
+    tmp_path: Path,
+    *,
+    seed: bool,
+    mod: str = "sample_mod",
+    admin: bool = False,
+    symlink: bool = False,
 ) -> AsyncIterator[AsyncClient]:
     """Spin up the app with a fixture module (`mod`) as a default module.
 
     Copies the fixture into a tmp dir and points MODULES_DIR at it for the
     duration so `mod` is treated as a repo default (it lives under the defaults
     root). ``seed`` pre-grants the test user ownership of every loaded module
-    (skip it to exercise the lazy default-seeding path).
+    (skip it to exercise the lazy default-seeding path). ``symlink`` stages it the
+    way `make module-dev` does: the defaults root holds a symlink to the real folder.
     """
     src = Path(__file__).parent / "fixtures" / "modules" / mod
     dst = tmp_path / "modules" / mod
-    shutil.copytree(src, dst)
+    if symlink:
+        shutil.copytree(src, tmp_path / "real" / mod)
+        dst.parent.mkdir()
+        dst.symlink_to(tmp_path / "real" / mod)
+    else:
+        shutil.copytree(src, dst)
 
     prev_modules = os.environ.get("MODULES_DIR")
     os.environ["MODULES_DIR"] = str(tmp_path / "modules")

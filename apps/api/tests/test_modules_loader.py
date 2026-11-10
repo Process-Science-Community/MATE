@@ -710,3 +710,73 @@ def test_job_runtime_register_replace() -> None:
 
     runtime.register("module.x.run", second, replace=True)  # type: ignore[arg-type]
     assert runtime._handlers["module.x.run"] is second  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_subprocess_modules_mount_only_their_own_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each bridged module mounts only its own handlers, also after a reload.
+
+    The stubs used to land on the one `SubprocessModule` class every bridged
+    module shares, so each later-loaded module mounted the earlier ones' routes
+    (500 on call: `'SubprocessModule' object has no attribute 'log_id'`).
+    """
+    import shutil
+    from types import SimpleNamespace
+
+    from mate.api.events import EventBus
+    from mate.api.jobs.runtime import JobRuntime
+    from mate.api.modules import loader as loader_mod
+    from mate.api.modules.registry import CapabilityRegistry
+    from mate.api.modules.runtimes import runtime_for
+    from mate.api.modules.runtimes.base import WorkerLaunchSpec
+    from mate.api.modules.subprocess_host import SubprocessModule
+    from mate.sdk.manifest import Manifest
+    from tests.test_worker_conformance import REPO_ROOT, _launch_for
+
+    folders = [FIXTURES / "conformance_worker", FIXTURES / "inputs_worker"]
+    if shutil.which("java"):
+        folders.append(REPO_ROOT / "modules" / "performance_java")  # tracked jar, no rebuild
+    manifests = {f: Manifest.load_yaml(f / "manifest.yaml") for f in folders}
+    py_launch = _launch_for("python")[0]
+
+    async def no_materialize(*_args: object, **_kwargs: object) -> None:
+        return None  # Python fixtures run on the platform interpreter; the jar is prebuilt.
+
+    def launch_spec(folder: Path, manifest: Manifest) -> WorkerLaunchSpec:
+        if manifest.runtime.kind == "jvm":
+            return runtime_for(manifest).launch_spec(folder, manifest)
+        return py_launch
+
+    fake = SimpleNamespace(materialize=no_materialize, launch_spec=launch_spec)
+    monkeypatch.setattr(loader_mod, "runtime_for", lambda _manifest: fake)
+
+    loader = loader_mod.ModuleLoader(
+        tmp_path, bus=EventBus(), runtime=JobRuntime(), registry=CapabilityRegistry()
+    )
+
+    def mounted(module_id: str) -> set[str]:
+        return {r.path for r in loader.loaded[module_id].sub_router.routes}  # type: ignore[attr-defined]
+
+    def own(module_id: str) -> set[str]:
+        meta = loader._bridges[module_id]._handlers_meta
+        return {f"/modules/{module_id}{e['route']['path']}" for e in meta if e.get("route")}
+
+    try:
+        for folder, manifest in manifests.items():
+            await loader.load_one(folder, manifest)
+        # Reload the first-loaded module after the others: no leftovers either.
+        first = folders[0]
+        await loader.load_one(first, manifests[first])
+
+        for manifest in manifests.values():
+            assert mounted(manifest.id) == own(manifest.id), manifest.id
+        assert mounted("inputs_worker") == {"/modules/inputs_worker/inputs"}
+        assert "/modules/conformance_worker/inputs" not in mounted("conformance_worker")
+        assert loader._live_handler("inputs_worker", "echo") is None
+        assert not hasattr(SubprocessModule, "echo")
+        assert not hasattr(SubprocessModule, "read_inputs")
+    finally:
+        for module_id in list(loader.loaded):
+            await loader.unload_one(module_id)

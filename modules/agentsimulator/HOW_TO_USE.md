@@ -77,7 +77,7 @@ Each card has an info icon with a short explanation and an arrow (**Open in modu
 - **Cycle time – real vs simulated**: the duration classes of the cycle time tab.
 - **Case arrivals – real vs simulated**: the arrivals chart, with its days or weeks numbered from the start.
 
-A card without a result reads "No simulation yet for this log". Its **Run simulation** button starts a run with the saved options, and **Configure** opens this page. While a run is going, whoever started it, such a card shows the progress, and it also says when the last run failed or was cancelled.
+A card without a result reads "No simulation yet for this log". Its **Run simulation** button starts a run with the saved options, and **Configure** opens this page. While a run is going, whoever started it, such a card shows the progress, and it also says when the last run failed or was cancelled. On a dashboard shared with you, the card reads "Only the owner can run the simulation." in place of both buttons.
 
 ## Tips and limits
 

@@ -62,6 +62,14 @@ The table is generated from that schema: after changing a route, a request model
 | Log data | `PATCH /event-logs/{log_id}/events/{row_index}` | `{"field":"…","value":null}` | `200` `{"row":null,"row_index":25,"new_row_index":25,"header":{…}}` |
 | Log data | `GET /event-logs/{log_id}/module-runs` | — | `200` `[{"module_id":"018f2c9a…","status":"idle","job_id":"018f2c9a…","precompute":"eager",…}]` |
 | Log data | `POST /event-logs/{log_id}/module-runs/{module_id}` | `{"force":false}` | `200` `[{"module_id":"018f2c9a…","status":"idle","job_id":"018f2c9a…","precompute":"eager",…}]` |
+| Log data | `GET /event-logs/{log_id}/module-runs/{module_id}/variants` | — | `200` `[{"variant":"…","status":"queued","spec":{"params":null,…},"job_id":"018f2c9a…",…}]` |
+| Log data | `POST /event-logs/{log_id}/module-runs/{module_id}/variants` | `{"params":null,"inputs":null,"filter":["…"],"force":false}` | `200` `{"variant":"…","status":"queued","spec":{"params":null,"inputs":null,…},…}` |
+| Log data | `GET /event-logs/{log_id}/module-runs/{module_id}/variants/{variant}` | — | `200` `{"variant":"…","status":"queued","spec":{"params":null,"inputs":null,…},…}` |
+| Log data | `DELETE /event-logs/{log_id}/module-runs/{module_id}/variants/{variant}` | — | `204` — |
+| Log data | `GET /event-logs/{log_id}/modules/{module_id}/board` | — | `200` `{"id":"018f2c9a…","name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` |
+| Log data | `POST /event-logs/{log_id}/modules/{module_id}/board/reset` | — | `200` `{"id":"018f2c9a…","name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` |
+| Log data | `GET /event-logs/{log_id}/modules/{module_id}/config` | — | `200` `{"schema":null,"overrides":null,"module_values":null,"effective":null,"locked":["…"]}` |
+| Log data | `PUT /event-logs/{log_id}/modules/{module_id}/config` | `{"overrides":null}` | `200` `{"schema":null,"overrides":null,"module_values":null,"effective":null,"locked":["…"]}` |
 | Log data | `POST /event-logs/{log_id}/reimport` | — | `202` `{"log_id":"018f2c9a…","job_id":"018f2c9a…"}` |
 | Log data | `POST /event-logs/{log_id}/remap` | `{"case_id":"018f2c9a…","activity":"…","timestamp":"2026-01-01T00:00:00Z",…}` | `202` `{"log_id":"018f2c9a…","job_id":"018f2c9a…"}` |
 | Log data | `GET /event-logs/{log_id}/time-bounds` | — | `200` `{"field":"…","min_ts":"…","max_ts":"…"}` |
@@ -103,12 +111,31 @@ The table is generated from that schema: after changing a route, a request model
 | Modules | `GET /modules/{module_id}/config` | — | `200` `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` |
 | Modules | `PUT /modules/{module_id}/config` | `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` | `200` `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` |
 | Modules | `GET /modules/{module_id}/config-schema` | — | `200` `null` |
-| Modules | `GET /modules/{module_id}/layout` | `?log_id=018f2c9a…` | `200` `{"layout":null}` |
-| Modules | `PUT /modules/{module_id}/layout` | `?log_id=018f2c9a…` · `{"layout":null}` | `200` `{"layout":null}` |
+| Modules | `GET /modules/{module_id}/guide` | — | `200` `{"module_id":"018f2c9a…","markdown":"…"}` |
 | Modules | `GET /modules/{module_id}/manifest` | — | `200` `null` |
+| Modules | `GET /modules/{module_id}/versions` | — | `200` `{"current":{"version":"…","content_hash":"…"},"history":[{…}],"previous_available":false,…}` |
 | Datasets | `GET /datasets/catalog` | — | `200` `[{"module_id":"018f2c9a…","module_name":"…","dataset_id":"018f2c9a…",…}]` |
 | Datasets | `GET /datasets/{module_id}/{dataset_id}` | `?log_id=018f2c9a…` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |
 | Datasets | `POST /datasets/{module_id}/{dataset_id}/transform` | `{"log_id":"018f2c9a…","transforms":["…"]}` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |
+| Artifacts | `GET /artifacts` | — | `200` `[{"id":"018f2c9a…","ref":"…","artifact_type":"…","type_version":25,"source":"run",…}]` |
+| Artifacts | `POST /artifacts` | — | `201` `{"id":"018f2c9a…","ref":"…","artifact_type":"…","type_version":25,"source":"run",…}` |
+| Artifacts | `GET /artifacts/content` | `?ref=…` | `200` `null` |
+| Artifacts | `GET /artifacts/{artifact_id}` | — | `200` `{"id":"018f2c9a…","ref":"…","artifact_type":"…","type_version":25,"source":"run",…}` |
+| Artifacts | `PATCH /artifacts/{artifact_id}` | `{"name":"nightly import","pinned":false}` | `200` `{"id":"018f2c9a…","ref":"…","artifact_type":"…","type_version":25,"source":"run",…}` |
+| Artifacts | `DELETE /artifacts/{artifact_id}` | — | `204` — |
+| Artifacts | `GET /artifacts/{artifact_id}/content` | — | `200` `null` |
+| Artifacts | `GET /artifacts/{artifact_id}/download` | — | `200` — |
+| Flows | `GET /flows` | — | `200` `[{"id":"018f2c9a…","name":"nightly import","description":"…",…}]` |
+| Flows | `POST /flows` | `{"name":"nightly import","description":"…","log_model":"case_centric","graph":{…}}` | `201` `{"id":"018f2c9a…","name":"nightly import","description":"…","log_model":"case_centric",…}` |
+| Flows | `GET /flows/palette` | — | `200` `null` |
+| Flows | `GET /flows/{flow_id}` | — | `200` `{"id":"018f2c9a…","name":"nightly import","description":"…","log_model":"case_centric",…}` |
+| Flows | `PUT /flows/{flow_id}` | `{"name":"nightly import","description":"…","graph":{"nodes":[{…}],…}}` | `200` `{"id":"018f2c9a…","name":"nightly import","description":"…","log_model":"case_centric",…}` |
+| Flows | `DELETE /flows/{flow_id}` | — | `204` — |
+| Flows | `GET /flows/{flow_id}/runs` | `?limit=20` | `200` `[{"id":"018f2c9a…","log_id":"018f2c9a…","status":"queued",…}]` |
+| Flows | `POST /flows/{flow_id}/runs` | `{"log_id":"018f2c9a…"}` | `202` `{"id":"018f2c9a…","log_id":"018f2c9a…","status":"queued",…}` |
+| Flows | `GET /flows/{flow_id}/runs/{run_id}` | — | `200` `{"id":"018f2c9a…","log_id":"018f2c9a…","status":"queued",…}` |
+| Flows | `POST /flows/{flow_id}/runs/{run_id}/cancel` | — | `200` `{"id":"018f2c9a…","log_id":"018f2c9a…","status":"queued",…}` |
+| Flows | `POST /flows/{flow_id}/validate` | `{"log_id":"018f2c9a…"}` | `200` `{"ok":false,"errors":[{"node_id":"018f2c9a…","edge_id":"018f2c9a…",…}]}` |
 | Dashboards | `POST /dashboards/import` | `{"name":"nightly import","description":"…","log_model":"case_centric","items":[{…}],…}` | `201` `{"id":"018f2c9a…","name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` |
 | Dashboards | `GET /dashboards` | — | `200` `[{"id":"018f2c9a…","name":"nightly import","description":"…",…}]` |
 | Dashboards | `POST /dashboards` | `{"name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` | `201` `{"id":"018f2c9a…","name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` |
@@ -195,6 +222,7 @@ The table is generated from that schema: after changing a route, a request model
 | Admin | `POST /admin/modules/{module_id}/installs` | `{"user_id":"018f2c9a…"}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `DELETE /admin/modules/{module_id}/installs/{user_id}` | — | `204` — |
 | Admin | `PUT /admin/modules/{module_id}/precompute` | `{"mode":"eager"}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
+| Admin | `POST /admin/modules/{module_id}/rollback` | — | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `PUT /admin/modules/{module_id}/withhold` | `{"withheld":false}` | `200` `{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}` |
 | Admin | `GET /admin/teams` | — | `200` `[{"id":"018f2c9a…","name":"nightly import","member_count":0,…}]` |
 | Admin | `POST /admin/teams` | `{"name":"nightly import"}` | `201` `{"id":"018f2c9a…","name":"nightly import","member_count":0,…}` |

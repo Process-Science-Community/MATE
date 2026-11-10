@@ -62,6 +62,8 @@ data/metadata.db
 data/metadata.db-wal
 data/metadata.db-shm
 data/*.bak
+# `make module-dev` staging symlinks + its isolated runtime data.
+data/.module-dev/
 # `Settings.data_dir` defaults to the *relative* path `data`, so launching the
 # API from anywhere but the repo root drops a second runtime tree next to the
 # cwd. Only the root `data/` is real - catch the common stray.

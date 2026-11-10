@@ -1,5 +1,8 @@
 package mate.sdk.internal;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,6 +13,7 @@ import mate.sdk.Bus;
 import mate.sdk.Cache;
 import mate.sdk.DataWallException;
 import mate.sdk.EventLog;
+import mate.sdk.Inputs;
 import mate.sdk.ModuleContext;
 import mate.sdk.Progress;
 import mate.sdk.Registry;
@@ -45,6 +49,11 @@ public final class ProxyContext implements ModuleContext {
     }
 
     @Override
+    public boolean readOnly() {
+        return Boolean.TRUE.equals(meta.get("read_only"));
+    }
+
+    @Override
     public Path workdir() {
         Object dir = meta.get("workdir");
         if (dir == null) {
@@ -68,6 +77,11 @@ public final class ProxyContext implements ModuleContext {
     @Override
     public Cache cache() {
         return new CacheProxy();
+    }
+
+    @Override
+    public Inputs inputs() {
+        return new InputsProxy();
     }
 
     @Override
@@ -190,6 +204,59 @@ public final class ProxyContext implements ModuleContext {
                 throw new DataWallException("cache.dir");
             }
             return Path.of(String.valueOf(dir));
+        }
+    }
+
+    private final class InputsProxy implements Inputs {
+
+        @Override
+        public List<String> ports() {
+            return new ArrayList<>(snapshot().keySet());
+        }
+
+        @Override
+        public Optional<String> ref(String port) {
+            return field(port, "ref").map(String::valueOf);
+        }
+
+        @Override
+        public Optional<Path> path(String port) {
+            return field(port, "path").map(path -> Path.of(String.valueOf(path)));
+        }
+
+        @Override
+        public Optional<Object> get(String port) {
+            Optional<Path> path = path(port);
+            if (path.isEmpty()) {
+                return Optional.empty();
+            }
+            Object format = field(port, "format").orElse(null);
+            if ("json".equals(format)) {
+                return Optional.ofNullable(Jsons.read(path.get()));
+            }
+            if ("parquet".equals(format)) {
+                throw new IllegalStateException(
+                        "input '" + port + "' is a Parquet artifact - read inputs().path(\""
+                                + port + "\") with a Parquet/Arrow library");
+            }
+            try {
+                return Optional.of(Files.readAllBytes(path.get()));
+            } catch (IOException exc) {
+                throw new UncheckedIOException(exc);
+            }
+        }
+
+        /** {@code {port: {artifact_type, format, path, ref}}}; absent (older host) = no ports. */
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> snapshot() {
+            Object inputs = meta.get("inputs");
+            return inputs instanceof Map ? (Map<String, Object>) inputs : Map.of();
+        }
+
+        private Optional<Object> field(String port, String key) {
+            return snapshot().get(port) instanceof Map<?, ?> entry
+                    ? Optional.ofNullable(entry.get(key))
+                    : Optional.empty();
         }
     }
 

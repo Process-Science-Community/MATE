@@ -210,7 +210,13 @@ def coordinator_or_fail() -> Any:
 # --------------------------------------------------------------------------- #
 
 
-def _row(status: str, revision: int = 1, version: str | None = "1.0.0", job: str | None = "j"):
+def _row(
+    status: str,
+    revision: int = 1,
+    version: str | None = "1.0.0",
+    job: str | None = "j",
+    fingerprint: str | None = None,
+):
     from mate.api.modules.processing import _Row
 
     return _Row(
@@ -218,6 +224,7 @@ def _row(status: str, revision: int = 1, version: str | None = "1.0.0", job: str
         job_id=job,
         data_revision=revision,
         module_version=version,
+        fingerprint=fingerprint,
         error=None,
         finished_at=None,
     )
@@ -231,6 +238,9 @@ def _row(status: str, revision: int = 1, version: str | None = "1.0.0", job: str
         (_row("ready", revision=0), "stale"),  # the data moved on
         (_row("ready", version="0.9.0"), "stale"),  # the module was upgraded
         (_row("ready", version=None), "ready"),  # backfilled row: version unknown
+        (_row("ready", fingerprint="fp"), "ready"),
+        (_row("ready", fingerprint="old"), "stale"),  # compute code changed, same version
+        (_row("ready", fingerprint=None), "ready"),  # pre-0017 row: fingerprint unknown
         (_row("failed"), "failed"),
         (_row("failed", revision=0), "stale"),  # a failure before the data changed
         (_row("cancelled"), "cancelled"),
@@ -241,7 +251,32 @@ def _row(status: str, revision: int = 1, version: str | None = "1.0.0", job: str
 def test_derive_status(row: Any, expected: str) -> None:
     from mate.api.modules.processing import _derive
 
-    assert _derive(row, 1, "1.0.0") == expected
+    assert _derive(row, 1, "1.0.0", "fp") == expected
+
+
+def test_compute_hash_follows_code_and_manifest_only(tmp_path: Path) -> None:
+    from mate.api.modules.content_hash import module_compute_hash
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "model").mkdir()
+    (tmp_path / "module.py").write_text("X = 1\n")
+    (tmp_path / "manifest.yaml").write_text("version: 1.0.0\n")
+    before = module_compute_hash(tmp_path)
+
+    (tmp_path / "HOW_TO_USE.md").write_text("# Guide\n")
+    (tmp_path / "Panel.tsx").write_text("export {}\n")
+    (tmp_path / "reference.json").write_text("{}\n")
+    (tmp_path / ".DS_Store").write_bytes(b"\0")
+    (tmp_path / "model" / "saved_model.pb").write_bytes(b"\0")  # runtime upload
+    (tmp_path / "tests" / "test_x.py").write_text("def test(): ...\n")
+    assert module_compute_hash(tmp_path) == before
+
+    (tmp_path / "module.py").write_text("X = 2\n")
+    after_code = module_compute_hash(tmp_path)
+    assert after_code != before
+
+    (tmp_path / "manifest.yaml").write_text("version: 1.0.0\ndefault: 2\n")
+    assert module_compute_hash(tmp_path) != after_code
 
 
 def test_waiting_row_has_no_job() -> None:
@@ -514,6 +549,25 @@ async def test_cell_edit_makes_runs_stale_then_refreshes_after_the_debounce(
 
         await wait_until(_refreshed, what="the debounced refresh")
         assert len(await module_jobs(log_id, "precompute_mod")) == 2
+
+
+@pytest.mark.asyncio
+async def test_code_change_without_version_bump_makes_a_ready_run_stale(tmp_path: Path) -> None:
+    async with mods_client(tmp_path, "precompute_mod") as c:
+        log_id = await import_sample(c)
+        coordinator = coordinator_or_fail()
+        await coordinator.ensure(TEST_USER_ID, log_id, "precompute_mod")
+
+        async def _ready() -> bool:
+            return await state(log_id, "precompute_mod") == "ready"
+
+        await wait_until(_ready, what="the run to finish")
+        row = await run_row(log_id, "precompute_mod")
+        assert row is not None and row.fingerprint is not None
+
+        # What a hot reload of edited code does: same manifest version, new compute hash.
+        coordinator._loader.loaded["precompute_mod"].compute_hash = "edited"
+        assert await state(log_id, "precompute_mod") == "stale"
 
 
 # --------------------------------------------------------------------------- #

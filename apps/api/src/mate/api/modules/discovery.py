@@ -58,7 +58,10 @@ def discover(*roots: Path) -> list[DiscoveredModule]:
     every module at boot. Rejecting an id collision is the upload path's job.
 
     Same policy for a folder whose ``manifest.yaml`` no longer validates: log
-    and skip. Discovery never raises on one bad folder.
+    and skip. Discovery never raises on one bad folder. Manifests are read
+    leniently (``Manifest.load_yaml(lenient=True)``): a module uploaded before
+    versions had to be SemVer, or before ``requirements.modules`` took
+    specifiers, still loads with a warning - the strict checks gate new uploads.
     """
 
     discovered: list[DiscoveredModule] = []
@@ -77,7 +80,7 @@ def discover(*roots: Path) -> list[DiscoveredModule]:
                 log.debug("modules.discovery.no_manifest", folder=str(entry))
                 continue
             try:
-                manifest = Manifest.load_yaml(manifest_path)
+                manifest = Manifest.load_yaml(manifest_path, lenient=True)
             except ModuleManifestError as exc:
                 # Skip, don't raise. A manifest that stopped validating (an
                 # upload predating a schema change, a hand-edited folder) is one
@@ -171,7 +174,7 @@ def discover_entry_points() -> list[DiscoveredModule]:
             )
             continue
         try:
-            manifest = Manifest.load_yaml(manifest_path)
+            manifest = Manifest.load_yaml(manifest_path, lenient=True)
         except ModuleManifestError as exc:
             log.error(
                 "modules.discovery.entry_point_manifest_invalid",
@@ -200,8 +203,9 @@ def topo_sort(discovered: Iterable[DiscoveredModule]) -> list[DiscoveredModule]:
     the boot. Dropped in two passes:
 
     1. A module requiring an id that isn't present (never installed, or skipped
-       upstream because its manifest no longer validates) - and, at fixpoint,
-       everything that in turn required *it*.
+       upstream because its manifest no longer validates), or present at a version
+       its specifier (`discovery>=1,<2`) excludes - and, at fixpoint, everything
+       that in turn required *it*.
     2. Cycle members: whatever Kahn can't emit is in or behind a cycle.
 
     Ties inside a layer resolve alphabetically, so the order is byte-identical
@@ -213,20 +217,29 @@ def topo_sort(discovered: Iterable[DiscoveredModule]) -> list[DiscoveredModule]:
     # Pass 1 - fixpoint prune of unsatisfiable hard requirements.
     while True:
         unsatisfiable = {
-            mid: dep
+            mid: req
             for mid, d in by_id.items()
-            for dep in d.manifest.requirements.modules
-            if dep not in by_id
+            for req in d.manifest.requirements.module_requirements
+            if req.id not in by_id or not req.allows(by_id[req.id].manifest.version)
         }
         if not unsatisfiable:
             break
-        for mid, dep in unsatisfiable.items():
-            log.error("modules.discovery.requirement_missing", module_id=mid, requires=dep)
+        for mid, req in unsatisfiable.items():
+            found = by_id.get(req.id)
+            if found is None:
+                log.error("modules.discovery.requirement_missing", module_id=mid, requires=req.id)
+            else:
+                log.error(
+                    "modules.discovery.requirement_version_unmet",
+                    module_id=mid,
+                    requires=str(req),
+                    found=found.manifest.version,
+                )
             del by_id[mid]
 
     # Pass 2 - Kahn over the pruned graph.
     deps: dict[str, set[str]] = {
-        mid: set(d.manifest.requirements.modules) for mid, d in by_id.items()
+        mid: set(d.manifest.requirements.module_ids) for mid, d in by_id.items()
     }
     out: list[DiscoveredModule] = []
     emitted: set[str] = set()

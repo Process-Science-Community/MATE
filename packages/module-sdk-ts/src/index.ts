@@ -73,4 +73,7 @@ export { subscribeBus, subscribeJob } from "@/lib/ws";
 export { cn } from "@/lib/cn";
 export { formatDuration, formatNumber } from "@/lib/format";
 
+// Artifact types, json payload shapes and artifact addresses (`mate.sdk.artifacts`).
+export * from "./artifacts";
+
 export const SDK_VERSION = "0.2.0";

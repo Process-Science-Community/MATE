@@ -138,7 +138,8 @@ export function DashboardFilterProvider({
       // render (dimmed, via `isRefetching` below) and swap in place.
       setRefetching(true);
       void widgetQueryClient
-        .invalidateQueries({ refetchType: "active" })
+        // A precomputed dataset is served as cached - no filter reaches it.
+        .invalidateQueries({ refetchType: "active", predicate: (q) => q.meta?.precomputed !== true })
         .finally(() => setRefetching(false));
     }, 300);
     return () => {

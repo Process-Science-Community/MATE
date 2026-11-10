@@ -98,15 +98,19 @@ class PcompModule(Module):
             return None
         return {"permutation_tests": permutation, "bootstrap_tests": bootstrap}
 
-    async def _load_pair(self, ctx: ModuleContext, other_log_id: str) -> tuple[Any, Any]:
-        async with ctx.event_log as log:
-            df_baseline = await log.pandas()
+    async def _open_other(self, ctx: ModuleContext, other_log_id: str) -> Any:
+        """The other log's view - 404 when the caller may not read it."""
         try:
-            other_access = await ctx.open_event_log(other_log_id)
+            return await ctx.open_event_log(other_log_id)
         except PermissionError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    async def _load_pair(self, ctx: ModuleContext, other_log_id: str) -> tuple[Any, Any]:
+        async with ctx.event_log as log:
+            df_baseline = await log.pandas()
+        other_access = await self._open_other(ctx, other_log_id)
         async with other_access as other_log:
             df_other = await other_log.pandas()
         return df_baseline, df_other
@@ -204,6 +208,9 @@ class PcompModule(Module):
     ) -> dict[str, Any]:
         if not other_log_id:
             raise HTTPException(status_code=422, detail="other_log_id is required")
+        # A result names the other log: serve it only to a caller who may open that log
+        # (a shared log's viewer must not read the owner's runs against unshared logs).
+        await self._open_other(ctx, other_log_id)
         prefix = "permutation" if test == "permutation" else "bootstrap"
         cached = await ctx.cache.get(f"{prefix}__{other_log_id}")
         if cached is None:

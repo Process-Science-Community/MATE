@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC
 from typing import Any
 
 from fastapi import HTTPException
@@ -20,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.db.engine import get_sessionmaker
-from mate.api.db.models import ModuleConfig, ModuleInstall
+from mate.api.db.models import Artifact, ModuleConfig, ModuleInstall
 from mate.api.mcp.core import (
     MCPContext,
     authz,
@@ -31,13 +32,19 @@ from mate.api.mcp.core import (
 )
 from mate.api.mcp.errors import (
     CODE_CONFLICT,
+    CODE_INVALID,
     CODE_NOT_FOUND,
     from_http_exception,
     tool_error,
 )
 from mate.api.mcp.registry import mcp_resource, mcp_tool
 from mate.api.mcp.scopes import SCOPE_MODULES_MANAGE, SCOPE_MODULES_READ, SCOPE_MODULES_WRITE
+from mate.api.modules.artifacts import discover, prune
+from mate.api.modules.cache import ResultCache, is_run_variant
+from mate.api.modules.inputs import workspace_path
 from mate.api.modules.processing import get_coordinator
+from mate.sdk.artifacts import WORKSPACE_MODULE_ID, ArtifactRef, get_artifact_type
+from mate.sdk.manifest import DatasetEntry
 
 # Per-module budget inside get_process_overview - one slow module must not
 # starve the composite (the whole tool still runs under the global timeout).
@@ -428,6 +435,200 @@ async def get_dataset(
         {"log_id": log_id, "module_id": module_id, "dataset_id": dataset_id},
         _impl(),
     )
+
+
+def _typed_outputs(module_ids: set[str]) -> list[tuple[str, DatasetEntry]]:
+    """``(module_id, dataset)`` for every cached, typed output of the loaded *module_ids*."""
+    from mate.api.modules import get_module_loader
+
+    try:
+        loader = get_module_loader()
+    except HTTPException as exc:
+        raise from_http_exception(exc) from exc
+    return [
+        (mid, d)
+        for mid in sorted(module_ids)
+        if (loaded := loader.loaded.get(mid)) is not None
+        for d in loaded.manifest.datasets
+        if d.artifact_type is not None and d.cache_key is not None
+    ]
+
+
+async def _require_variant_ready(user_id: str, ref: ArtifactRef) -> None:
+    """Refuse a run variant's artifact unless the variant exists and is fresh."""
+    coordinator = get_coordinator()
+    if coordinator is None or ref.variant is None:
+        return
+    try:
+        state = await coordinator.variants.get(user_id, ref.log_id, ref.module_id, ref.variant)
+    except LookupError as exc:
+        raise tool_error(CODE_NOT_FOUND, str(exc)) from exc
+    if state is None:
+        raise tool_error(CODE_NOT_FOUND, f"Run variant '{ref.variant}' not found.")
+    if state.status != "ready":
+        detail = f": {state.error}" if state.error else "."
+        raise tool_error(CODE_CONFLICT, f"Run variant '{ref.variant}' is {state.status}{detail}")
+
+
+def _type_label(type_id: str) -> str:
+    return str(get_artifact_type(type_id) or type_id)
+
+
+def _index_entry(row: Artifact) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "pinned": row.pinned,
+        "ref": row.ref,
+        "artifact_type": f"{row.artifact_type}@{row.type_version}",
+        "module_id": row.module_id,
+        "dataset_id": row.dataset_id,
+        "cache_key": row.key,
+        "variant": row.variant,
+        "size_bytes": row.size_bytes,
+        "updated_at": row.updated_at.replace(tzinfo=UTC).isoformat(),
+    }
+
+
+@mcp_tool(toolset="analysis", idempotent=True)
+async def list_artifacts(ctx: MCPContext, log_id: str) -> list[dict[str, Any]]:
+    """List the artifacts in your workspace for a process: the typed outputs your
+    installed modules have produced for it and the JSON artifacts you uploaded to it.
+
+    Each entry has ``id``, ``name``, ``pinned``, ``ref`` (pass it to get_artifact),
+    ``artifact_type`` (``petri_net@1``), ``module_id`` (null for an upload),
+    ``dataset_id``, ``cache_key``, ``variant``, ``size_bytes`` and ``updated_at``. A
+    module's output is listed once a run of it finished: the canonical result
+    (``variant`` null) and each run variant's (its key) - this never starts a module.
+    """
+    p = await authz(ctx, SCOPE_MODULES_READ)
+
+    async def _impl() -> list[dict[str, Any]]:
+        from mate.api.modules import get_module_loader
+
+        installed = await _installed_module_ids(p.user.id)
+        try:
+            loaded = get_module_loader().loaded
+        except HTTPException:  # no loader: list what is indexed, like the HTTP list
+            loaded = {}
+        sm = get_sessionmaker()
+        async with sm() as session:
+            await ensure_owned_log(session, log_id, p.user.id)
+            await discover(
+                session,
+                p.user.id,
+                log_id,
+                {m: lm.manifest for m, lm in loaded.items() if m in installed},
+            )
+            rows = (
+                (
+                    await session.execute(
+                        select(Artifact).where(
+                            Artifact.user_id == p.user.id, Artifact.log_id == log_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            rows = await prune(session, rows)
+        return cap(
+            [
+                _index_entry(r)
+                for r in sorted(rows, key=lambda r: r.ref)
+                if r.module_id is None or r.module_id in installed
+            ]
+        )
+
+    return await guarded(p, "list_artifacts", {"log_id": log_id}, _impl())
+
+
+async def _workspace_artifact(user_id: str, ref: ArtifactRef) -> dict[str, Any]:
+    """An uploaded artifact by its ``…/_workspace/{id}`` ref, as get_artifact returns it."""
+    async with get_sessionmaker()() as session:
+        row = await session.get(Artifact, ref.key)
+        if row is None or row.user_id != user_id or row.ref != str(ref):
+            raise tool_error(CODE_NOT_FOUND, f"No artifact '{ref}'.")
+        if not await prune(session, [row]):
+            raise tool_error(CODE_NOT_FOUND, f"No artifact '{ref}'.")
+    path = await asyncio.to_thread(workspace_path, user_id, row.id)
+    if path is None:
+        raise tool_error(CODE_NOT_FOUND, f"No artifact '{ref}'.")
+    value = json.loads(await asyncio.to_thread(path.read_text))
+    return cap({**_index_entry(row), "artifact": value})
+
+
+@mcp_tool(toolset="analysis", idempotent=True)
+async def get_artifact(ctx: MCPContext, ref: str) -> dict[str, Any]:
+    """Read one artifact by the ``ref`` list_artifacts returned
+    (``{log_id}/{module_id}/{key}``, ``{log_id}/{module_id}@{variant}/{key}`` for a
+    run variant's, ``{log_id}/_workspace/{id}`` for an upload).
+
+    JSON artifacts come back whole under ``artifact`` (size-capped). A Parquet
+    table comes back as ``columns`` + ``row_count`` only and bytes as
+    ``size_bytes`` - row-shaped artifacts stay behind the data wall. Starts the
+    producing module if it has not run for the process yet; a run variant is never
+    started here and is served only while it is ``ready``. ``id``, ``name`` and
+    ``pinned`` are the workspace's (null while a result is not indexed yet).
+    """
+    p = await authz(ctx, SCOPE_MODULES_READ)
+
+    async def _impl() -> dict[str, Any]:
+        try:
+            parsed = ArtifactRef.parse(ref)
+        except ValueError as exc:
+            raise tool_error(CODE_INVALID, str(exc)) from exc
+        if parsed.module_id == WORKSPACE_MODULE_ID:
+            return await _workspace_artifact(p.user.id, parsed)
+        if parsed.variant is not None and not is_run_variant(parsed.variant):
+            raise tool_error(CODE_INVALID, f"{parsed.variant!r} is not a run variant.")
+        sm = get_sessionmaker()
+        async with sm() as session:
+            await ensure_owned_log(session, parsed.log_id, p.user.id)
+            await _ensure_installed(session, p.user.id, parsed.module_id)
+        entry = next(
+            (d for _mid, d in _typed_outputs({parsed.module_id}) if d.cache_key == parsed.key),
+            None,
+        )
+        if entry is None:
+            raise tool_error(
+                CODE_NOT_FOUND, f"Module '{parsed.module_id}' declares no artifact '{parsed.key}'."
+            )
+        if parsed.variant is None:
+            await _require_computed(p.user.id, parsed.log_id, parsed.module_id)
+        else:
+            await _require_variant_ready(p.user.id, parsed)
+        cache = ResultCache(parsed.log_id, parsed.module_id, p.user.id, run_variant=parsed.variant)
+        value = await cache.get(parsed.key)
+        if value is None:
+            raise _no_results_error(parsed.module_id)
+        async with sm() as session:
+            row = (
+                await session.execute(
+                    select(Artifact).where(
+                        Artifact.user_id == p.user.id, Artifact.ref == str(parsed)
+                    )
+                )
+            ).scalar_one_or_none()
+        out: dict[str, Any] = {
+            "id": row.id if row is not None else None,
+            "name": row.name if row is not None else None,
+            "pinned": row.pinned if row is not None else None,
+            "ref": str(parsed),
+            "artifact_type": _type_label(entry.artifact_type or ""),
+            "module_id": parsed.module_id,
+            "dataset_id": entry.id,
+        }
+        if isinstance(value, bytes):
+            out["size_bytes"] = len(value)
+        elif hasattr(value, "dtypes"):  # a Parquet-stored DataFrame
+            out["columns"] = {str(c): str(t) for c, t in value.dtypes.items()}
+            out["row_count"] = len(value)
+        else:
+            out["artifact"] = value
+        return cap(out)
+
+    return await guarded(p, "get_artifact", {"ref": ref}, _impl())
 
 
 @mcp_tool(toolset="analysis", idempotent=True)

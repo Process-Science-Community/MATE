@@ -22,7 +22,6 @@ schema is the territory.
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -47,6 +46,8 @@ GROUP_ORDER = [
     "Events",
     "Modules",
     "Datasets",
+    "Artifacts",
+    "Flows",
     "Dashboards",
     "Sharing",
     "AI",
@@ -104,6 +105,10 @@ def group_of(method: str, path: str) -> str:
         return "Modules"
     if path.startswith("/datasets"):
         return "Datasets"
+    if path.startswith("/artifacts"):
+        return "Artifacts"
+    if path.startswith("/flows"):
+        return "Flows"
     if path.startswith("/dashboards"):
         return "Dashboards"
     if path.startswith("/sharing"):
@@ -239,6 +244,7 @@ def sketch(value: Any, budget: int = CELL_BUDGET) -> str:
 
 def query_string(query: dict[str, Any]) -> str:
     """`?limit=25&status=ready` — a query as it would actually be sent."""
+
     def value(v: Any) -> str:
         if v is None:
             return "null"
@@ -273,9 +279,7 @@ def cell_request(op: dict[str, Any], schemas: dict[str, Any]) -> str:
     content = op.get("requestBody", {}).get("content", {})
     if "multipart/form-data" in content:
         shape = deref(content["multipart/form-data"].get("schema", {}), schemas)
-        body = {
-            k: sample(v, schemas, k, 1) for k, v in shape.get("properties", {}).items()
-        } or None
+        body = {k: sample(v, schemas, k, 1) for k, v in shape.get("properties", {}).items()} or None
     elif "application/json" in content:
         body = sample(content["application/json"].get("schema", {}), schemas)
     parts = []
@@ -293,7 +297,7 @@ def cell_response(op: dict[str, Any], schemas: dict[str, Any]) -> str:
             continue
         content = responses[status].get("content", {})
         if "text/event-stream" in content:
-            return f"{wrap('text/event-stream')} {wrap('{\"event\":\"job.progress\",\"progress\":0.4}')}"
+            return f"{wrap('text/event-stream')} {wrap('{"event":"job.progress","progress":0.4}')}"
         if "application/json" in content:
             value = sample(content["application/json"].get("schema", {}), schemas)
             return f"{wrap(status)} {wrap(sketch(value))}"

@@ -1,0 +1,29 @@
+id: artifact_consumer
+name: Artifact Consumer
+version: 0.1.0
+category: other
+description: Test fixture - its precompute reads artifact_producer's petri_net through ctx.inputs.
+license: MIT
+
+requirements:
+  event_log:
+    required_columns:
+      - case_id
+      - activity
+      - timestamp
+
+consumes:
+  - log.imported
+
+inputs:
+  - id: reference_model
+    artifact_type: petri_net
+    from: artifact_producer
+    required: true
+
+dependencies:
+  python:
+    inherit:
+      - duckdb
+      - pandas
+    isolation: in_process

@@ -19,6 +19,7 @@ BPMN of ``_sample_log`` so its task labels match the log exactly.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import shutil
@@ -26,8 +27,12 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
+import pytest
+from fastapi import HTTPException, UploadFile
 from modules.conformance.conformance import _conformance_worker, _precision_token_worker
 from modules.conformance.module import ConformanceModule
+
+from mate.sdk.testing import build_test_context, sample_log
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "reference.bpmn"
 
@@ -283,6 +288,16 @@ class _FakeLogger:
     def exception(self, *a: object, **k: object) -> None: ...
 
 
+class _FakeInputs:
+    """``ctx.inputs`` over a fixed ``{port: artifact}`` mapping."""
+
+    def __init__(self, artifacts: dict[str, object]) -> None:
+        self._artifacts = artifacts
+
+    async def get(self, port: str) -> object:
+        return self._artifacts.get(port)
+
+
 class _FakeCtx:
     def __init__(self, df: pd.DataFrame, root: Path, config: dict[str, object]) -> None:
         self.log_id = "log-test"
@@ -294,6 +309,7 @@ class _FakeCtx:
         self.progress = _FakeProgress()
         self.bus = _FakeBus()
         self.logger = _FakeLogger()
+        self.inputs = _FakeInputs({})
         self.run_calls = 0
 
     async def run_in_process(self, fn: object, *args: object, **kwargs: object) -> object:
@@ -424,3 +440,74 @@ def test_token_precision_offload_crash_degrades_gracefully(tmp_path: Path) -> No
     assert results["precision_skipped"] and "memory" in results["precision_skipped"].lower()
     assert results["kpis"]["log_fitness"] == 1.0
     assert results["kpis"]["total_deviations"] == 0
+
+
+def _discovered_petri_net(df: pd.DataFrame) -> dict[str, object]:
+    """The ``petri_net`` artifact discovery's precompute caches for *df*."""
+    import pm4py
+    from modules.discovery.serializers import serialize_petri_net
+
+    renamed = df.rename(
+        columns={
+            "case_id": "case:concept:name",
+            "activity": "concept:name",
+            "timestamp": "time:timestamp",
+        }
+    )
+    return serialize_petri_net(*pm4py.discover_petri_net_inductive(renamed))
+
+
+def test_discovered_petri_net_is_the_fallback_model(tmp_path: Path) -> None:
+    # No upload: the `reference_model` input (discovery's Petri net) is the model.
+    module = ConformanceModule()
+    df = _sample_log(_CLEAN_VARIANTS)
+    ctx = _FakeCtx(df, tmp_path, {"technique": "token_replay"})
+    ctx.inputs = _FakeInputs({"reference_model": _discovered_petri_net(df)})
+
+    before = asyncio.run(module.results(ctx))  # type: ignore[arg-type]
+    assert before["has_model"] is True and before["ran"] is False
+    assert before["model_name"] == "Discovered Petri net (Discovery)"
+
+    run_out = asyncio.run(module.run(ctx))  # type: ignore[arg-type]
+    assert run_out["kpis"]["log_fitness"] == 1.0
+    results = asyncio.run(module.results(ctx))  # type: ignore[arg-type]
+    assert results["ran"] is True
+    assert results["model_name"] == "Discovered Petri net (Discovery)"
+    assert '<bpmn:task id="' in results["bpmn_xml"] and 'name="approve"' in results["bpmn_xml"]
+    # The converted model is a hidden file, never an uploaded (listed) model.
+    assert asyncio.run(module.list_models(ctx))["models"] == []  # type: ignore[arg-type]
+
+
+def test_uploaded_model_takes_precedence_over_discovered(tmp_path: Path) -> None:
+    module = ConformanceModule()
+    df = _sample_log(_CLEAN_VARIANTS)
+    ctx = _ctx_with_model(tmp_path, df, {"technique": "token_replay"})
+    ctx.inputs = _FakeInputs({"reference_model": _discovered_petri_net(df)})
+
+    asyncio.run(module.run(ctx))  # type: ignore[arg-type]
+    results = asyncio.run(module.results(ctx))  # type: ignore[arg-type]
+    assert results["model_name"] == "reference.bpmn"
+    assert not list((tmp_path / "conformance_models").glob("_discovered_*"))
+
+
+def test_a_read_only_viewer_cannot_change_the_reference_models() -> None:
+    # A shared dashboard's viewer: every model write is refused before the upload is
+    # read, and nothing lands beside the owner's log.
+    async def check() -> None:
+        module = ConformanceModule()
+        ctx = await build_test_context(sample_log(), module_id=module.id, read_only=True)
+        upload = UploadFile(io.BytesIO(_FIXTURE.read_bytes()), filename="reference.bpmn")
+        calls = [
+            module.upload_model(ctx, upload),
+            module.delete_model(ctx, "reference.bpmn"),
+            module.activate_model(ctx, "reference.bpmn"),
+        ]
+        for call in calls:
+            with pytest.raises(HTTPException) as exc:
+                await call
+            assert exc.value.status_code == 403
+        assert upload.file.tell() == 0
+        async with ctx.event_log as log:
+            assert not (log.events_path.parent / "conformance_models").exists()
+
+    asyncio.run(check())

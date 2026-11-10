@@ -2,14 +2,17 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   Check,
+  ClipboardCopy,
   Download,
   Eye,
   LayoutDashboard,
   Loader2,
   Pencil,
   Redo2,
+  RotateCcw,
   Share2,
   Undo2,
 } from "lucide-react";
@@ -48,6 +51,7 @@ import { DashboardFilterBar } from "@/components/dashboards/dashboard-filter-bar
 import { DashboardSettingsDialog } from "@/components/dashboards/dashboard-settings-dialog";
 import { DashboardTimeRange } from "@/components/dashboards/dashboard-time-range";
 import { useItemHistory } from "@/lib/dashboards/use-item-history";
+import { boardManifestYaml } from "@/lib/dashboards/board-manifest";
 import { useEventLogs } from "@/lib/queries";
 import { useNoShareTargets } from "@/lib/sharing-queries";
 import {
@@ -59,6 +63,7 @@ import {
   useCardCatalog,
   useDashboard,
   useEventColumns,
+  useResetModuleBoard,
   useTimeBounds,
   useUpdateDashboard,
   type CanvasSettings,
@@ -83,21 +88,38 @@ const AUTOSAVE_MS = 1000;
 
 /** The exact PATCH body autosave persists. Also serialized for the dirty
  * check, so "needs saving" and "what gets saved" can never diverge. */
-function boardPatch(s: {
-  name: string;
-  items: DashboardItem[];
-  logId: string | null;
-  settings: CanvasSettings;
-}) {
+function boardPatch(
+  s: {
+    name: string;
+    items: DashboardItem[];
+    logId: string | null;
+    settings: CanvasSettings;
+  },
+  withLog: boolean,
+) {
   return {
     name: s.name.trim() || "Untitled",
     items: s.items,
-    event_log_id: s.logId,
+    // A module board is pinned to its (log, module); the server refuses a re-bind.
+    ...(withLog ? { event_log_id: s.logId } : {}),
     settings: s.settings,
   };
 }
 
-export function DashboardView({ dashboardId }: { dashboardId: string }) {
+/** Set when the view renders a module's own board on the module page (manifest
+ * `frontend.board`) instead of a board from the dashboards list. */
+export interface ModuleBoardContext {
+  logId: string;
+  moduleId: string;
+}
+
+export function DashboardView({
+  dashboardId,
+  moduleBoard,
+}: {
+  dashboardId: string;
+  moduleBoard?: ModuleBoardContext;
+}) {
   const { data: dashboard, isLoading, isError } = useDashboard(dashboardId);
   const { data: logs } = useEventLogs({ status: "ready" });
   // Shared with the palette and the canvas via react-query's cache; the
@@ -128,10 +150,17 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
   // Shared boards open read-only for the recipient – no edit toolbar, no log
   // picker. The backend also 404s owner-only mutations, so this is just UX.
   const isOwner = dashboard?.is_owner ?? true;
+  // Module boards are never shared, renamed, exported or re-bound: they live on
+  // the module page, bound to the route's log.
+  const withLog = !moduleBoard;
   // Sharing needs a team: without one the Share button is disabled (not
   // hidden) with a tooltip explaining why. Only fetched for owners – the
   // button doesn't exist on shared boards.
-  const noTeam = useNoShareTargets(isOwner);
+  const noTeam = useNoShareTargets(isOwner && !moduleBoard);
+  const resetBoard = useResetModuleBoard(moduleBoard?.logId ?? "", moduleBoard?.moduleId ?? "");
+  // "Copy layout as manifest" is a module-author aid: local dev or the demo stack.
+  const { data: session } = useSession();
+  const devTools = process.env.NODE_ENV === "development" || session?.provider === "demo";
 
   // ── Autosave ─────────────────────────────────────────────────────────────
   // Edits persist automatically – there is no Save button. `savedRef` holds
@@ -226,14 +255,17 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
     setLogId(dashboard.event_log_id);
     setSettings(s);
     savedRef.current = JSON.stringify(
-      boardPatch({
-        name: dashboard.name,
-        items: dashboard.items,
-        logId: dashboard.event_log_id,
-        settings: s,
-      }),
+      boardPatch(
+        {
+          name: dashboard.name,
+          items: dashboard.items,
+          logId: dashboard.event_log_id,
+          settings: s,
+        },
+        withLog,
+      ),
     );
-  }, [dashboard]);
+  }, [dashboard, withLog]);
 
   // One save at a time; if edits land while a PATCH is in flight, run once
   // more with the latest state when it settles. Ref-based (reassigned every
@@ -242,7 +274,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
   const runSaveRef = useRef<() => Promise<void>>(async () => {});
   runSaveRef.current = async () => {
     if (inFlightRef.current || !hydratedRef.current || !isOwner) return;
-    const body = boardPatch(stateRef.current);
+    const body = boardPatch(stateRef.current, withLog);
     const key = JSON.stringify(body);
     if (key === savedRef.current) return;
     inFlightRef.current = true;
@@ -260,7 +292,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
     } finally {
       inFlightRef.current = false;
     }
-    if (saved && JSON.stringify(boardPatch(stateRef.current)) !== savedRef.current) {
+    if (saved && JSON.stringify(boardPatch(stateRef.current, withLog)) !== savedRef.current) {
       void runSaveRef.current();
     }
   };
@@ -269,10 +301,12 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
   // timer, so a drag burst or typing in the name coalesces into one PATCH.
   useEffect(() => {
     if (!isOwner || !hydratedRef.current) return;
-    if (JSON.stringify(boardPatch({ name, items, logId, settings })) === savedRef.current) return;
+    if (JSON.stringify(boardPatch({ name, items, logId, settings }, withLog)) === savedRef.current) {
+      return;
+    }
     const t = setTimeout(() => void runSaveRef.current(), AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [name, items, logId, settings, isOwner]);
+  }, [name, items, logId, settings, isOwner, withLog]);
 
   // Flush the pending change when the view unmounts (navigating away, or
   // switching boards – the impl is keyed by dashboardId) so nothing is lost
@@ -292,7 +326,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
   useEffect(() => {
     const flush = () => {
       if (!hydratedRef.current) return;
-      const body = boardPatch(stateRef.current);
+      const body = boardPatch(stateRef.current, withLog);
       if (JSON.stringify(body) === savedRef.current) return;
       void api(`/api/v1/dashboards/${dashboardId}`, {
         method: "PATCH",
@@ -302,7 +336,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
     };
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
-  }, [dashboardId]);
+  }, [dashboardId, withLog]);
 
   // The board loads with its committed view applied (view mode): the owner's
   // last column-filter bar + time-range window (falling back to the active
@@ -367,6 +401,42 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
     URL.revokeObjectURL(url);
   };
 
+  // Re-seed from the manifest, then adopt the server's board as the saved
+  // state. Committed through the history, so a reset is one undo away.
+  const resetToModuleDefault = async () => {
+    try {
+      const fresh = await resetBoard.mutateAsync();
+      const s = canvasSettings(fresh.settings);
+      savedRef.current = JSON.stringify(
+        boardPatch(
+          { name: fresh.name, items: fresh.items, logId: fresh.event_log_id, settings: s },
+          withLog,
+        ),
+      );
+      setName(fresh.name);
+      setSettings(s);
+      setSelectedIds([]);
+      history.commit(fresh.items, "reset");
+    } catch {
+      toast.error("Could not reset the board");
+    }
+  };
+
+  const copyManifest = async () => {
+    if (!moduleBoard) return;
+    const { yaml, skipped } = boardManifestYaml(items, moduleBoard.moduleId);
+    try {
+      await navigator.clipboard.writeText(yaml);
+      toast.success(
+        skipped > 0
+          ? `Layout copied. ${skipped} card(s) skipped: only visualizations of this module's datasets fit a manifest.`
+          : "Layout copied as manifest YAML",
+      );
+    } catch {
+      toast.error("Could not copy to clipboard");
+    }
+  };
+
   if (isLoading) {
     return <DashboardViewSkeleton />;
   }
@@ -377,9 +447,11 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
         title="Dashboard not found"
         description="It may have been deleted."
         primaryAction={
-          <Button asChild variant="outline">
-            <Link href="/dashboards">Back to dashboards</Link>
-          </Button>
+          moduleBoard ? undefined : (
+            <Button asChild variant="outline">
+              <Link href="/dashboards">Back to dashboards</Link>
+            </Button>
+          )
         }
       />
     );
@@ -399,7 +471,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2.5 sm:px-6 lg:px-8">
         {/* View-mode name lives in the global topbar breadcrumb now; only the
             rename field remains, and only while editing. */}
-        {editing && (
+        {editing && !moduleBoard && (
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -409,7 +481,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
           />
         )}
 
-        {isOwner && (
+        {isOwner && !moduleBoard && (
           <div className="ml-2 flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Log</span>
             <Select
@@ -485,10 +557,29 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
           {editing && (
             <DashboardSettingsDialog settings={settings} onChange={changeSettings} />
           )}
-          {editing && (
+          {editing && !moduleBoard && (
             <Button type="button" variant="outline" size="sm" onClick={exportJson}>
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export
+            </Button>
+          )}
+          {editing && moduleBoard && devTools && (
+            <Button type="button" variant="outline" size="sm" onClick={() => void copyManifest()}>
+              <ClipboardCopy className="mr-1.5 h-3.5 w-3.5" />
+              Copy layout as manifest
+            </Button>
+          )}
+          {editing && moduleBoard && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              // A save landing after the reset would write the old layout back.
+              disabled={resetBoard.isPending || saveState === "saving"}
+              onClick={() => void resetToModuleDefault()}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Reset to module default
             </Button>
           )}
           {editing ? (
@@ -509,19 +600,21 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
             </Button>
           ) : isOwner ? (
             <>
-              <NoTeamShareGate noTeam={noTeam}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={noTeam}
-                  aria-disabled={noTeam || undefined}
-                  onClick={() => setShareOpen(true)}
-                >
-                  <Share2 className="mr-1.5 h-3.5 w-3.5" />
-                  Share
-                </Button>
-              </NoTeamShareGate>
+              {!moduleBoard && (
+                <NoTeamShareGate noTeam={noTeam}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={noTeam}
+                    aria-disabled={noTeam || undefined}
+                    onClick={() => setShareOpen(true)}
+                  >
+                    <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                    Share
+                  </Button>
+                </NoTeamShareGate>
+              )}
               <Button type="button" size="sm" onClick={() => setEditing(true)}>
                 <Pencil className="mr-1.5 h-3.5 w-3.5" />
                 Edit
@@ -717,7 +810,7 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
           </AnimatePresence>
         </div>
       </div>
-      {isOwner && (
+      {isOwner && !moduleBoard && (
         <ShareDialog
           dashboardId={dashboardId}
           dashboardName={name}

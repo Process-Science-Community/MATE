@@ -11,14 +11,18 @@ from mate.api.routes.ai import router as ai_router
 from mate.api.routes.ai_guidance import router as ai_guidance_router
 from mate.api.routes.analytics import router as analytics_router
 from mate.api.routes.api_tokens import router as api_tokens_router
+from mate.api.routes.artifacts import router as artifacts_router
 from mate.api.routes.dashboards import router as dashboards_router
 from mate.api.routes.datasets import router as datasets_router
 from mate.api.routes.event_log_data import router as event_log_data_router
 from mate.api.routes.event_logs import router as event_logs_router
 from mate.api.routes.events_sse import router as events_sse_router
+from mate.api.routes.flows import router as flows_router
 from mate.api.routes.folders import router as folders_router
 from mate.api.routes.jobs import router as jobs_router
+from mate.api.routes.log_module_config import router as log_module_config_router
 from mate.api.routes.mcp_admin import router as mcp_admin_router
+from mate.api.routes.module_boards import router as module_boards_router
 from mate.api.routes.module_runs import router as module_runs_router
 from mate.api.routes.modules import router as modules_router
 from mate.api.routes.ocel_data import router as ocel_data_router
@@ -40,6 +44,8 @@ v1.include_router(event_logs_router)
 v1.include_router(watched_folders_router)
 v1.include_router(event_log_data_router)
 v1.include_router(module_runs_router)
+v1.include_router(log_module_config_router)
+v1.include_router(module_boards_router)
 v1.include_router(ocel_data_router)
 v1.include_router(folders_router)
 v1.include_router(jobs_router)
@@ -54,6 +60,8 @@ v1.include_router(onboarding_router)
 v1.include_router(preferences_router)
 v1.include_router(dashboards_router)
 v1.include_router(datasets_router)
+v1.include_router(artifacts_router)
+v1.include_router(flows_router)
 v1.include_router(sharing_router)
 v1.include_router(events_sse_router)
 

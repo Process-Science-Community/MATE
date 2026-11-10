@@ -330,6 +330,154 @@ async def test_get_cached_guidance_empty_then_cached(client: AsyncClient) -> Non
     assert out["guidance"]["interpretation"] == "x"
 
 
+# ── artifacts (typed, cached module outputs) ─────────────────────────────────
+
+_ART_MANIFEST = Manifest.model_validate(
+    {
+        "id": "mcpan_art_mod",
+        "name": "Artifact mod",
+        "version": "0.0.1",
+        "category": "other",
+        "datasets": [
+            {"id": "model", "artifact_type": "petri_net", "cache_key": "model"},
+            {"id": "stats", "artifact_type": "table", "cache_key": "stats"},
+            {"id": "blob", "artifact_type": "table", "cache_key": "blob"},
+            {"id": "routed", "artifact_type": "dfg", "route": "/dfg"},
+            {"id": "untyped", "shape": "table", "cache_key": "untyped"},
+        ],
+    }
+)
+_NET = {
+    "kind": "petri_net",
+    "places": [{"id": "p0"}],
+    "transitions": [{"id": "t0", "label": "a"}],
+    "arcs": [{"source": "p0", "target": "t0"}],
+}
+
+
+async def _seed_artifacts(log_id: str) -> None:
+    """Write the outputs and index them, as a run settling ready does."""
+    import pandas as pd
+
+    from mate.api.modules.artifacts import register_run
+
+    cache = ResultCache(log_id, "mcpan_art_mod", TEST_USER_ID)
+    await cache.set("model", _NET)
+    await cache.set("stats", pd.DataFrame({"activity": ["a", "b"], "n": [3, 4]}))
+    await cache.set("untyped", {"n": 1})
+    async with get_sessionmaker()() as session:
+        await register_run(
+            session,
+            user_id=TEST_USER_ID,
+            log_id=log_id,
+            manifest=_ART_MANIFEST,
+            owned_producers={},
+        )
+
+
+async def test_list_artifacts_lists_produced_typed_outputs_only(client: AsyncClient) -> None:
+    await _seed_log("mcpan-art-log")
+    async with _fake_module("mcpan_art_mod", SimpleNamespace(), manifest=_ART_MANIFEST):
+        await _seed_artifacts("mcpan-art-log")
+        out = await analysis.list_artifacts(_ctx(_principal()), log_id="mcpan-art-log")
+        mine = [e for e in out if e["module_id"] == "mcpan_art_mod"]
+        assert [(e["ref"], e["artifact_type"], e["dataset_id"], e["cache_key"]) for e in mine] == [
+            ("mcpan-art-log/mcpan_art_mod/model", "petri_net@1", "model", "model"),
+            ("mcpan-art-log/mcpan_art_mod/stats", "table@1", "stats", "stats"),
+        ]
+        assert all(e["size_bytes"] > 0 and e["updated_at"] and e["id"] for e in mine)
+        assert [(e["name"], e["pinned"]) for e in mine] == [("model", False), ("stats", False)]
+
+        # The index drops what is gone.
+        (ResultCache("mcpan-art-log", "mcpan_art_mod", TEST_USER_ID).dir / "stats.parquet").unlink()
+        out = await analysis.list_artifacts(_ctx(_principal()), log_id="mcpan-art-log")
+        assert [e["dataset_id"] for e in out if e["module_id"] == "mcpan_art_mod"] == ["model"]
+
+    with pytest.raises(MCPToolError) as ei:  # a log the caller does not own
+        await analysis.list_artifacts(_ctx(_principal()), log_id="mcpan-nope-log")
+    assert ei.value.code == "not_found"
+
+
+async def test_get_artifact_returns_json_and_walls_off_rows(client: AsyncClient) -> None:
+    await _seed_log("mcpan-art2-log")
+    async with _fake_module("mcpan_art_mod", SimpleNamespace(), manifest=_ART_MANIFEST):
+        await _seed_artifacts("mcpan-art2-log")
+        await ResultCache("mcpan-art2-log", "mcpan_art_mod", TEST_USER_ID).set("blob", b"\x00\x01")
+
+        async def _get(ref: str) -> dict[str, Any]:
+            return await analysis.get_artifact(_ctx(_principal()), ref=f"mcpan-art2-log/{ref}")
+
+        model = await _get("mcpan_art_mod/model")
+        assert model["artifact_type"] == "petri_net@1"
+        assert model["artifact"] == _NET
+        assert model["name"] == "model" and model["id"]
+        assert (await _get("mcpan_art_mod/blob"))["id"] is None  # produced, not indexed
+
+        stats = await _get("mcpan_art_mod/stats")
+        assert set(stats["columns"]) == {"activity", "n"}
+        assert stats["row_count"] == 2
+        assert "artifact" not in stats  # Parquet rows never leave
+        assert (await _get("mcpan_art_mod/blob"))["size_bytes"] == 2
+
+        for ref, code in [
+            ("mcpan_art_mod/untyped", "not_found"),  # cached, but not a typed output
+            ("mcpan_art_mod@abc/model", "invalid"),  # not a run-variant key
+            ("mcpan_ghost_mod/model", "not_found"),  # not installed
+            ("model", "invalid"),  # malformed
+        ]:
+            with pytest.raises(MCPToolError) as ei:
+                await _get(ref)
+            assert ei.value.code == code, ref
+
+    await _seed_log("mcpan-art3-log")
+    async with _fake_module("mcpan_art_mod", SimpleNamespace(), manifest=_ART_MANIFEST):
+        with pytest.raises(MCPToolError) as ei:  # declared but not produced yet
+            await analysis.get_artifact(
+                _ctx(_principal()), ref="mcpan-art3-log/mcpan_art_mod/model"
+            )
+        assert ei.value.code == "conflict"
+
+
+async def test_cache_only_datasets_resolve_behind_the_wall(client: AsyncClient) -> None:
+    await _seed_log("mcpan-art4-log")
+    async with _fake_module("mcpan_art_mod", SimpleNamespace(), manifest=_ART_MANIFEST):
+        await _seed_artifacts("mcpan-art4-log")
+
+        out = await analysis.get_dataset(
+            _ctx(_principal()),
+            module_id="mcpan_art_mod",
+            dataset_id="model",
+            log_id="mcpan-art4-log",
+        )
+        assert out["dataset"]["shape"] == "graph"
+        assert len(out["dataset"]["data"]["nodes"]) == 2
+
+        with pytest.raises(MCPToolError) as ei:  # a Parquet table stays behind the wall
+            await analysis.get_dataset(
+                _ctx(_principal()),
+                module_id="mcpan_art_mod",
+                dataset_id="stats",
+                log_id="mcpan-art4-log",
+            )
+        assert ei.value.code == "not_found"
+        assert "not served" in str(ei.value)
+
+        # The catalog lists every dataset with its artifact type; a cache-only one with
+        # the key the web reads it by (`GET /artifacts/content?ref=`).
+        catalog = await analysis.list_datasets(_ctx(_principal()))
+        mine = [e for e in catalog if e["module_id"] == "mcpan_art_mod"]
+        assert [
+            (e["dataset_id"], e["artifact_type"], e["shape"], e["route"], e["content_ref_key"])
+            for e in mine
+        ] == [
+            ("model", "petri_net", "graph", None, "model"),
+            ("stats", "table", "table", None, "stats"),
+            ("blob", "table", "table", None, "blob"),
+            ("routed", "dfg", "graph", "/dfg", None),
+            ("untyped", None, "table", None, "untyped"),
+        ]
+
+
 # ── writes ───────────────────────────────────────────────────────────────────
 
 

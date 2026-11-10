@@ -89,4 +89,6 @@ def _bundled() -> list[tuple[str, Manifest]]:
     "module_id,manifest", _bundled(), ids=lambda v: v if isinstance(v, str) else ""
 )
 def test_bundled_modules_match_the_declared_opt_out_set(module_id: str, manifest: Manifest) -> None:
-    assert _shows_filter_bar(manifest) is (module_id not in OPTED_OUT)
+    # A panel-less module (e.g. interop) has no page to put a filter bar on.
+    expected = bool(manifest.frontend.panel) and module_id not in OPTED_OUT
+    assert _shows_filter_bar(manifest) is expected

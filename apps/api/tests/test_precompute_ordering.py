@@ -181,6 +181,37 @@ async def test_chained_module_is_refreshed_after_its_producer_on_a_data_change(
         assert dependent_again.created_at >= producer_again.finished_at
 
 
+@pytest.mark.asyncio
+async def test_a_producer_code_change_makes_its_chained_consumer_stale(tmp_path: Path) -> None:
+    """The consumer's fingerprint covers its producer's: a code change in the producer
+    alone (a hot reload) stales both, and `ensure` re-runs them in order."""
+    async with mods_client(tmp_path, "precompute_mod", "chained_mod") as c:
+        log_id = await import_sample(c)
+        coordinator = coordinator_or_fail()
+        await coordinator.ensure(TEST_USER_ID, log_id, "chained_mod")
+
+        async def _both_ready() -> bool:
+            return (
+                await state(log_id, "precompute_mod") == "ready"
+                and await state(log_id, "chained_mod") == "ready"
+            )
+
+        await wait_until(_both_ready, what="the first chain run")
+        coordinator._loader.loaded["precompute_mod"].compute_hash = "edited"
+        assert await state(log_id, "precompute_mod") == "stale"
+        assert await state(log_id, "chained_mod") == "stale"
+
+        states = await coordinator.ensure(TEST_USER_ID, log_id, "chained_mod")
+        assert [(s.module_id, s.status) for s in states] == [
+            ("precompute_mod", "queued"),
+            ("chained_mod", "queued"),
+        ]
+        await wait_until(_both_ready, what="the chain to re-run")
+        [_, producer_again] = await module_jobs(log_id, "precompute_mod")
+        [_, dependent_again] = await module_jobs(log_id, "chained_mod")
+        assert dependent_again.created_at >= producer_again.finished_at
+
+
 # --------------------------------------------------------------------------- #
 # The plan the jobs drawer shows
 # --------------------------------------------------------------------------- #

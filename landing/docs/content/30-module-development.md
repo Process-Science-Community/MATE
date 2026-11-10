@@ -231,7 +231,7 @@ source:                             # citations, max 20
       J. Doe and J. Smith, "A great paper," in 2024 6th International Conference
       on Process Mining (ICPM), Aachen, Germany, 2024, pp. 1-8
     url: https://doi.org/10.1109/xxxx
-artifacts:                          # other links, max 20
+links:                              # other links, max 20
   - { name: Reference implementation, url: https://github.com/janedoe/great-miner }
 
 config_schema:                      # renders the per-user settings form
@@ -252,7 +252,7 @@ config_schema:                      # renders the per-user settings form
 | `default_enabled` | Whether new accounts get the module enabled. |
 | `precompute` | `lazy` (default) computes the first time a log opens the module; `eager` also runs it in the background right after every import. Reserve `eager` for the one module whose output is opened first — it costs CPU on every import, and an admin can override it per module. |
 | `isConfidentialSafe` | Set `true` only when the log never leaves the host. |
-| `source` / `artifacts` | Citations and links, at most 20 each. |
+| `source` / `links` | Citations and named links, at most 20 each. `links` replaces the deprecated `artifacts` key, which is still read. |
 | `config_schema` | JSON-Schema-flavoured; the platform renders the form. |
 | `ai_models` / `model_store` | Opt into generated AI-model selectors or a model-file upload card. |
 

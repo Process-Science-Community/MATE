@@ -186,7 +186,7 @@ Modules are the platform's capabilities. The **Modules** page manages which ones
 
 Installation runs as a job: unpack, validate the manifest, `uv sync`, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed, and no restart is needed.
 
-The module detail page shows an About popover (description, longer *about*, cited works, artifacts), the *Provides*/*Consumes* lists, the configuration forms, a live tail of that module's log lines, and the *Uninstall* action in its danger zone.
+The module detail page shows an About popover (description, longer *about*, cited works, links), the *Provides*/*Consumes* lists, the configuration forms, a live tail of that module's log lines, and the *Uninstall* action in its danger zone.
 
 ## How to use
 
@@ -321,6 +321,31 @@ Card filtering is deliberately not per card: filtering belongs to the board or t
 | Join a team | Admin-managed | Teams are the sharing unit; without one, the dialog says so. |
 
 A shared board opens read-only — no palette, no inspector — but readers can still apply their own filters without changing what the owner saved. **Export** writes a portable JSON snapshot with placements, layout keys, and settings but no dashboard or database ids, so it can be imported into another account or installation.
+
+# Flows
+
+A flow chains modules: one module's result feeds the next, and the whole pipeline runs on any log you pick — again and again, recomputing only what changed.
+
+## Building a flow
+
+:::steps
+1. Open **Flows** and create one; choose case-centric or object-centric logs (fixed per flow).
+2. Add nodes from the palette by dragging or clicking: a **source** (the log, or an artifact from your workspace), a **module**, an **output**.
+3. Connect an output handle to an input port. Ports are coloured by artifact type and only matching types connect; where a converter module bridges two types, **Insert converter** places it in one click.
+4. Select a node to set it in the inspector: a module's per-log parameters, an output's name and whether to pin it.
+5. Changes autosave; **Validate** lists every problem on the node or connection it concerns.
+:::
+
+| Node | What it does |
+| --- | --- |
+| Source · log | The log the run is bound to. Every module reads it without a connection. |
+| Source · artifact | A result or upload from your **Artifacts** workspace, fed into a module's input. |
+| Module | Runs the module with the node's parameters and connected inputs — a separate result next to the module's own. A required input left unconnected reads the module's usual producer. |
+| Output | Saves the connected result to your workspace under its name, pinned if asked. |
+
+## Running a flow
+
+Pick a log and **Run**. The run is one job in the jobs drawer, with each module's job beneath it; node badges follow it live and **Cancel** stops it. A node whose parameters, inputs and data are unchanged reuses its earlier result — nothing recomputes. A node downstream of one that ran again reruns too. When a node fails, everything that depends on it is skipped and the run fails; other branches still finish. Click a finished node's result to open it in the artifact workspace. Flows are private, and MCP agents can list and run them (`list_flows`, `run_flow`, `get_flow_run`).
 
 # MATE AI
 

@@ -1,0 +1,20 @@
+# Test fixture: a subprocess-isolated module reading ctx.inputs through the
+# worker proxy (test_artifacts.py drives it on the platform interpreter).
+id: inputs_worker
+name: Inputs Worker
+version: 0.1.0
+category: other
+description: Reads ctx.inputs inside a subprocess worker.
+inputs:
+  - id: model
+    artifact_type: petri_net
+    from: artifact_producer
+  - id: rows
+    artifact_type: table
+    from: artifact_producer
+  - id: missing
+    artifact_type: dfg
+    from: artifact_producer
+dependencies:
+  python:
+    isolation: subprocess

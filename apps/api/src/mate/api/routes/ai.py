@@ -46,6 +46,7 @@ from mate.api.ai_nav import (
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.db.models import UserSetting
 from mate.api.db.session import SessionDep
+from mate.api.modules.installs import user_module_ids
 from mate.api.shutdown import is_shutting_down
 
 # Re-exported so any caller that previously imported these names from
@@ -334,7 +335,10 @@ async def _activities_variants_block(
     return header + "\n" + "\n\n".join(blocks)
 
 
-async def _build_context_block(context: ChatContext | None, user_id: str) -> str:
+async def _build_context_block(
+    context: ChatContext | None, user_id: str, owned_module_ids: set[str]
+) -> str:
+    """Cached module outputs for the user's OWN log - the caller checks ownership."""
     if context is None or not context.log_id:
         return ""
     # Local imports keep `routes/ai.py` free of module-loader symbols at import
@@ -350,10 +354,15 @@ async def _build_context_block(context: ChatContext | None, user_id: str) -> str
     # An empty module_ids list means "every module the loader knows about that
     # exposes guidance_payload" - the natural default when the frontend just
     # detected it's on a process page.
-    module_ids = context.module_ids or [
+    module_ids = [
         mid
-        for mid, loaded in loader.loaded.items()
-        if callable(getattr(loaded.instance, "guidance_payload", None))
+        for mid in context.module_ids
+        or [
+            mid
+            for mid, loaded in loader.loaded.items()
+            if callable(getattr(loaded.instance, "guidance_payload", None))
+        ]
+        if mid in owned_module_ids
     ]
     if not module_ids:
         return ""
@@ -509,10 +518,14 @@ async def chat(
                 )
                 if av_block:
                     parts.append(av_block)
-
-    context_block = await _build_context_block(payload.context, user.id)
-    if context_block:
-        parts.append(context_block)
+            # Module outputs too, only for the user's own log and installed modules: a
+            # shared log's context would read the owner's cache, which also holds
+            # results against the owner's other, unshared logs.
+            if log_row is not None:
+                owned = await user_module_ids(session, user.id)
+                context_block = await _build_context_block(payload.context, user.id, owned)
+                if context_block:
+                    parts.append(context_block)
     if cfg.system_prompt:
         parts.append(cfg.system_prompt)
     cfg = cfg.model_copy(update={"system_prompt": "\n\n".join(parts)})

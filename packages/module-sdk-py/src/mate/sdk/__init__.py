@@ -22,10 +22,19 @@ The decorators only attach metadata; the platform's module loader (in
 machinery - there is no SDK-side runtime.
 """
 
+from mate.sdk.artifacts import (
+    ARTIFACT_TYPES,
+    ArtifactRef,
+    ArtifactType,
+    check_contract,
+    get_artifact_type,
+    validate_artifact,
+)
 from mate.sdk.context import (
     CancellationProtocol,
     EventBusProtocol,
     EventLogAccessProtocol,
+    InputsProtocol,
     ModuleConfigProtocol,
     ModuleContext,
     ModuleRegistryProtocol,
@@ -34,11 +43,12 @@ from mate.sdk.context import (
     ResultCacheProtocol,
 )
 from mate.sdk.decorators import job, on_event, route
-from mate.sdk.errors import Cancelled, ModuleError, ModuleManifestError
+from mate.sdk.errors import Cancelled, ModuleError, ModuleManifestError, ReadOnlyContextError
 from mate.sdk.manifest import (
-    Artifact,
     DependenciesPython,
     EventLogRequirements,
+    InputPort,
+    Link,
     Manifest,
     ManifestFrontend,
     ModuleCategory,
@@ -58,13 +68,18 @@ from mate.sdk.module import Module
 __version__ = "0.2.0"
 
 __all__ = [
-    "Artifact",
+    "ARTIFACT_TYPES",
+    "ArtifactRef",
+    "ArtifactType",
     "CancellationProtocol",
     "Cancelled",
     "DependenciesPython",
     "EventBusProtocol",
     "EventLogAccessProtocol",
     "EventLogRequirements",
+    "InputPort",
+    "InputsProtocol",
+    "Link",
     "Manifest",
     "ManifestFrontend",
     "Module",
@@ -77,6 +92,7 @@ __all__ = [
     "OpenEventLogProtocol",
     "OptionalModuleDep",
     "ProgressReporterProtocol",
+    "ReadOnlyContextError",
     "Requirements",
     "ResultCacheProtocol",
     "RuntimeJvm",
@@ -87,7 +103,10 @@ __all__ = [
     "WidgetHelp",
     "WidgetKpi",
     "WidgetView",
+    "check_contract",
+    "get_artifact_type",
     "job",
     "on_event",
     "route",
+    "validate_artifact",
 ]

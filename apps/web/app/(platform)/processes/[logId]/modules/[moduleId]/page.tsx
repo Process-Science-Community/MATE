@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FileBox } from "lucide-react";
+import { FileBox, LayoutDashboard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { PageContainer } from "@/components/page";
 import { PanelSkeleton } from "@/components/skeletons";
 import { useModules } from "@/lib/queries";
+import { useModuleBoard } from "@/lib/dashboard-queries";
+import { DashboardView } from "@/components/dashboards/dashboard-view";
+import { DashboardViewSkeleton } from "@/components/dashboards/dashboard-view-skeleton";
 import { getModulePanel, prefetchModulePanel } from "@/lib/module-panels";
 import { LogFilterProvider } from "@/components/processes/log-filter";
 import { ModuleRunGate } from "@/components/processes/module-run-gate";
+import { LogModuleParams } from "@/components/processes/log-module-params";
 
 export default function ModulePage() {
   const params = useParams<{ logId: string; moduleId: string }>();
@@ -29,6 +33,9 @@ export default function ModulePage() {
   }, [moduleId]);
 
   const { data: modules, isLoading, isError } = useModules(logId);
+  // Bumped after "Parameters for this log" saves: remounting the filter provider
+  // gives the panel a fresh QueryClient, so it refetches under the new values.
+  const [paramsVersion, setParamsVersion] = useState(0);
 
   const mod = modules?.find((m) => m.id === moduleId);
 
@@ -95,16 +102,41 @@ export default function ModulePage() {
         // an empty cache. It sits *outside* the filter provider on purpose: the
         // provider owns the panel's isolated QueryClient, which is therefore
         // created fresh after each run instead of carrying a stale miss.
-        <ModuleRunGate logId={logId} moduleId={mod.id} deps={mod.precompute_deps ?? []}>
-          {/* Log-scoped global filter: sets the active log's ephemeral event filter
-              and re-scopes this (and every other) module view for the log. Wraps
-              the panel so its data queries pick up the `X-FF-Event-Filter` header.
-              Modules opt out via the manifest (`frontend.log_filter: false`) and
-              mount without the bar or the header. */}
-          <LogFilterProvider logId={logId} enabled={mod.supports_log_filter}>
-            <ModulePanelSlot logId={logId} moduleId={mod.id} hasFrontend={mod.has_frontend} />
-          </LogFilterProvider>
-        </ModuleRunGate>
+        <>
+          <LogModuleParams
+            logId={logId}
+            moduleId={mod.id}
+            onSaved={() => setParamsVersion((v) => v + 1)}
+          />
+          <ModuleRunGate logId={logId} moduleId={mod.id} deps={mod.precompute_deps ?? []}>
+            {!mod.has_frontend && mod.has_board ? (
+              // A module without its own panel can ship a declarative board
+              // (manifest `frontend.board`): the shared dashboard editor, bound
+              // to this log. It brings its own filter bar, so no LogFilterProvider;
+              // keyed like the provider so saved parameters refetch its cards.
+              <div
+                key={paramsVersion}
+                className="h-[75vh] min-h-[520px] overflow-hidden rounded-xl border border-border"
+              >
+                <ModuleBoardSlot logId={logId} moduleId={mod.id} />
+              </div>
+            ) : (
+              // Log-scoped global filter: sets the active log's ephemeral event
+              // filter and re-scopes this (and every other) module view for the
+              // log. Wraps the panel so its data queries pick up the
+              // `X-FF-Event-Filter` header. Modules opt out via the manifest
+              // (`frontend.log_filter: false`) and mount without the bar or the
+              // header.
+              <LogFilterProvider
+                key={paramsVersion}
+                logId={logId}
+                enabled={mod.supports_log_filter}
+              >
+                <ModulePanelSlot logId={logId} moduleId={mod.id} hasFrontend={mod.has_frontend} />
+              </LogFilterProvider>
+            )}
+          </ModuleRunGate>
+        </>
       )}
     </PageContainer>
   );
@@ -131,4 +163,19 @@ function ModulePanelSlot({
       </p>
     </div>
   );
+}
+
+function ModuleBoardSlot({ logId, moduleId }: { logId: string; moduleId: string }) {
+  const { data: board, isError } = useModuleBoard(logId, moduleId);
+  if (isError) {
+    return (
+      <EmptyState
+        icon={LayoutDashboard}
+        title="Couldn't load this module's board"
+        description="The module may have been updated or removed. Reload to try again."
+      />
+    );
+  }
+  if (!board) return <DashboardViewSkeleton />;
+  return <DashboardView dashboardId={board.id} moduleBoard={{ logId, moduleId }} />;
 }

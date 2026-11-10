@@ -252,10 +252,18 @@ def dashboard_detail(row: Dashboard, *, is_owner: bool = True) -> DashboardDetai
     )
 
 
-async def get_owned_dashboard(session: AsyncSession, dashboard_id: str, user_id: str) -> Dashboard:
-    """Owner-only gate for mutations: 404 for missing AND foreign boards."""
+async def get_owned_dashboard(
+    session: AsyncSession, dashboard_id: str, user_id: str, *, allow_module_board: bool = True
+) -> Dashboard:
+    """Owner-only gate for mutations: 404 for missing AND foreign boards.
+
+    ``allow_module_board=False`` also 404s a module board (``module_id`` set) -
+    for the paths it never takes part in: sharing and export.
+    """
     row = await session.get(Dashboard, dashboard_id)
     if row is None or row.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Dashboard not found.")
+    if not allow_module_board and row.module_id is not None:
         raise HTTPException(status_code=404, detail="Dashboard not found.")
     return row
 
@@ -290,6 +298,11 @@ async def apply_dashboard_update(
     if "description" in fields:
         row.description = payload.description
     if "event_log_id" in fields:
+        if row.module_id is not None and payload.event_log_id != row.event_log_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A module board stays bound to its event log.",
+            )
         await validate_dashboard_log(session, payload.event_log_id, user_id, row.log_model)
         row.event_log_id = payload.event_log_id
     # Items and settings share one blob, so rewrite it whenever either is
@@ -306,7 +319,7 @@ async def apply_dashboard_update(
 async def list_dashboards(session: SessionDep, user: CurrentUserDep) -> list[DashboardSummary]:
     stmt = (
         select(Dashboard)
-        .where(Dashboard.user_id == user.id)
+        .where(Dashboard.user_id == user.id, Dashboard.module_id.is_(None))
         .order_by(Dashboard.position.asc(), Dashboard.created_at.desc())
     )
     rows = (await session.execute(stmt)).scalars().all()
@@ -413,7 +426,7 @@ async def export_dashboard(
     Intentionally drops the bound `event_log_id` - logs are per-user and the
     importer rebinds on the target machine.
     """
-    row = await get_owned_dashboard(session, dashboard_id, user.id)
+    row = await get_owned_dashboard(session, dashboard_id, user.id, allow_module_board=False)
     settings = dashboard_settings(row)
     return DashboardExport(
         name=row.name,
@@ -483,9 +496,10 @@ async def create_share_for_owner(
 
     Owner-only (404 on foreign), target must exist and be reachable - you can
     only share with a teammate or a team you belong to (the same scope
-    ``/sharing/targets`` offers) - and a duplicate target is a 409.
+    ``/sharing/targets`` offers) - and a duplicate target is a 409. A module
+    board is never shared (404).
     """
-    await get_owned_dashboard(session, dashboard_id, user_id)
+    await get_owned_dashboard(session, dashboard_id, user_id, allow_module_board=False)
 
     if payload.target_user_id is not None:
         if payload.target_user_id == user_id:

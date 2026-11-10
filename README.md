@@ -105,10 +105,11 @@ mounted automatically:
 | `complexity` | EPA-based complexity measures – variant/sequence entropy, Lempel-Ziv, affinity, structure, Pentland's task/process complexity |
 | `cv4cdd` | Computer-vision concept-drift detection (sudden, gradual, incremental, recurring) |
 | `concept_drift_explainer` | LLM-backed explanations for drifts, grounded in user-uploaded enterprise documents |
-| `agent_simulator` | Agent-based simulation that learns from a log and generates synthetic traces |
-| `demo` | Minimal reference module – useful when authoring your own |
+| `agentsimulator` | Agent-based simulation that learns from a log and generates synthetic traces |
 
-Enable / disable / configure each one under **Settings → Modules**.
+Enable / disable / configure each one under **Settings → Modules**. To start
+your own, scaffold a minimal module with `uv run mate-module new <id> --dir modules`
+(see [Adding a module](#adding-a-module)).
 
 ## Mate AI
 
@@ -220,4 +221,8 @@ $EDITOR modules/my_mod/module.py        # subclass mate.sdk.Module
 make up-dev                             # restart picks it up
 ```
 
-Or upload a zip / clone a git URL via **Settings → Modules → Import**.
+Or scaffold it with `uv run mate-module new my_mod --dir modules` and run it alone
+with `make module-dev MODULE=modules/my_mod` – see
+[`modules/README.md` §10](./modules/README.md#10-developing--testing-locally). To
+install it on another instance, upload a zip (`uv run mate-module pack modules/my_mod`)
+via **Settings → Modules → Import**.

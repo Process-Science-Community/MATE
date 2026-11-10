@@ -9,7 +9,9 @@ socket. Both hosts share this dispatcher so the ctx surface is defined once.
 - `build_ctx_meta(ctx)` snapshots the small, immutable bits the worker can
   answer locally without a round-trip (ids, config, capability names, and the
   shared-filesystem paths `events_path` / `cases_path` / `cache.dir` + the active
-  filter). Guarded: an unbound/restricted log raises on access → key omitted.
+  filter, and each `ctx.inputs` port's producer cache file). Guarded: an
+  unbound/restricted log raises on access → key omitted. Blocking (S3 hydration
+  of input files), so hosts call it via `asyncio.to_thread`.
 - `make_ctx_dispatcher(ctx_for, is_cancelled)` returns the `{method: handler}`
   map. Every handler is wrapped so that the moment its job is soft-cancelled the
   call raises the cancel sentinel — making each ctx touch a cooperative poll
@@ -87,6 +89,8 @@ def build_ctx_meta(ctx: Any) -> dict[str, Any]:
         "workdir": str(ctx.workdir),
         "config": ctx.config.value if hasattr(ctx.config, "value") else {},
         "capabilities": registry_snapshot(ctx),
+        # Optional (protocol §6): a shared-dashboard viewer's call; absent = False.
+        "read_only": bool(getattr(ctx, "read_only", False)),
     }
     # Shared-filesystem paths + the committed filter, snapshotted so the worker's
     # event_log/cache proxies answer `events_path`/`cases_path`/`active_filter`/
@@ -103,6 +107,12 @@ def build_ctx_meta(ctx: Any) -> dict[str, Any]:
     cache_dir = getattr(getattr(ctx, "cache", None), "dir", None)
     if cache_dir is not None:
         meta["cache_dir"] = str(cache_dir)
+    # ctx.inputs as {port: {artifact_type, format, path, ref}}: the worker reads each
+    # producer's cache file straight off the shared filesystem.
+    snapshot = getattr(getattr(ctx, "inputs", None), "snapshot", None)
+    if snapshot is not None:
+        with contextlib.suppress(Exception):
+            meta["inputs"] = snapshot()
     return meta
 
 

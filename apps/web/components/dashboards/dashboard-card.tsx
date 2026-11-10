@@ -20,8 +20,10 @@ import { configWithoutWidgetFilter } from "@/components/dashboards/widget-filter
 import { CardVizScope, configWithoutRender } from "@/components/dashboards/card-viz-scope";
 import { GenericVizBody, VizSettings } from "@/components/dashboards/generic-viz-card";
 import { WidgetHelpBody, hasHelp } from "@/components/dashboards/kit/help";
+import { CardReadOnlyProvider } from "@/components/dashboards/kit/read-only";
 import { CardRunGate } from "@/components/dashboards/card-run-gate";
 import { useDashboardFilterOptional } from "@/components/dashboards/dashboard-filter";
+import { usePrecomputedDataset } from "@/lib/visualizations/use-dataset-data";
 import type { DrillHandler } from "@/lib/dashboards/drill";
 import {
   DEFAULT_CARD_CHROME,
@@ -97,6 +99,8 @@ export const DashboardCard = memo(function DashboardCard({
   // `Optional` because a card also renders in the palette preview and in tests,
   // outside a filter provider.
   const refetching = useDashboardFilterOptional()?.isRefetching ?? false;
+  // A precomputed dataset isn't refetched on a filter commit, so don't dim it either.
+  const precomputed = usePrecomputedDataset(item);
   // A viz card renders a platform visualization of a dataset, so there is no
   // module view behind it to open — the canvas passes a null href for those.
   const canDrill = !isViz;
@@ -256,7 +260,7 @@ export const DashboardCard = memo(function DashboardCard({
         className={cn(
           "min-h-0 flex-1 overflow-hidden p-3 animate-in fade-in-0 duration-300",
           "transition-opacity",
-          refetching && "pointer-events-none opacity-60",
+          refetching && !precomputed && "pointer-events-none opacity-60",
         )}
       >
         {/* Modules compute lazily: a board is an explicit request to see this data,
@@ -279,7 +283,10 @@ export const DashboardCard = memo(function DashboardCard({
               config={item.config}
               onConfigChange={(config) => onUpdate({ config })}
             >
-              <WidgetBody item={item} logId={logId} onDrill={onDrill} />
+              {/* A viewer's write calls 403, so widgets read this to hide them. */}
+              <CardReadOnlyProvider value={!isOwner}>
+                <WidgetBody item={item} logId={logId} onDrill={onDrill} />
+              </CardReadOnlyProvider>
             </CardVizScope>
           )}
         </CardRunGate>

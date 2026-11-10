@@ -1,0 +1,42 @@
+"""$name - TODO: one line on what this module computes.
+
+``log.imported`` precomputes the summary into the cache; ``GET /summary`` serves
+it (and computes it on a cache miss).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from mate.sdk import Module, ModuleContext, job, on_event, route
+
+_CACHE_KEY = "summary"
+
+
+async def _summarise(ctx: ModuleContext) -> dict[str, Any]:
+    async with ctx.event_log as log:
+        rows = await log.duckdb_fetch(
+            "SELECT count(*), count(DISTINCT case_id), count(DISTINCT activity) FROM events"
+        )
+    events, cases, activities = rows[0]
+    return {"events": events, "cases": cases, "activities": activities}
+
+
+class $class_name(Module):
+    id = "$id"
+
+    @route.get("/summary")
+    async def summary(self, ctx: ModuleContext) -> dict[str, Any]:
+        cached = await ctx.cache.get(_CACHE_KEY)
+        if cached is not None:
+            return cached
+        result = await _summarise(ctx)
+        await ctx.cache.set(_CACHE_KEY, result)
+        return result
+
+    @on_event("log.imported")
+    @job(progress=True, title="$name - precompute")
+    async def precompute(self, ctx: ModuleContext, payload: dict[str, Any]) -> None:
+        await ctx.progress.update(0.0, "Reading the log")
+        await ctx.cache.set(_CACHE_KEY, await _summarise(ctx))
+        await ctx.progress.update(1.0, "Done")

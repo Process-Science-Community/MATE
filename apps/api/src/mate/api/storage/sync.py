@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import structlog
@@ -24,6 +25,16 @@ from mate.api.storage import eviction, quota, s3
 from mate.api.storage.config import get_storage_settings, is_s3
 
 log = structlog.get_logger(__name__)
+
+# A module output dir's run variants (`modules.cache.ResultCache(run_variant=...)`):
+# sub-dirs persisted, hydrated and deleted on their own, never with the module dir.
+RUN_VARIANT_PREFIX = "_r_"
+
+
+def in_run_variant(rel: str) -> bool:
+    """Whether a module dir's relative POSIX path lies inside one of its run variants."""
+    return "/" in rel and rel.startswith(RUN_VARIANT_PREFIX)
+
 
 # Dirs already hydrated (or confirmed locally present) in this process - bounds
 # the S3 list/download attempts to once per dir so repeated reads of a warm
@@ -49,8 +60,12 @@ def forget(local_dir: Path) -> None:
     ``_hydrated`` membership check would skip the re-download and the read would
     find an empty dir.
     """
+    marker = str(local_dir.resolve())
     with _hydrated_lock:
-        _hydrated.discard(str(local_dir.resolve()))
+        # Nested dirs (a module dir's run variants) went with it.
+        _hydrated.difference_update(
+            {m for m in _hydrated if m == marker or m.startswith(marker + "/")}
+        )
 
 
 # --------------------------------------------------------------------------
@@ -67,12 +82,13 @@ def _is_original(rel: str) -> bool:
     return rel.split("/", 1)[0].startswith("original.")
 
 
-def persist_dir_sync(local_dir: Path) -> None:
+def persist_dir_sync(local_dir: Path, skip: Callable[[str], bool] | None = None) -> None:
+    """Upload a dir to its mirror; ``skip(rel)`` returning True leaves that file out."""
     if not is_s3() or not local_dir.exists():
         return
     key = rel_key(local_dir)
     try:
-        n = s3.upload_dir(local_dir, key)
+        n = s3.upload_dir(local_dir, key, skip=skip)
         eviction.touch(local_dir)  # a write counts as an access for the reaper
         log.info("storage.persist", dir=str(local_dir), key=key, objects=n)
     except s3.StorageError as exc:
@@ -86,8 +102,12 @@ def hydrate_dir_sync(local_dir: Path) -> None:
     with _hydrated_lock:
         if marker in _hydrated:
             return
-    # Local cache already warm - nothing to fetch.
-    if local_dir.exists() and any(local_dir.iterdir()):
+    # Local cache already warm - nothing to fetch. Neither a run variant's dir nor a
+    # reserved `__*` file (a variant's `__meta.json` is fetched alone) counts: each
+    # is written and hydrated independently of the outputs next to it.
+    if local_dir.exists() and any(
+        not p.name.startswith((RUN_VARIANT_PREFIX, "__")) for p in local_dir.iterdir()
+    ):
         eviction.touch(local_dir)
         with _hydrated_lock:
             _hydrated.add(marker)
@@ -95,14 +115,47 @@ def hydrate_dir_sync(local_dir: Path) -> None:
     key = rel_key(local_dir)
     try:
         local_dir.mkdir(parents=True, exist_ok=True)
-        # Skip the (potentially large) original upload - data reads never need it.
-        n = s3.download_prefix(key, local_dir, skip=_is_original)
+        # Skip the (potentially large) original upload - data reads never need it -
+        # the run variants, and anything already here (the local copy is never older).
+        n = s3.download_prefix(
+            key,
+            local_dir,
+            skip=lambda rel: _is_original(rel) or in_run_variant(rel) or (local_dir / rel).exists(),
+        )
         eviction.touch(local_dir)
         log.info("storage.hydrate", dir=str(local_dir), key=key, objects=n)
         with _hydrated_lock:
             _hydrated.add(marker)
     except s3.StorageError as exc:
         log.error("storage.hydrate_failed", dir=str(local_dir), error=str(exc))
+
+
+def hydrate_missing_sync(local_dir: Path, want: Callable[[str], bool]) -> None:
+    """Pull just the mirrored objects ``want(rel)`` names that this host has no local
+    copy of (S3 mode) - a run variant's ``__meta.json`` without its outputs.
+    Independent of the ``_hydrated`` marker; one list call per use."""
+    if not is_s3():
+        return
+    try:
+        s3.download_prefix(
+            rel_key(local_dir),
+            local_dir,
+            skip=lambda rel: not want(rel) or (local_dir / rel).exists(),
+        )
+    except s3.StorageError as exc:
+        log.error("storage.hydrate_failed", dir=str(local_dir), error=str(exc))
+
+
+def remote_has_sync(local_dir: Path, name: str) -> bool:
+    """Whether a dir's mirror holds *name* (S3 mode; False in local mode). True when
+    the check fails, so a caller never deletes on a guess."""
+    if not is_s3():
+        return False
+    try:
+        return s3.key_exists(rel_key(local_dir) + name)
+    except s3.StorageError as exc:
+        log.error("storage.exists_failed", dir=str(local_dir), error=str(exc))
+        return True
 
 
 def hydrate_original_sync(local_dir: Path) -> None:
@@ -125,12 +178,16 @@ def hydrate_original_sync(local_dir: Path) -> None:
         log.error("storage.hydrate_original_failed", dir=str(local_dir), error=str(exc))
 
 
-def delete_dir_remote_sync(local_dir: Path) -> None:
+def delete_dir_remote_sync(local_dir: Path, keep: Callable[[str], bool] | None = None) -> None:
+    """Delete a dir's S3 mirror; ``keep(rel)`` returning True spares that object."""
     if not is_s3():
         return
     key = rel_key(local_dir)
     try:
-        s3.delete_prefix(key)
+        if keep is None:
+            s3.delete_prefix(key)
+        else:
+            s3.delete_prefix(key, keep=keep)
         # Freed space - drop the cached usage total so a quota-blocked user who
         # deletes to make room isn't held back by a stale count.
         quota.invalidate_usage_cache()

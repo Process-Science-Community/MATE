@@ -81,6 +81,9 @@ export const queryKeys = {
   moduleRuns: (logId: string) => ["module-runs", logId] as const,
   moduleRunGate: (logId: string, moduleId: string) =>
     ["module-runs", logId, "gate", moduleId] as const,
+  // Per-log module parameter overrides. Top-level for the same reason as above.
+  logModuleConfig: (logId: string, moduleId: string) =>
+    ["log-module-config", logId, moduleId] as const,
   jobs: (params?: Record<string, string>) => ["jobs", params ?? {}] as const,
   job: (id: string) => ["jobs", id] as const,
 };

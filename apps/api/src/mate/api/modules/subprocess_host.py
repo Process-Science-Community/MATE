@@ -23,7 +23,7 @@ import signal
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Self, cast
 
 import structlog
 
@@ -80,7 +80,15 @@ class SubprocessModule:
     loader's `_bind` only reads `dir(instance)` + callable attrs + decorator
     metadata via `getattr(type(instance), name, None)`, so duck typing is
     enough.
+
+    Each instance gets its own throwaway subclass (see `__new__`): the stubs
+    live on `type(self)`, and on the one shared class every later-loaded module
+    mounted the earlier modules' handlers as phantom routes that 500ed.
     """
+
+    def __new__(cls, manifest_id: str, *_args: Any, **_kwargs: Any) -> Self:
+        per_module = cast("type[Self]", type(f"SubprocessModule[{manifest_id}]", (cls,), {}))
+        return super().__new__(per_module)
 
     def __init__(
         self,
@@ -136,6 +144,7 @@ class SubprocessModule:
                         method=route_meta["method"],
                         path=route_meta["path"],
                         name=route_meta.get("name"),
+                        viewer_safe=bool(route_meta.get("viewer_safe", False)),
                     ),
                 )
                 installed = True
@@ -163,9 +172,9 @@ class SubprocessModule:
                 installed = True
             if not installed:
                 continue
-            # Bind on the instance AND the type so the loader's `_bind` walk
-            # (which reads decorator metadata off `type(instance)`) picks them
-            # up exactly like an in_process module.
+            # Bind on the instance AND its per-module type so the loader's
+            # `_bind` walk (which reads decorator metadata off `type(instance)`)
+            # picks them up exactly like an in_process module.
             setattr(self, attr, stub)
             setattr(type(self), attr, stub)
 
@@ -604,7 +613,7 @@ class SubprocessBridge:
                 {
                     "handler": attr,
                     "ctx_token": token,
-                    "ctx": build_ctx_meta(ctx),
+                    "ctx": await asyncio.to_thread(build_ctx_meta, ctx),
                     "args": [jsonify(a) for a in args],
                     "kwargs": {k: jsonify(v) for k, v in kwargs.items()},
                 },

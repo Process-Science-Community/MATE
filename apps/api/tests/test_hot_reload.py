@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from mate.api.modules.hot_reload import _is_ignored
+from mate.api.modules.hot_reload import _is_ignored, _module_relative, _symlinked_entries
 
 
 @pytest.mark.parametrize(
@@ -41,3 +41,27 @@ def test_artifacts_ignored(rel: str) -> None:
 )
 def test_source_not_ignored(rel: str) -> None:
     assert _is_ignored(Path(rel)) is False
+
+
+def test_symlinked_entry_maps_real_paths_back(tmp_path: Path) -> None:
+    """`make module-dev` stages modules as symlinks; watchdog reports edits under
+    the real folder, which must map back to the staged entry (and keep the
+    artifact filter)."""
+    real = tmp_path / "repo" / "complexity"
+    real.mkdir(parents=True)
+    (real / "manifest.yaml").write_text("id: complexity\n")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "complexity").symlink_to(real)
+    (stage / "plain").mkdir()
+    # Not a module (the tracked `modules/node_modules` link): never watched.
+    (tmp_path / "web_deps").mkdir()
+    (stage / "node_modules").symlink_to(tmp_path / "web_deps")
+
+    links = _symlinked_entries(stage)
+    assert links == {real.resolve(): "complexity"}
+    assert _module_relative(real / "module.py", stage, links) == Path("complexity/module.py")
+    venv_file = _module_relative(real / ".venv" / "x.py", stage, links)
+    assert venv_file is not None and _is_ignored(venv_file)
+    assert _module_relative(stage / "plain" / "module.py", stage, links) == Path("plain/module.py")
+    assert _module_relative(tmp_path / "elsewhere.py", stage, links) is None

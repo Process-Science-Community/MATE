@@ -12,9 +12,14 @@ import {
 
 import { formatNumber } from "@/lib/format";
 
-import { runAfterPaint } from "../after-paint";
-import { elkLayout } from "../layout/layered";
-import { mapDirection, mapEdgeRouting, mapEdgeType, truncate } from "../layout/direction";
+import {
+  elkLayout,
+  mapDirection,
+  mapEdgeRouting,
+  mapEdgeType,
+  runAfterPaint,
+  truncate,
+} from "@/components/visualizations/artifacts/layout";
 import { ActivityNode, type ActivityNodeData } from "../nodes/activity-node";
 import type { DfgData } from "../types";
 import { CanvasShell } from "@/components/visualizations/canvases/shared/canvas-shell";

@@ -219,7 +219,7 @@ async def get_user_detail(
         (
             await session.execute(
                 select(Dashboard)
-                .where(Dashboard.user_id == user_id)
+                .where(Dashboard.user_id == user_id, Dashboard.module_id.is_(None))
                 .order_by(Dashboard.created_at.desc())
             )
         )

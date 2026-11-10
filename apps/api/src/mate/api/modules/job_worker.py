@@ -189,7 +189,7 @@ class JobWorker:
                     {
                         "handler": attr,
                         "ctx_token": _CALL_TOKEN,
-                        "ctx": build_ctx_meta(ctx),
+                        "ctx": await asyncio.to_thread(build_ctx_meta, ctx),
                         "args": [jsonify(a) for a in args],
                         "kwargs": {k: jsonify(v) for k, v in kwargs.items()},
                     },

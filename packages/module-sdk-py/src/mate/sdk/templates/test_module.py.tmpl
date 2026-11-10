@@ -1,0 +1,25 @@
+"""Tests for $name. Run them with `uv run pytest <module folder>/tests`."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+from mate.sdk.testing import build_test_context, load_module, sample_log
+
+MODULE_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_precompute_fills_the_cache_the_route_serves() -> None:
+    asyncio.run(_precompute_then_route())
+
+
+async def _precompute_then_route() -> None:
+    module = load_module(MODULE_DIR)
+    ctx = await build_test_context(sample_log(), module_id=module.id)
+
+    await module.precompute(ctx, {"log_id": ctx.log_id, "user_id": ctx.user_id})
+
+    cached = await ctx.cache.get("summary")
+    assert cached == {"events": 9, "cases": 3, "activities": 4}
+    assert await module.summary(ctx) == cached

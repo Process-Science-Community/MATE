@@ -1,6 +1,6 @@
 id: discovery
 name: Discovery
-version: 1.0.0
+version: 1.1.0
 category: foundation
 description: >-
   Turns your event log into a process model and shows it as a directly-follows
@@ -153,18 +153,25 @@ datasets:
     icon: Network
     shape: graph
     route: /dfg
+    artifact_type: dfg
   - id: petri_net
     title: Petri net
     description: Petri net mined with the Inductive miner (places, transitions, arcs).
     icon: Workflow
     shape: graph
     route: /petri-net/inductive
+    artifact_type: petri_net
+    # Written by the precompute; conformance's `reference_model` input reads it.
+    cache_key: petri_net_inductive
   - id: process_tree
     title: Process tree
     description: Hierarchical process tree of the discovered model.
     icon: ListTree
     shape: tree
     route: /process-tree
+    artifact_type: process_tree
+    # Written by the precompute; interop's `process_tree` input reads it.
+    cache_key: process_tree
   - id: heuristics_net
     title: Heuristics net
     description: Dependency graph mined with the Heuristics miner.

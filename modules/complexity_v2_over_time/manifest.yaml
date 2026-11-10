@@ -1,6 +1,6 @@
 id: complexity_v2_over_time
 name: Complexity V2 Over Time
-version: 1.0.0
+version: 1.0.1
 category: advanced
 description: >-
   Tracks how the full Complexity V2 suite (Langer's Table 3.3: entropy, size,
@@ -34,7 +34,7 @@ source:
       process complexity of event sequences and models discovered by process
       mining," Inf. Sci., vol. 598, pp. 196-215, 2022
     url: https://doi.org/10.1016/j.ins.2022.03.072
-artifacts:
+links:
   - name: Master Thesis Assessment of Process Complexity Measures
     url: https://github.com/MrWaitomo/WWU_processcomplexity
 license: MIT
@@ -154,6 +154,7 @@ config_schema:
       ui:
         widget: number
         affects: compute
+        scope: dataset
     default_slices:
       type: integer
       title: Default number of slices
@@ -174,3 +175,4 @@ config_schema:
       ui:
         widget: number
         affects: compute
+        scope: dataset

@@ -15,34 +15,48 @@ by exactly one of three triggers, all funnelled through :meth:`_ensure_one`:
   a cell edit calls :meth:`schedule_refresh`; both refresh the working set only.
 
 ``log_module_runs.status`` is the state *for the data revision recorded on the row*.
-``idle`` (no row) and ``stale`` (revision or module version moved on) are derived at
-read time, so a data change never has to touch a row to invalidate it.
+``idle`` (no row) and ``stale`` (revision, module version or fingerprint moved on) are
+derived at read time, so a data change never has to touch a row to invalidate it. The
+fingerprint is the module's compute-code hash, so a code change without a version bump
+(a hot reload, a deploy) invalidates a result the same way - combined, for a module with
+``ui.affects: precompute`` config (or a model store), with that config's effective values
+(``modules.log_config``), so changing one makes the result stale too - and with those of
+the modules it precomputes from (``ModuleLoader.precompute_deps``), so a producer's code
+or config change makes its consumers stale as well.
 
 Every write to one (log, module) row runs under a per-pair lock, including the
 terminal-job handler, so a job finishing while its row is being superseded can never
 resurrect the old state. The API is a single uvicorn process (the in-memory job queue
 already assumes it), so an ``asyncio.Lock`` is enough.
+
+Run *variants* - extra runs with their own params, inputs and filter - are not rows
+here; :attr:`ModuleProcessingCoordinator.variants` (``modules.variants``) owns them and
+this class only routes their terminal jobs to it.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from mate.api.db.models import EventLog, Job, LogModuleRun, ModuleConfig
 from mate.api.events import EventBus
+from mate.api.jobs.runtime import WORKER_LOST
+from mate.api.modules.artifacts import register_run
 from mate.api.modules.cache import ResultCache
 from mate.api.modules.defaults import get_precompute_overrides, resolve_precompute_mode
 from mate.api.modules.installs import user_module_ids
 from mate.api.modules.loader import ModuleLoader
+from mate.api.modules.log_config import run_fingerprints
+from mate.api.modules.variants import VariantRunner
 from mate.api.tasks import spawn
 
 log = structlog.get_logger(__name__)
@@ -60,8 +74,6 @@ _JOB_TO_RUN_STATUS = {"completed": "ready", "failed": "failed", "cancelled": "ca
 # Cell edits arrive in bursts; refresh the working set once they stop.
 REFRESH_DELAY_S = 30.0
 
-# The message `JobRuntime._reconcile_orphan_running` stamps on a job a crash killed.
-_WORKER_LOST = "Worker terminated before job completed."
 _ERROR_MAX = 2000
 
 
@@ -91,6 +103,7 @@ class _Row:
     job_id: str | None
     data_revision: int
     module_version: str | None
+    fingerprint: str | None
     error: str | None
     finished_at: datetime | None
 
@@ -101,6 +114,7 @@ class _Row:
             job_id=row.job_id,
             data_revision=int(row.data_revision),
             module_version=row.module_version,
+            fingerprint=row.fingerprint,
             error=row.error,
             finished_at=row.finished_at,
         )
@@ -111,17 +125,60 @@ class _Row:
         return self.status == "queued" and self.job_id is None
 
 
-def _derive(row: _Row | None, revision: int, version: str | None) -> str:
+def _moved_on(recorded: str | None, current: str | None) -> bool:
+    """Both known and different - ``None`` on either side (a backfilled row) matches."""
+    return recorded is not None and current is not None and recorded != current
+
+
+def _derive(row: _Row | None, revision: int, version: str | None, fingerprint: str | None) -> str:
     """The reported status: the stored one, or ``idle`` / ``stale`` when it no
-    longer describes the log's current data or the loaded module version."""
+    longer describes the log's current data, the loaded module version, or the
+    loaded module's compute code and precompute config (its fingerprint)."""
     if row is None:
         return "idle"
     if row.status in _IN_FLIGHT:
         return row.status
-    outdated = row.data_revision != revision or (
-        row.module_version is not None and version is not None and row.module_version != version
+    outdated = (
+        row.data_revision != revision
+        or _moved_on(row.module_version, version)
+        or _moved_on(row.fingerprint, fingerprint)
     )
     return "stale" if outdated else row.status
+
+
+async def _stamp_fingerprints(
+    session: AsyncSession,
+    rows: Iterable[LogModuleRun | None],
+    fingerprints: dict[str, str | None],
+) -> None:
+    """Give each ``ready`` row from before 0017 (fingerprint NULL) the current one.
+
+    NULL matches any fingerprint, so such a result would never go stale on a config
+    change. Stamping makes the same bet as that rule (it ran with today's config),
+    but once, so the next change is detected. Conditional, so it never overwrites a
+    row a concurrent run just rewrote; rows already stamped cost no write.
+    """
+    todo = [
+        (r, fp)
+        for r in rows
+        if r is not None
+        and r.status == "ready"
+        and r.fingerprint is None
+        and (fp := fingerprints.get(r.module_id)) is not None
+    ]
+    for r, fp in todo:
+        await session.execute(
+            update(LogModuleRun)
+            .where(
+                LogModuleRun.log_id == r.log_id,
+                LogModuleRun.module_id == r.module_id,
+                LogModuleRun.status == "ready",
+                LogModuleRun.fingerprint.is_(None),
+            )
+            .values(fingerprint=fp)
+        )
+    if todo:
+        await session.commit()
 
 
 def _in_working_set(row: _Row | None) -> bool:
@@ -173,6 +230,8 @@ class _Read:
     unavailable_reason: str | None
     prereqs: list[str]
     prereq_rows: dict[str, _Row | None]
+    # The current run fingerprint of the module and each prerequisite.
+    fingerprints: dict[str, str | None]
     log_row: EventLog
 
 
@@ -192,6 +251,7 @@ class ModuleProcessingCoordinator:
         # pairs ever touched, a few hundred bytes each.
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._refresh_tasks: dict[str, asyncio.Task[Any]] = {}
+        self.variants = VariantRunner(loader, bus, sessionmaker, self._submission)
 
     # -- plumbing -----------------------------------------------------------
 
@@ -273,6 +333,7 @@ class ModuleProcessingCoordinator:
         job_id: str | None,
         revision: int,
         version: str | None,
+        fingerprint: str | None,
         error: str | None = None,
         finished_at: datetime | None = None,
     ) -> None:
@@ -285,6 +346,7 @@ class ModuleProcessingCoordinator:
             row.job_id = job_id
             row.data_revision = revision
             row.module_version = version
+            row.fingerprint = fingerprint
             row.error = error
             row.requested_at = _utcnow()
             row.finished_at = finished_at
@@ -303,6 +365,10 @@ class ModuleProcessingCoordinator:
             raw = {
                 mid: await session.get(LogModuleRun, (log_id, mid)) for mid in (module_id, *prereqs)
             }
+            fingerprints = await run_fingerprints(
+                session, self._loader, user_id, log_id, raw, owned=owned
+            )
+            await _stamp_fingerprints(session, raw.values(), fingerprints)
             rows = {mid: (_Row.of(r) if r is not None else None) for mid, r in raw.items()}
             avail = self._loader.availability_for(
                 detected_schema=log_row.detected_schema,
@@ -323,11 +389,14 @@ class ModuleProcessingCoordinator:
                 unavailable_reason="; ".join(avail.reasons) if avail is not None else None,
                 prereqs=prereqs,
                 prereq_rows=rows,
+                fingerprints=fingerprints,
                 log_row=log_row,
             )
 
     def _state(self, module_id: str, read: _Read) -> RunState:
-        status = _derive(read.row, read.revision, self._version(module_id))
+        status = _derive(
+            read.row, read.revision, self._version(module_id), read.fingerprints.get(module_id)
+        )
         return RunState(
             module_id=module_id,
             status=status,
@@ -361,19 +430,23 @@ class ModuleProcessingCoordinator:
         async with self._locked(log_id, module_id):
             read = await self._read(user_id, log_id, module_id)
             version = self._version(module_id)
+            fingerprint = read.fingerprints.get(module_id)
             if read.log_status != "ready":
                 return RunState(module_id=module_id, status="idle", precompute=read.mode)
             row = read.row
-            status = _derive(row, read.revision, version)
+            status = _derive(row, read.revision, version, fingerprint)
 
             if not restart:
                 if status == "ready" or (status in ("failed", "cancelled") and not force):
                     return self._state(module_id, read)
+                # A run submitted for older data or an outdated precompute config is
+                # cancelled and resubmitted below.
                 if (
                     row is not None
                     and status in _IN_FLIGHT
                     and not row.waiting
                     and row.data_revision == read.revision
+                    and not _moved_on(row.fingerprint, fingerprint)
                 ):
                     return self._state(module_id, read)
 
@@ -391,7 +464,12 @@ class ModuleProcessingCoordinator:
             # still running (or stale and about to be refreshed) just has to finish.
             pending: list[str] = []
             for dep in read.prereqs:
-                dep_status = _derive(read.prereq_rows.get(dep), read.revision, self._version(dep))
+                dep_status = _derive(
+                    read.prereq_rows.get(dep),
+                    read.revision,
+                    self._version(dep),
+                    read.fingerprints.get(dep),
+                )
                 if dep_status == "ready":
                     continue
                 if dep_status in ("failed", "cancelled"):
@@ -412,11 +490,12 @@ class ModuleProcessingCoordinator:
                     job_id=None,
                     revision=read.revision,
                     version=version,
+                    fingerprint=fingerprint,
                 )
                 await self._publish_run(user_id, log_id, module_id, "queued", None)
                 return RunState(module_id=module_id, status="queued", precompute=read.mode)
 
-            declared, payload = self._submission(read, module_id, user_id, parent_job_id)
+            declared, payload = self._submission(read.log_row, module_id, user_id, parent_job_id)
             if declared is None:
                 return RunState(
                     module_id=module_id,
@@ -449,6 +528,7 @@ class ModuleProcessingCoordinator:
                 job_id=job_id,
                 revision=read.revision,
                 version=version,
+                fingerprint=fingerprint,
             )
             await self._publish_run(user_id, log_id, module_id, "queued", job_id)
             return RunState(
@@ -456,7 +536,7 @@ class ModuleProcessingCoordinator:
             )
 
     def _submission(
-        self, read: _Read, module_id: str, user_id: str, parent_job_id: str | None
+        self, log_row: EventLog, module_id: str, user_id: str, parent_job_id: str | None
     ) -> tuple[str | None, dict[str, Any]]:
         """``(declared topic, event payload)`` to run `module_id` with, or ``(None, {})``.
 
@@ -464,11 +544,11 @@ class ModuleProcessingCoordinator:
         payload; one that is only chained gets the minimal ``<producer>.completed``
         body (no handler reads more than ``log_id``).
         """
-        import_topic = "ocel.imported" if read.log_model == "object_centric" else "log.imported"
+        import_topic = "ocel.imported" if log_row.log_model == "object_centric" else "log.imported"
         declared = self._loader.precompute_subscription(module_id, import_topic)
         extra = {"import_job_id": parent_job_id} if parent_job_id else {}
         if declared is not None:
-            return declared, log_imported_payload(read.log_row, **extra)
+            return declared, log_imported_payload(log_row, **extra)
         chained = [
             t
             for t in self._loader.precompute_declared_topics(module_id)
@@ -476,7 +556,7 @@ class ModuleProcessingCoordinator:
         ]
         if not chained:
             return None, {}
-        return chained[0], {"user_id": user_id, "log_id": read.log_row.id, **extra}
+        return chained[0], {"user_id": user_id, "log_id": log_row.id, **extra}
 
     async def _park_failed(
         self, user_id: str, log_id: str, module_id: str, read: _Read, error: str
@@ -489,6 +569,7 @@ class ModuleProcessingCoordinator:
             job_id=None,
             revision=read.revision,
             version=self._version(module_id),
+            fingerprint=read.fingerprints.get(module_id),
             error=error,
             finished_at=_utcnow(),
         )
@@ -645,6 +726,11 @@ class ModuleProcessingCoordinator:
             if not isinstance(log_id, str) or not log_id:
                 return
             module_id, user_id, parent_job_id = job.module_id, job.user_id, job.parent_job_id
+            run_spec = job.payload_json.get("_run_spec")
+        if isinstance(run_spec, dict):
+            spec = cast(dict[str, Any], run_spec)
+            await self.variants.settle(job_id, user_id, log_id, module_id, spec)
+            return
         await self._settle(job_id, user_id, log_id, module_id, parent_job_id)
 
     async def _settle(
@@ -664,9 +750,17 @@ class ModuleProcessingCoordinator:
             row.error = error if new_status == "failed" else None
             row.finished_at = job.finished_at or _utcnow()
             await session.commit()
-            status = _derive(
-                _Row.of(row), int(log_row.data_revision or 0), self._version(module_id)
+            fingerprints = await run_fingerprints(
+                session, self._loader, user_id, log_id, [module_id]
             )
+            status = _derive(
+                _Row.of(row),
+                int(log_row.data_revision or 0),
+                self._version(module_id),
+                fingerprints[module_id],
+            )
+            if new_status == "ready":
+                await self._register_artifacts(session, user_id, log_id, module_id, row.fingerprint)
         await self._publish_run(user_id, log_id, module_id, status, job_id)
         if new_status == "ready":
             if status == "ready":
@@ -679,6 +773,35 @@ class ModuleProcessingCoordinator:
                 await self._release_waiters(user_id, log_id)
             return
         await self._fail_waiters(user_id, log_id, module_id, error or new_status)
+
+    async def _register_artifacts(
+        self,
+        session: AsyncSession,
+        user_id: str,
+        log_id: str,
+        module_id: str,
+        fingerprint: str | None,
+    ) -> None:
+        """Index the ready run's typed outputs in the artifact workspace. Best effort:
+        a failure here never fails the run."""
+        loaded = self._loader.loaded.get(module_id)
+        if loaded is None:
+            return
+        try:
+            owned = await user_module_ids(session, user_id)
+            await register_run(
+                session,
+                user_id=user_id,
+                log_id=log_id,
+                manifest=loaded.manifest,
+                owned_producers={
+                    m: lm.manifest for m, lm in self._loader.loaded.items() if m in owned
+                },
+                producer_hash=fingerprint,
+            )
+        except Exception:
+            await session.rollback()
+            log.exception("modules.artifacts.register_failed", log_id=log_id, module=module_id)
 
     async def _waiting_modules(self, log_id: str) -> list[str]:
         async with self._sessionmaker() as session:
@@ -733,14 +856,11 @@ class ModuleProcessingCoordinator:
                 raise LookupError(f"Event log {log_id!r} not found.")
             owned = await user_module_ids(session, user_id)
             modes = await self._modes(session)
-            rows = {
-                r.module_id: _Row.of(r)
-                for r in (
-                    await session.execute(select(LogModuleRun).where(LogModuleRun.log_id == log_id))
-                )
+            raw = (
+                (await session.execute(select(LogModuleRun).where(LogModuleRun.log_id == log_id)))
                 .scalars()
                 .all()
-            }
+            )
             avail = self._loader.availability_for(
                 detected_schema=log_row.detected_schema,
                 events_count=log_row.events_count,
@@ -749,10 +869,18 @@ class ModuleProcessingCoordinator:
                 log_model=log_row.log_model,
             )
             revision = int(log_row.data_revision or 0)
+            mids = [
+                mid
+                for mid in sorted(owned)
+                if mid in self._loader.loaded and self._loader.has_precompute(mid)
+            ]
+            fingerprints = await run_fingerprints(
+                session, self._loader, user_id, log_id, mids, owned=owned
+            )
+            await _stamp_fingerprints(session, raw, fingerprints)
+            rows = {r.module_id: _Row.of(r) for r in raw}
         out: list[RunState] = []
-        for mid in sorted(owned):
-            if mid not in self._loader.loaded or not self._loader.has_precompute(mid):
-                continue
+        for mid in mids:
             a = avail.get(mid)
             if a is not None and a.status == "unavailable":
                 out.append(
@@ -768,7 +896,7 @@ class ModuleProcessingCoordinator:
             out.append(
                 RunState(
                     module_id=mid,
-                    status=_derive(row, revision, self._version(mid)),
+                    status=_derive(row, revision, self._version(mid), fingerprints.get(mid)),
                     job_id=row.job_id if row is not None else None,
                     precompute=modes.get(mid),
                     error=row.error if row is not None else None,
@@ -878,8 +1006,30 @@ class ModuleProcessingCoordinator:
         job finished while the API was down takes that job's outcome; one whose job
         was lost (never re-enqueued, killed with its worker, or pruned) is restarted
         once - it was asked for before the restart. Import children the runtime
-        resumed are left alone: their terminal event will settle them.
+        resumed are left alone: their terminal event will settle them. Run variants
+        whose job was lost are resubmitted the same way (``VariantRunner.reconcile_boot``).
+
+        It also stamps every pre-0017 ``ready`` row with today's fingerprint, before
+        any user can change a setting - stamping only on first read would bake a
+        setting changed in between into an old result.
         """
+        async with self._sessionmaker() as session:
+            unstamped = (
+                await session.execute(
+                    select(LogModuleRun).where(
+                        LogModuleRun.status == "ready", LogModuleRun.fingerprint.is_(None)
+                    )
+                )
+            ).scalars()
+            by_log: dict[tuple[str, str], list[LogModuleRun]] = {}
+            for r in unstamped:
+                by_log.setdefault((r.user_id, r.log_id), []).append(r)
+            for (user_id, log_id), rows in by_log.items():
+                fingerprints = await run_fingerprints(
+                    session, self._loader, user_id, log_id, [r.module_id for r in rows]
+                )
+                await _stamp_fingerprints(session, rows, fingerprints)
+
         async with self._sessionmaker() as session:
             stuck = (
                 (
@@ -909,6 +1059,7 @@ class ModuleProcessingCoordinator:
                 log.exception(
                     "modules.processing.reconcile_failed", log_id=log_id, module=module_id
                 )
+        await self.variants.reconcile_boot()
 
     async def _settle_from_job(
         self, user_id: str, log_id: str, module_id: str, job_id: str
@@ -925,7 +1076,7 @@ class ModuleProcessingCoordinator:
             if job.status in _IN_FLIGHT:
                 parent = await session.get(Job, job.parent_job_id) if job.parent_job_id else None
                 return parent is not None and parent.type == "event_log.import"
-            if job.status == "failed" and (job.error or "") == _WORKER_LOST:
+            if job.status == "failed" and (job.error or "") == WORKER_LOST:
                 return False
             parent_job_id = job.parent_job_id
         await self._settle(job_id, user_id, log_id, module_id, parent_job_id)

@@ -84,6 +84,24 @@ def _resolve_cancelled() -> type[BaseException]:
 Cancelled = _resolve_cancelled()
 
 
+def _resolve_read_only() -> type[Exception]:
+    """`mate.sdk.errors.ReadOnlyContextError`, or `PermissionError` on an older worker SDK."""
+    try:
+        from mate.sdk.errors import ReadOnlyContextError
+
+        return ReadOnlyContextError
+    except Exception:  # pragma: no cover - exercised only against an old SDK
+        return PermissionError
+
+
+# A shared viewer's write to the owner's state (`ctx.read_only`) fails host-side with
+# this type; it crosses the socket as "ReadOnlyContextError: <text>", possibly wrapped by a
+# worker's own error ("RpcException: ReadOnlyContextError: ..."), and is rebuilt on both
+# ends so the loader can answer 403 whatever runtime the handler runs in.
+ReadOnlyContextError = _resolve_read_only()
+_READ_ONLY_PREFIX = "ReadOnlyContextError: "
+
+
 def _cache_envelope(value: Any, workdir: str) -> dict[str, Any]:
     """Wrap a cache value for the JSON-RPC: JSON-native passes inline; anything
     else (bytes, DataFrame, numpy, ...) is pickled to a file under the shared
@@ -215,6 +233,8 @@ def _collect_handlers(instance) -> list[dict[str, Any]]:
                 "method": route_spec.method,
                 "path": route_spec.path,
                 "name": route_spec.name,
+                # getattr: an older worker SDK has no such field (= not viewer-safe).
+                "viewer_safe": bool(getattr(route_spec, "viewer_safe", False)),
             }
         if event_sub is not None:
             entry["on_event"] = {"topic": event_sub.topic}
@@ -248,6 +268,7 @@ class _ProxyContext:
         self._token = token
         self.log_id: str = ctx_meta.get("log_id", "")
         self.module_id: str = ctx_meta.get("module_id", "")
+        self.read_only: bool = bool(ctx_meta.get("read_only", False))
         self.workdir = Path(ctx_meta.get("workdir", "/tmp"))
         self.event_log = _EventLogProxy(conn, token, ctx_meta)
         self.bus = _BusProxy(conn, token)
@@ -257,6 +278,7 @@ class _ProxyContext:
         self.progress = _ProgressProxy(conn, token)
         self.logger = _LoggerProxy(conn, token)
         self.cancellation = _CancellationProxy(conn, token)
+        self.inputs = _InputsProxy(ctx_meta.get("inputs") or {})
 
     def is_cancelled(self) -> bool:
         return self.cancellation.is_cancelled()
@@ -421,6 +443,43 @@ class _CacheProxy:
 
     async def delete(self, key: str) -> None:
         await self._conn.send_request("ctx.cache.delete", {"ctx_token": self._token, "key": key})
+
+
+class _InputsProxy:
+    """ctx.inputs from the host's snapshot (`ctx_meta["inputs"]`): each bound port's
+    producer cache file, read straight off the shared filesystem - no round-trip."""
+
+    def __init__(self, inputs: dict[str, Any]):
+        self._inputs = inputs
+
+    @property
+    def ports(self) -> list[str]:
+        return list(self._inputs)
+
+    def ref(self, port: str) -> Any:
+        text = (self._inputs.get(port) or {}).get("ref")
+        if not text:
+            return None
+        from mate.sdk.artifacts import ArtifactRef
+
+        return ArtifactRef.parse(text)
+
+    async def get(self, port: str) -> Any:
+        entry = self._inputs.get(port) or {}
+        path = entry.get("path")
+        if not path:
+            return None
+        return await asyncio.to_thread(_read_input, Path(path), entry.get("format"))
+
+
+def _read_input(path: Path, fmt: str | None) -> Any:
+    if fmt == "json":
+        return json.loads(path.read_text())
+    if fmt == "parquet":
+        import pandas as pd
+
+        return pd.read_parquet(path)
+    return path.read_bytes()
 
 
 class _ConfigProxy:
@@ -594,6 +653,9 @@ class WireConnection:
                         # a broad `except Exception`. Other errors stay RuntimeError.
                         if _CANCEL_RPC_MSG in message:
                             fut.set_exception(Cancelled())
+                        elif _READ_ONLY_PREFIX in message:
+                            text = message.split(_READ_ONLY_PREFIX, 1)[1]
+                            fut.set_exception(ReadOnlyContextError(text))
                         else:
                             fut.set_exception(RuntimeError(message))
                     else:

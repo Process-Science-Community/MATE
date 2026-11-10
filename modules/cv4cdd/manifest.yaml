@@ -1,6 +1,6 @@
 id: cv4cdd
 name: CV4CDD - Concept Drift Detection
-version: 1.0.0
+version: 1.1.0
 category: advanced
 description: >-
   Detects when and how your process changed. It encodes the log as a similarity
@@ -32,7 +32,7 @@ source:
       approach for concept drift detection in process mining," in Proc. BPM,
       Springer, 2024
     url: https://doi.org/10.1007/978-3-031-70396-6_16
-artifacts:
+links:
   - name: cv4cdd training dataset (Hugging Face)
     url: https://huggingface.co/datasets/pm-science/cv4cdd_4d
 license: CC-BY-4.0
@@ -126,6 +126,9 @@ datasets:
     icon: AlertTriangle
     shape: table
     route: /results
+    artifact_type: drift_points
+    # Written by the detection job; concept_drift_explainer's `drifts` input reads it.
+    cache_key: detections
 
 permissions:
   - read:event_log
@@ -156,7 +159,8 @@ config_schema:
       default: 200
       ui:
         widget: number
-        affects: compute
+        affects: precompute
+        scope: dataset
     confidence_threshold:
       type: number
       title: Detection confidence threshold
@@ -167,4 +171,5 @@ config_schema:
       default: 0.5
       ui:
         widget: slider
-        affects: compute
+        affects: precompute
+        scope: dataset

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 
 import { DashboardViewSkeleton } from "./dashboard-view-skeleton";
+import type { ModuleBoardContext } from "./dashboard-view-impl";
 
 // Heavy libs (framer-motion, react-grid-layout, recharts, @xyflow/react via the
 // viz registry) live in dashboard-view-impl; load them in an async chunk so the
@@ -14,10 +15,21 @@ const DashboardViewImpl = dynamic(
   { ssr: false, loading: () => <DashboardViewSkeleton /> },
 );
 
-export function DashboardView({ dashboardId }: { dashboardId: string }) {
+export function DashboardView({
+  dashboardId,
+  moduleBoard,
+}: {
+  dashboardId: string;
+  /** Render a module's own board (module page) instead of a dashboards-list
+   * board: no rename, log picker, share or export; adds "Reset to module
+   * default". */
+  moduleBoard?: ModuleBoardContext;
+}) {
   // Keyed so switching boards remounts the impl: local edit state re-hydrates
   // for the new board and the unmount cleanup flushes any pending autosave for
   // the previous one (the App Router keeps the page component mounted across
   // navigations within the same dynamic segment).
-  return <DashboardViewImpl key={dashboardId} dashboardId={dashboardId} />;
+  return (
+    <DashboardViewImpl key={dashboardId} dashboardId={dashboardId} moduleBoard={moduleBoard} />
+  );
 }
