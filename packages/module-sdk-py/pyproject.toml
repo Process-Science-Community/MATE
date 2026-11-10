@@ -15,6 +15,9 @@ dependencies = [
     "structlog>=24.1",
 ]
 
+[project.scripts]
+mate-module = "mate.sdk.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mate"]
 

@@ -45,12 +45,13 @@ To add additional users, sign in to the Keycloak admin console at
 
 | Command | What you get |
 | --- | --- |
+| `make lite` | No Docker, no `.env` – low-memory stack for module work: demo login, SQLite under `data/lite/`, only the modules you list (`MODULES=a,b`), debugger on `:5678`, sample log seeded. See [`docs/DEV_LITE.md`](./docs/DEV_LITE.md). |
 | `make dev` | No Docker – runs the API + web dev servers directly with hot reload (needs `uv` + `pnpm` on the host). Fastest inner loop. |
 | `make up` | Base `docker-compose.yml` only: **prod-style built images**, detached, no reload. The default quick-start – closest to prod, minus TLS/proxy. |
 | `make up-dev` | Base **+ `compose.dev.yml`**: hot reload in Docker (`uvicorn --reload` + `next dev`, source-mounted). The in-container dev mode. |
 | *(prod deploy)* | Base **+ `docker-compose.prod.yml`**: adds Caddy/TLS, collapses everything onto one same-origin, and stops publishing the app ports. Run manually – `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`; there is no `make` target. See [`docs/DEPLOY.md`](./docs/DEPLOY.md). |
 
-In short: **develop** with `make up-dev` (or `make dev` without Docker), **preview the prod build** locally with `make up`, and **deploy** by adding the `docker-compose.prod.yml` overlay.
+In short: **develop modules** with `make lite`, **develop the platform** with `make up-dev` (or `make dev` without Docker), **preview the prod build** locally with `make up`, and **deploy** by adding the `docker-compose.prod.yml` overlay.
 
 ## Advanced setup
 
@@ -108,7 +109,7 @@ mounted automatically:
 | `agent_simulator` | Agent-based simulation that learns from a log and generates synthetic traces |
 | `demo` | Minimal reference module – useful when authoring your own |
 
-Enable / disable / configure each one under **Settings → Modules**.
+Enable / disable / configure each one on the **Modules** page (`/modules`).
 
 ## Mate AI
 
@@ -132,6 +133,7 @@ local SQLite database; nothing ships off the host. See
 
 | Command | What it does |
 | --- | --- |
+| `make lite` | Native low-memory stack for module work (`MODULES=a,b`, no `.env`); `make lite-reset` wipes its data |
 | `make up` | Start the prod-style stack (detached) |
 | `make up-dev` | Start with hot reload – `uvicorn --reload` + `next dev`, source-mounted |
 | `make down` | Stop the stack |
@@ -146,7 +148,7 @@ local SQLite database; nothing ships off the host. See
 
 - `./data/` is bind-mounted – SQLite metadata, Parquet event logs, module results, and the cached uv-managed Python runtimes all live here. Back up by copying the directory.
 - `./modules/` is bind-mounted read/write – the bundled **default** modules live here, and any module folder you drop in is picked up on the next start. Each module's `.venv/` and `.dist/` (esbuilt frontend bundle) are auto-created and gitignored.
-- User **uploads** (Settings → Modules → Import) land in `data/uploaded_modules/<id>/` instead, so they never overwrite or mix with the repo defaults. Module ownership is per-user (the `module_installs` table): every user is auto-seeded the default set on first login, and uninstall is reference-counted. A **Restore defaults** button re-adds any defaults a user removed.
+- User **uploads** (Modules → Install a module) land in `data/uploaded_modules/<id>/` instead, so they never overwrite or mix with the repo defaults. Module ownership is per-user (the `module_installs` table): every user is auto-seeded the default set on first login, and uninstall is reference-counted. A **Restore defaults** button re-adds any defaults a user removed.
 
 ## Configuration
 
@@ -214,10 +216,14 @@ mate/
 ## Adding a module
 
 ```bash
-mkdir modules/my_mod
-$EDITOR modules/my_mod/manifest.yaml   # see modules/README.md §3
-$EDITOR modules/my_mod/module.py        # subclass mate.sdk.Module
-make up-dev                             # restart picks it up
+make module-new ID=my_mod        # scaffold modules/my_mod/ (PANEL=1 adds a React panel)
+make lite MODULES=my_mod         # run it natively with hot reload; Studio at /dev
+make module-test ID=my_mod       # its tests
+make module-validate             # manifest, HOW_TO_USE.md, layout.json
 ```
 
-Or upload a zip / clone a git URL via **Settings → Modules → Import**.
+The full flow (new, run, build the page in Studio, test, validate, ship) and the
+debugging recipes are in [`docs/DEV_LITE.md`](./docs/DEV_LITE.md); the module
+contract is [`modules/README.md`](./modules/README.md).
+
+Or upload a zip / tar.gz via **Modules → Install a module** (`/modules/import`).

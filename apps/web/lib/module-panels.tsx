@@ -5,6 +5,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { rawFetch } from "@/lib/api";
 import { CORE_EXTERNALS, installModuleRuntime, scanBundleExternals } from "@/lib/module-runtime";
+import { isDevMode, useOnDevFocus } from "@/lib/dev-queries";
 
 export interface ModulePanelProps {
   logId: string;
@@ -39,6 +40,7 @@ declare global {
 
 const _panelCache = new Map<string, AnyComponent>();
 const _inflight = new Map<string, Promise<AnyComponent>>();
+const _panelSources = new Map<string, string>();
 
 function ffRequire(specifier: string): unknown {
   const runtime = (typeof window !== "undefined" ? window.__FF_RUNTIME__ : undefined) ?? {};
@@ -70,6 +72,52 @@ function pickPanel(exports: Record<string, unknown>): AnyComponent | null {
   return null;
 }
 
+function panelUrl(moduleId: string): string {
+  return `/api/v1/modules/${encodeURIComponent(moduleId)}/assets/panel.js`;
+}
+
+async function evaluatePanel(
+  moduleId: string,
+  source: string,
+  core: Promise<unknown>,
+): Promise<AnyComponent> {
+  // Runtime must be complete before the bundle's require() shim fires.
+  await Promise.all([core, installModuleRuntime(scanBundleExternals(source))]);
+  const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
+  // Module bundles are CJS. We treat the source as the body of an IIFE so
+  // top-level `var ...` doesn't leak into globals.
+  const factory = new Function(
+    "module",
+    "exports",
+    "require",
+    `${source}\n;return module.exports;`,
+  );
+  const exportsOut = factory(moduleObj, moduleObj.exports, ffRequire) as Record<string, unknown>;
+  const Panel = pickPanel(exportsOut);
+  if (!Panel) {
+    throw new Error(
+      `Module ${moduleId} did not export a panel component (expected default, "Panel", or a *Panel named export).`,
+    );
+  }
+  _panelCache.set(moduleId, Panel);
+  // Kept only in dev, for the hot-reload comparison below.
+  void isDevMode().then((dev) => dev && _panelSources.set(moduleId, source));
+  return Panel;
+}
+
+/** Dev hot reload: refetch the bundle (an ETag revalidation, so a cheap 304
+ * when unchanged) and re-evaluate it only if its source changed. */
+async function reloadPanelIfChanged(moduleId: string): Promise<AnyComponent | null> {
+  // No previous source = the first load failed; try again rather than give up.
+  const prev = _panelSources.get(moduleId);
+  const res = await rawFetch(panelUrl(moduleId));
+  if (!res.ok) return null;
+  const source = await res.text();
+  // Unchanged (or reverted to the last good build): hand back the cached panel so an error clears.
+  if (source === prev) return _panelCache.get(moduleId) ?? null;
+  return evaluatePanel(moduleId, source, installModuleRuntime(CORE_EXTERNALS));
+}
+
 async function loadPanel(moduleId: string): Promise<AnyComponent> {
   const cached = _panelCache.get(moduleId);
   if (cached) return cached;
@@ -84,33 +132,11 @@ async function loadPanel(moduleId: string): Promise<AnyComponent> {
     // both serialised the two big transfers and pulled in ~650 KB gzip of
     // dependencies the panel never touches.
     const core = installModuleRuntime(CORE_EXTERNALS);
-    const res = await rawFetch(
-      `/api/v1/modules/${encodeURIComponent(moduleId)}/assets/panel.js`,
-    );
+    const res = await rawFetch(panelUrl(moduleId));
     if (!res.ok) {
       throw new Error(`Failed to load module panel ${moduleId} (HTTP ${res.status}).`);
     }
-    const source = await res.text();
-    // Runtime must be complete before the bundle's require() shim fires.
-    await Promise.all([core, installModuleRuntime(scanBundleExternals(source))]);
-    const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
-    // Module bundles are CJS. We treat the source as the body of an IIFE so
-    // top-level `var ...` doesn't leak into globals.
-    const factory = new Function(
-      "module",
-      "exports",
-      "require",
-      `${source}\n;return module.exports;`,
-    );
-    const exportsOut = factory(moduleObj, moduleObj.exports, ffRequire) as Record<string, unknown>;
-    const Panel = pickPanel(exportsOut);
-    if (!Panel) {
-      throw new Error(
-        `Module ${moduleId} did not export a panel component (expected default, "Panel", or a *Panel named export).`,
-      );
-    }
-    _panelCache.set(moduleId, Panel);
-    return Panel;
+    return evaluatePanel(moduleId, await res.text(), core);
   })();
   _inflight.set(moduleId, promise);
   try {
@@ -150,6 +176,18 @@ function DynamicModulePanel({ logId, moduleId }: ModulePanelProps) {
       cancelled = true;
     };
   }, [moduleId, Panel]);
+
+  // Dev: pick up a watch rebuild when the author returns to the browser.
+  useOnDevFocus(() => {
+    reloadPanelIfChanged(moduleId).then(
+      (P) => {
+        if (!P) return;
+        setError(null);
+        setPanel(() => P);
+      },
+      (err: Error) => setError(err.message),
+    );
+  });
 
   if (error) {
     return (

@@ -10,6 +10,11 @@
  *   node scripts/bundle-modules.mjs            # build once for all modules
  *   node scripts/bundle-modules.mjs --watch    # watch each panel + widget tree
  *   node scripts/bundle-modules.mjs <id> ...   # build only the listed module ids
+ *
+ * `MODULES_ONLY=a,b` (same env the API reads) limits the set to those ids plus
+ * their hard `requirements.modules`, transitively. Explicit ids on the command
+ * line win over it. In `--watch`, the modules dir is rescanned every 2s so a
+ * module folder (or a panel/widget entry) created after start gets bundled too.
  */
 import { build, context } from "esbuild";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -53,7 +58,36 @@ const NODE_PATHS = [
 
 const argv = process.argv.slice(2);
 const WATCH = argv.includes("--watch");
-const ONLY_IDS = new Set(argv.filter((a) => !a.startsWith("--")));
+const CLI_IDS = new Set(argv.filter((a) => !a.startsWith("--")));
+const ENV_IDS = (process.env.MODULES_ONLY ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const RESCAN_MS = 2000;
+
+/** Ids to bundle (empty set = all). Recomputed on each watch rescan so a
+ * MODULES_ONLY id whose folder appears later is picked up. */
+function onlyIds(folders) {
+  if (CLI_IDS.size || !ENV_IDS.length) return CLI_IDS;
+  const deps = new Map();
+  for (const folder of folders) {
+    try {
+      const m = readManifest(folder);
+      deps.set(m.id, m.requirements?.modules ?? []);
+    } catch {
+      // Unreadable manifest (mid-write): bundleModule reports it.
+    }
+  }
+  const out = new Set();
+  const stack = [...ENV_IDS];
+  while (stack.length) {
+    const id = stack.pop();
+    if (out.has(id)) continue;
+    out.add(id);
+    stack.push(...(deps.get(id) ?? []));
+  }
+  return out;
+}
 
 function* iterModuleFolders() {
   if (!existsSync(MODULES_DIR)) return;
@@ -199,18 +233,22 @@ function checkCanvasContract(moduleId, folder) {
   }
 }
 
-async function bundleModule(folder) {
+/** Watch contexts already running, keyed by output path (watch mode only). */
+const started = new Set();
+
+async function bundleModule(folder, onlyIdSet, rescan = false) {
   const manifest = readManifest(folder);
   const moduleId = manifest.id;
-  if (ONLY_IDS.size && !ONLY_IDS.has(moduleId)) return [];
-  const entries = entriesForModule(folder, manifest);
+  if (onlyIdSet.size && !onlyIdSet.has(moduleId)) return [];
+  const outdir = join(folder, ".dist");
+  const all = entriesForModule(folder, manifest);
+  const entries = all.filter((e) => !started.has(join(outdir, e.name)));
   if (!entries.length) {
-    if (manifest.frontend) {
+    if (!all.length && manifest.frontend && !rescan) {
       console.warn(`[bundle-modules] ${moduleId}: manifest declares frontend but no entry found.`);
     }
     return [];
   }
-  const outdir = join(folder, ".dist");
   const tasks = [];
   checkCanvasContract(moduleId, folder);
   for (const entry of entries) {
@@ -218,6 +256,7 @@ async function bundleModule(folder) {
     if (WATCH) {
       const ctx = await context(opts);
       await ctx.watch();
+      started.add(join(outdir, entry.name));
       tasks.push(ctx);
       console.log(`[bundle-modules] watch ${moduleId}/${entry.name}`);
     } else {
@@ -242,23 +281,44 @@ async function main() {
         `bpmn-js=${bpmnProbe ?? "NOT FOUND – discovery panel will fail to bundle"}`,
     );
   }
-  const allTasks = [];
+  const ids = onlyIds(folders);
+  if (ids.size) console.log(`[bundle-modules] only: ${[...ids].sort().join(", ")}`);
   for (const folder of folders) {
     try {
-      const tasks = await bundleModule(folder);
-      allTasks.push(...tasks);
+      await bundleModule(folder, ids);
     } catch (err) {
       console.error(`[bundle-modules] failed for ${folder}:`, err);
       if (!WATCH) process.exitCode = 1;
     }
   }
   if (!WATCH) return;
-  // Keep the process alive while watch contexts run. A never-resolving promise
-  // alone does NOT keep Node's event loop alive – Node 22 then exits with code
-  // 13 ("unsettled top-level await") once no active handles remain, which
-  // crash-loops the dev container. Hold an explicit ref'd timer handle so the
-  // esbuild watchers keep running.
-  setInterval(() => {}, 2 ** 30);
+  // Rescan for module folders / entries created after start. Errors are logged
+  // once per folder and message, not every tick (a manifest mid-write fails
+  // until it is saved). The ref'd interval also keeps Node alive: a
+  // never-resolving promise alone does NOT – Node 22 exits with code 13
+  // ("unsettled top-level await") once no active handles remain.
+  const lastError = new Map();
+  let scanning = false;
+  setInterval(async () => {
+    if (scanning) return;
+    scanning = true;
+    try {
+      const current = [...iterModuleFolders()];
+      const currentIds = onlyIds(current);
+      for (const folder of current) {
+        try {
+          await bundleModule(folder, currentIds, true);
+          lastError.delete(folder);
+        } catch (err) {
+          const msg = String(err?.message ?? err);
+          if (lastError.get(folder) !== msg) console.error(`[bundle-modules] failed for ${folder}:`, msg);
+          lastError.set(folder, msg);
+        }
+      }
+    } finally {
+      scanning = false;
+    }
+  }, RESCAN_MS);
   await new Promise(() => {});
 }
 

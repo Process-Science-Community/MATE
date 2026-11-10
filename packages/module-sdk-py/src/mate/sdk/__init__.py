@@ -35,6 +35,7 @@ from mate.sdk.context import (
 )
 from mate.sdk.decorators import job, on_event, route
 from mate.sdk.errors import Cancelled, ModuleError, ModuleManifestError
+from mate.sdk.layout import LayoutItem, ModuleLayout
 from mate.sdk.manifest import (
     Artifact,
     DependenciesPython,
@@ -65,6 +66,7 @@ __all__ = [
     "EventBusProtocol",
     "EventLogAccessProtocol",
     "EventLogRequirements",
+    "LayoutItem",
     "Manifest",
     "ManifestFrontend",
     "Module",
@@ -72,6 +74,7 @@ __all__ = [
     "ModuleConfigProtocol",
     "ModuleContext",
     "ModuleError",
+    "ModuleLayout",
     "ModuleManifestError",
     "ModuleRegistryProtocol",
     "OpenEventLogProtocol",

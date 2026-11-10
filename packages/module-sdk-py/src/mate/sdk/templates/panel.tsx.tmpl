@@ -1,0 +1,46 @@
+"use client";
+
+// Imports must come from apps/web/lib/runtime-externals.json (the host provides them).
+import { useQuery } from "@tanstack/react-query";
+
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { api } from "@/lib/api";
+
+interface Row {
+  activity: string;
+  events: number;
+  cases: number;
+}
+
+export default function Panel({ logId, moduleId }: { logId: string; moduleId: string }) {
+  const { data, error, isLoading } = useQuery({
+    queryKey: [moduleId, "summary", logId],
+    queryFn: () =>
+      api<{ rows: Row[] }>(`/api/v1/modules/${moduleId}/summary?log_id=${encodeURIComponent(logId)}`),
+  });
+
+  if (isLoading) return <Skeleton className="h-40 w-full" />;
+  if (error) return <p className="text-sm text-destructive">{String(error)}</p>;
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Activity</TableHead>
+          <TableHead className="text-right">Events</TableHead>
+          <TableHead className="text-right">Cases</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {(data?.rows ?? []).map((row) => (
+          <TableRow key={row.activity}>
+            <TableCell>{row.activity}</TableCell>
+            <TableCell className="text-right">{row.events}</TableCell>
+            <TableCell className="text-right">{row.cases}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}

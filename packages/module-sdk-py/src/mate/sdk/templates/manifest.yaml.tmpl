@@ -1,0 +1,35 @@
+id: __ID__
+name: __NAME_JSON__
+version: 0.1.0
+category: other
+description: TODO - one sentence on what this module answers.
+license: MIT
+
+requirements:
+  event_log:
+    log_model: case_centric
+    required_columns:
+      - case_id
+      - activity
+      - timestamp
+    min_events: 1
+    min_cases: 1
+
+dependencies:
+  python:
+    packages: []
+    inherit:
+      - pandas
+      - duckdb
+    isolation: in_process
+
+# Data the platform can render with its generic visualizations (layout.json,
+# dashboards). Each entry points at a route in module.py.
+datasets:
+  - id: summary
+    title: Activity summary
+    description: Events and cases per activity.
+    icon: Table
+    shape: table
+    route: /summary
+__FRONTEND__

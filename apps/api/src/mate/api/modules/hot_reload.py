@@ -1,8 +1,10 @@
 """Filesystem watchdog for `modules/` - dev-only hot reload (§5.3 #7).
 
-Watches every `modules/<id>/manifest.yaml`, `module.py`, and `.dist/` for
-changes; on debounced change, calls `ModuleLoader.load_one()` for the
-affected module so authors don't need to restart the API to see edits.
+Watches every source file under `modules/<folder>/` (build artifacts such as
+`.venv/`, `.dist/` and `__pycache__/` are ignored, see `_is_ignored`); on a
+debounced change, calls `ModuleLoader.load_one()` for the affected module so
+authors don't need to restart the API to see edits. A folder created while the
+API runs is loaded too (and becomes a default), unless `MODULES_ONLY` excludes it.
 
 Gated on `settings.env == "dev"` because:
   - Production must boot from a known module set; surprise reloads on disk
@@ -23,6 +25,7 @@ import structlog
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from mate.api.config import get_settings
 from mate.api.modules.loader import ModuleLoader
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.manifest import Manifest
@@ -39,11 +42,15 @@ _DEBOUNCE_S = 0.5
 # installer rewrites `.installed-hash` every pass). Match anywhere in the path,
 # not just depth 1: a submodule's `__pycache__` lives deeper than `parts[1]`.
 _IGNORED_DIR_PARTS = frozenset(
-    {".venv", ".dist", "node_modules", "__pycache__", ".git", ".gradle", "build"}
+    {".venv", ".dist", "node_modules", "__pycache__", ".git", ".gradle", "build", ".pytest_cache"}
 )
 # `HOW_TO_USE.md` is read from disk on every request by the guide route, so
 # editing it needs no module reload.
-_IGNORED_NAMES = frozenset({".installed-hash", "pyproject.toml", ".DS_Store", "HOW_TO_USE.md"})
+# `layout.json` is read fresh by `GET /modules/{id}/layout`; a Studio save must
+# not restart a subprocess worker.
+_IGNORED_NAMES = frozenset(
+    {".installed-hash", "pyproject.toml", ".DS_Store", "HOW_TO_USE.md", "layout.json"}
+)
 _IGNORED_SUFFIXES = frozenset({".pyc", ".pyo"})
 
 
@@ -108,11 +115,22 @@ class _ModuleEventHandler(FileSystemEventHandler):
             self._lock_set.discard(module_id)
             self._pending.pop(module_id, None)
 
-    async def _reload(self, module_id: str) -> None:
-        folder = self._loader.modules_dir / module_id
+    def _loaded_id_for(self, folder: Path) -> str:
+        """The id loaded from *folder* (folder names need not equal ids)."""
+        target = folder.resolve()
+        for mid, lm in self._loader.loaded.items():
+            lm_folder = getattr(getattr(lm, "discovered", None), "folder", None)
+            if lm_folder is not None and Path(lm_folder).resolve() == target:
+                return mid
+        return folder.name
+
+    async def _reload(self, folder_name: str) -> None:
+        folder = self._loader.modules_dir / folder_name
         manifest_path = folder / "manifest.yaml"
         if not folder.exists() or not manifest_path.exists():
             # Folder deleted → unload (the loader handles missing gracefully).
+            module_id = self._loaded_id_for(folder)
+            self._loader.load_errors.pop(module_id, None)
             try:
                 await self._loader.unload_one(module_id)
                 log.info("modules.hot_reload.unloaded", module_id=module_id)
@@ -122,7 +140,14 @@ class _ModuleEventHandler(FileSystemEventHandler):
         try:
             manifest = Manifest.load_yaml(manifest_path)
         except ModuleManifestError as exc:
-            log.error("modules.hot_reload.manifest_invalid", module_id=module_id, error=str(exc))
+            log.error("modules.hot_reload.manifest_invalid", folder=folder_name, error=str(exc))
+            return
+        module_id = manifest.id
+        only = get_settings().modules_only_ids
+        known = self._loader.loaded.keys() | self._loader.load_errors.keys()
+        if only and module_id not in only and module_id not in known:
+            # Boot kept `only` + its deps (loaded or failed); a new unrelated folder stays out.
+            log.info("modules.hot_reload.skipped_modules_only", module_id=module_id)
             return
         try:
             await self._loader.load_one(folder, manifest)

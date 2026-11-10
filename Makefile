@@ -1,13 +1,16 @@
 .DEFAULT_GOAL := help
-.PHONY: help install check-env preflight dev dev-api dev-web up up-dev down build test typecheck fmt clean codegen docs deploy
+.PHONY: help install check-env preflight dev dev-api dev-web lite lite-reset module-new module-validate module-test up up-dev down build test typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
 # Dev API port. Override with `make dev PORT=8001`.
 PORT ?= 8000
+# Lite dev mode (`make lite`): web port and the module allowlist (comma-separated ids).
+WEB_PORT ?= 3000
+MODULES ?=
 
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*##"; printf "\nMate – common tasks\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nMate – common tasks\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 install: ## Resolve all deps (uv + pnpm)
 	uv sync --extra dev
@@ -38,6 +41,23 @@ dev-api: preflight ## Run only the API (with --reload)
 
 dev-web: preflight ## Run only the web dev server
 	set -a; . ./.env; set +a; cd apps/web && pnpm dev
+
+lite: ## Low-memory native stack, no .env needed: make lite [MODULES=a,b] [PORT=] [WEB_PORT=]
+	@MODULES="$(MODULES)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" bash ./scripts/lite.sh
+
+lite-reset: ## Wipe the lite stack's data (data/lite only)
+	rm -rf data/lite
+
+module-new: ## Scaffold modules/<ID>: make module-new ID=my_module [PANEL=1]
+	@test -n "$(ID)" || { echo "usage: make module-new ID=my_module [PANEL=1]"; exit 2; }
+	uv run --extra dev mate-module new "$(ID)" $(if $(PANEL),--panel)
+
+module-validate: ## Validate every module (manifest, HOW_TO_USE, layout.json)
+	uv run --extra dev mate-module validate
+
+module-test: ## Run one module's tests: make module-test ID=my_module
+	@test -n "$(ID)" || { echo "usage: make module-test ID=my_module"; exit 2; }
+	uv run --extra dev mate-module test "$(ID)"
 
 up: check-env ## docker compose up (production-style images)
 	docker compose up -d --build

@@ -49,11 +49,14 @@ type Entry = (
 export function CardPalette({
   onStartAdd,
   logModel,
+  moduleId,
 }: {
   /** Begin a palette→canvas add at the pointer's position. */
   onStartAdd: (req: AddRequest, e: React.PointerEvent) => void;
   /** Only entries whose `log_models` include the board's model are shown. */
   logModel: LogModel;
+  /** Restrict the palette to one module's widgets and datasets (the Studio). */
+  moduleId?: string;
 }) {
   const { data: cards, isLoading: cardsLoading } = useCardCatalog();
   const { data: datasets, isLoading: datasetsLoading } = useDatasetCatalog();
@@ -79,6 +82,7 @@ export function CardPalette({
     };
 
     for (const c of cards ?? []) {
+      if (moduleId && c.module_id !== moduleId) continue;
       if (!matches(c.title, c.module_name, c.description)) continue;
       ensure(c.module_id, c.module_name).entries.push({
         type: "widget",
@@ -92,6 +96,7 @@ export function CardPalette({
       });
     }
     for (const d of datasets ?? []) {
+      if (moduleId && d.module_id !== moduleId) continue;
       if (!matches(d.title, d.module_name, d.description)) continue;
       ensure(d.module_id, d.module_name).entries.push({
         type: "viz",
@@ -111,7 +116,7 @@ export function CardPalette({
       g.entries.sort((a, b) => Number(b.applicable) - Number(a.applicable));
     }
     return [...byModule.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [cards, datasets, query, logModel]);
+  }, [cards, datasets, query, logModel, moduleId]);
 
   const searching = query.trim().length > 0;
   const toggle = (id: string) =>

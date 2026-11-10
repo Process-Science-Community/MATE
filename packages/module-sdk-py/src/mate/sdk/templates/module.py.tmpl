@@ -1,0 +1,34 @@
+"""Module __ID__: TODO - say what this module computes."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from mate.sdk import Module, ModuleContext, job, route
+
+
+class __CLASS__(Module):
+    id = "__ID__"
+
+    @route.get("/summary")
+    async def summary(self, ctx: ModuleContext) -> dict[str, Any]:
+        """Events and cases per activity. Backs the `summary` dataset (a table)."""
+        return {"rows": await self._activity_counts(ctx)}
+
+    @route.post("/recount")
+    @job(progress=True, title=__JOB_TITLE__)
+    async def recount(self, ctx: ModuleContext) -> None:
+        """A job example: runs on the job queue and reports progress."""
+        await ctx.progress.update(0.0, "Counting activities")
+        rows = await self._activity_counts(ctx)
+        await ctx.cache.set("summary", {"rows": rows})
+        ctx.logger.info("__ID__.recount.done", activities=len(rows))
+        await ctx.progress.update(1.0, "Done")
+
+    async def _activity_counts(self, ctx: ModuleContext) -> list[dict[str, Any]]:
+        async with ctx.event_log as log:
+            rows = await log.duckdb_fetch(
+                "SELECT activity, COUNT(*) AS events, COUNT(DISTINCT case_id) AS cases "
+                "FROM events GROUP BY activity ORDER BY events DESC, activity"
+            )
+        return [{"activity": a, "events": int(e), "cases": int(c)} for a, e, c in rows]

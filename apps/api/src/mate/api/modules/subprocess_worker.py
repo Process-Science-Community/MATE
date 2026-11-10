@@ -595,7 +595,10 @@ class WireConnection:
                         if _CANCEL_RPC_MSG in message:
                             fut.set_exception(Cancelled())
                         else:
-                            fut.set_exception(RuntimeError(message))
+                            err = RuntimeError(message)
+                            # Kept for the host to log (ctx_rpc.report_worker_error).
+                            err.remote_traceback = msg["error"].get("traceback")  # type: ignore[attr-defined]
+                            fut.set_exception(err)
                     else:
                         fut.set_result(msg.get("result"))
 
@@ -630,6 +633,36 @@ class WireConnection:
                     },
                 }
             )
+
+
+def _debugpy_listen(module_id: str) -> None:
+    """Lite dev (DEBUGPY_WORKERS): listen on a free port, never wait for a client.
+    The host captures stderr into the module logs, which is how the port surfaces."""
+    if "pydevd" in sys.modules:
+        # The API's debugpy (subProcess=True) already injected pydevd into this child and
+        # connected it to the 5678 session; a second listen orphans two adapter processes.
+        print(
+            f"MATE_DEBUGPY module={module_id} pid={os.getpid()} attached-via-api",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    try:
+        import debugpy  # type: ignore[import-not-found]
+
+        _host, port = debugpy.listen(("127.0.0.1", 0))
+    except Exception as exc:
+        print(
+            f"MATE_DEBUGPY module={module_id} pid={os.getpid()} unavailable: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    print(
+        f"MATE_DEBUGPY module={module_id} pid={os.getpid()} port={port}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 async def _amain(socket_path: str, module_folder: str) -> int:
@@ -675,6 +708,10 @@ async def _amain(socket_path: str, module_folder: str) -> int:
             "params": {"protocol": 1, "handlers": handlers_meta, "guidance": guidance_meta},
         }
     )
+    if os.environ.get("DEBUGPY_WORKERS", "").strip().lower() in {"1", "true", "yes", "on"}:
+        # After `ready` and off the loop: debugpy.listen starts an adapter process.
+        module_id = getattr(instance, "id", None) or Path(module_folder).name
+        threading.Thread(target=_debugpy_listen, args=(module_id,), daemon=True).start()
     await conn.run()
     writer.close()
     with contextlib.suppress(Exception):

@@ -32,7 +32,12 @@ from typing import Any
 import structlog
 
 from mate.api.jobs.supervisor import ChildHandle, get_child_supervisor
-from mate.api.modules.ctx_rpc import build_ctx_meta, jsonify, make_ctx_dispatcher
+from mate.api.modules.ctx_rpc import (
+    build_ctx_meta,
+    jsonify,
+    make_ctx_dispatcher,
+    report_worker_error,
+)
 from mate.api.modules.job_logs import get_job_log_buffer
 from mate.api.modules.subprocess_worker import RPC_STREAM_LIMIT, WireConnection
 from mate.sdk import Cancelled as SdkCancelled
@@ -194,12 +199,13 @@ class JobWorker:
                         "kwargs": {k: jsonify(v) for k, v in kwargs.items()},
                     },
                 )
-            except Exception:
+            except Exception as exc:
                 # The worker died mid-call. If a cancel was requested, that's the
                 # expected hard stop - surface it as the SDK cancel so the runtime
                 # records `cancelled`, not `failed`.
                 if self._is_cancelled(_CALL_TOKEN):
                     raise SdkCancelled() from None
+                report_worker_error(exc, ctx, self.module_id, attr)
                 raise
         finally:
             await self._dispose()

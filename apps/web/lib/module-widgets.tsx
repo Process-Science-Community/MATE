@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { rawFetch } from "@/lib/api";
 import type { DrillHandler } from "@/lib/dashboards/drill";
 import { CORE_EXTERNALS, installModuleRuntime, scanBundleExternals } from "@/lib/module-runtime";
+import { isDevMode, useOnDevFocus } from "@/lib/dev-queries";
 
 /**
  * Cross-module widget loader (§7.7).
@@ -56,6 +57,7 @@ type WidgetComponent = ComponentType<WidgetProps>;
 
 const _cache = new Map<string, WidgetComponent>();
 const _inflight = new Map<string, Promise<WidgetComponent>>();
+const _sources = new Map<string, string>();
 
 function ffRequire(specifier: string): unknown {
   const runtime = (typeof window !== "undefined" ? window.__FF_RUNTIME__ : undefined) ?? {};
@@ -78,6 +80,53 @@ function pickWidget(exports: Record<string, unknown>): WidgetComponent | null {
   return null;
 }
 
+function widgetUrl(moduleId: string, widgetId: string): string {
+  return `/api/v1/modules/${encodeURIComponent(moduleId)}/assets/widget-${encodeURIComponent(widgetId)}.js`;
+}
+
+async function evaluateWidget(
+  moduleId: string,
+  widgetId: string,
+  source: string,
+  core: Promise<unknown>,
+): Promise<WidgetComponent> {
+  await Promise.all([core, installModuleRuntime(scanBundleExternals(source))]);
+  const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
+  const factory = new Function(
+    "module",
+    "exports",
+    "require",
+    `${source}\n;return module.exports;`,
+  );
+  const exportsOut = factory(moduleObj, moduleObj.exports, ffRequire) as Record<string, unknown>;
+  const Widget = pickWidget(exportsOut);
+  if (!Widget) {
+    throw new Error(`Widget ${moduleId}/${widgetId} did not export a component.`);
+  }
+  const cacheKey = `${moduleId}::${widgetId}`;
+  _cache.set(cacheKey, Widget);
+  // Kept only in dev, for the hot-reload comparison below.
+  void isDevMode().then((dev) => dev && _sources.set(cacheKey, source));
+  return Widget;
+}
+
+/** Dev hot reload: refetch (cheap 304 when unchanged) and re-evaluate only a
+ * changed bundle. Every mounted card of this widget re-checks on its own; the
+ * browser cache and the source compare keep that cheap. */
+async function reloadWidgetIfChanged(
+  moduleId: string,
+  widgetId: string,
+): Promise<WidgetComponent | null> {
+  const key = `${moduleId}::${widgetId}`;
+  // No previous source = the first load failed; try again rather than give up.
+  const prev = _sources.get(key);
+  const res = await rawFetch(widgetUrl(moduleId, widgetId));
+  if (!res.ok) return null;
+  const source = await res.text();
+  if (source === prev) return _cache.get(key) ?? null;
+  return evaluateWidget(moduleId, widgetId, source, installModuleRuntime(CORE_EXTERNALS));
+}
+
 async function loadWidget(moduleId: string, widgetId: string): Promise<WidgetComponent> {
   const cacheKey = `${moduleId}::${widgetId}`;
   const cached = _cache.get(cacheKey);
@@ -91,30 +140,14 @@ async function loadWidget(moduleId: string, widgetId: string): Promise<WidgetCom
     // mounts many widgets at once, so the per-specifier dedupe in
     // installModuleRuntime() is what keeps that to one import each.
     const core = installModuleRuntime(CORE_EXTERNALS);
-    const url = `/api/v1/modules/${encodeURIComponent(moduleId)}/assets/widget-${encodeURIComponent(widgetId)}.js`;
-    const res = await rawFetch(url);
+    const res = await rawFetch(widgetUrl(moduleId, widgetId));
     if (!res.ok) {
       throw new Error(
         `Failed to load widget ${moduleId}/${widgetId} (HTTP ${res.status}). ` +
           "Is the source module installed and is the widget declared in its manifest.frontend.widgets?",
       );
     }
-    const source = await res.text();
-    await Promise.all([core, installModuleRuntime(scanBundleExternals(source))]);
-    const moduleObj: { exports: Record<string, unknown> } = { exports: {} };
-    const factory = new Function(
-      "module",
-      "exports",
-      "require",
-      `${source}\n;return module.exports;`,
-    );
-    const exportsOut = factory(moduleObj, moduleObj.exports, ffRequire) as Record<string, unknown>;
-    const Widget = pickWidget(exportsOut);
-    if (!Widget) {
-      throw new Error(`Widget ${moduleId}/${widgetId} did not export a component.`);
-    }
-    _cache.set(cacheKey, Widget);
-    return Widget;
+    return evaluateWidget(moduleId, widgetId, await res.text(), core);
   })();
   _inflight.set(cacheKey, promise);
   try {
@@ -151,6 +184,19 @@ export function useWidget(sourceModuleId: string, widgetId: string): WidgetCompo
       cancelled = true;
     };
   }, [sourceModuleId, widgetId, resolved]);
+
+  // Dev: pick up a watch rebuild when the author returns to the browser. When
+  // another card already re-evaluated it, this returns that new component.
+  useOnDevFocus(() => {
+    reloadWidgetIfChanged(sourceModuleId, widgetId).then(
+      (W) => {
+        if (!W) return;
+        setError(null);
+        setResolved(() => W);
+      },
+      (err: Error) => setError(err.message),
+    );
+  });
 
   return function ResolvedWidget(props: WidgetProps) {
     if (error) {

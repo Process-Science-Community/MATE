@@ -1,0 +1,45 @@
+case_id,activity,timestamp,resource
+case-1,register order,2026-01-05T08:00:00+00:00,alice
+case-1,check stock,2026-01-05T08:40:00+00:00,bob
+case-1,ship,2026-01-05T11:15:00+00:00,dave
+case-1,send invoice,2026-01-05T12:05:00+00:00,carol
+case-2,register order,2026-01-05T09:10:00+00:00,alice
+case-2,check stock,2026-01-05T09:55:00+00:00,bob
+case-2,cancel,2026-01-05T10:20:00+00:00,bob
+case-3,register order,2026-01-05T10:30:00+00:00,alice
+case-3,check stock,2026-01-05T11:45:00+00:00,bob
+case-3,ship,2026-01-05T14:00:00+00:00,dave
+case-3,send invoice,2026-01-05T14:50:00+00:00,carol
+case-4,register order,2026-01-06T08:05:00+00:00,alice
+case-4,check credit,2026-01-06T08:50:00+00:00,carol
+case-4,check stock,2026-01-06T09:30:00+00:00,bob
+case-4,ship,2026-01-06T12:10:00+00:00,dave
+case-4,send invoice,2026-01-06T13:00:00+00:00,carol
+case-5,register order,2026-01-06T09:20:00+00:00,alice
+case-5,check stock,2026-01-06T10:00:00+00:00,bob
+case-5,ship,2026-01-06T13:30:00+00:00,dave
+case-5,send invoice,2026-01-06T14:15:00+00:00,carol
+case-5,receive payment,2026-01-08T10:00:00+00:00,alice
+case-6,register order,2026-01-06T11:00:00+00:00,alice
+case-6,check credit,2026-01-06T11:40:00+00:00,carol
+case-6,cancel,2026-01-06T12:05:00+00:00,bob
+case-7,register order,2026-01-07T08:15:00+00:00,alice
+case-7,check stock,2026-01-07T09:05:00+00:00,bob
+case-7,ship,2026-01-07T11:50:00+00:00,dave
+case-7,send invoice,2026-01-07T12:30:00+00:00,carol
+case-7,receive payment,2026-01-09T09:30:00+00:00,alice
+case-8,register order,2026-01-07T10:00:00+00:00,alice
+case-8,check stock,2026-01-07T10:35:00+00:00,bob
+case-8,check stock,2026-01-07T15:20:00+00:00,bob
+case-8,ship,2026-01-08T09:00:00+00:00,dave
+case-8,send invoice,2026-01-08T09:45:00+00:00,carol
+case-9,register order,2026-01-08T08:30:00+00:00,alice
+case-9,check credit,2026-01-08T09:10:00+00:00,carol
+case-9,check stock,2026-01-08T09:55:00+00:00,bob
+case-9,ship,2026-01-08T13:00:00+00:00,dave
+case-9,send invoice,2026-01-08T13:40:00+00:00,carol
+case-9,receive payment,2026-01-10T11:00:00+00:00,alice
+case-10,register order,2026-01-08T11:00:00+00:00,alice
+case-10,check stock,2026-01-08T11:30:00+00:00,bob
+case-10,ship,2026-01-08T14:45:00+00:00,dave
+case-10,send invoice,2026-01-08T15:20:00+00:00,carol

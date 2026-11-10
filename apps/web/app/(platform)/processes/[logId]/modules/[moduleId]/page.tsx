@@ -6,11 +6,15 @@ import { useParams } from "next/navigation";
 import { FileBox } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { PageContainer } from "@/components/page";
 import { PanelSkeleton } from "@/components/skeletons";
+import { DashboardCanvas } from "@/components/dashboards/dashboard-canvas";
 import { useModules } from "@/lib/queries";
 import { getModulePanel, prefetchModulePanel } from "@/lib/module-panels";
+import { DEFAULT_CANVAS_SETTINGS, type DashboardItem } from "@/lib/dashboard-queries";
+import { useIsDev, useModuleLayout } from "@/lib/dev-queries";
 import { LogFilterProvider } from "@/components/processes/log-filter";
 import { ModuleRunGate } from "@/components/processes/module-run-gate";
 
@@ -29,12 +33,16 @@ export default function ModulePage() {
   }, [moduleId]);
 
   const { data: modules, isLoading, isError } = useModules(logId);
+  // Fetched in parallel with the module list. A failed fetch (e.g. an API
+  // without the endpoint) counts as "no layout", not as an error.
+  const layoutQuery = useModuleLayout(moduleId);
+  const layoutItems = layoutQuery.data?.items ?? null;
 
   const mod = modules?.find((m) => m.id === moduleId);
 
   // Same shell as loading.tsx, so the route-level and data-level skeletons are
   // interchangeable - no flash or jump when one hands over to the other.
-  if (isLoading) {
+  if (isLoading || layoutQuery.isLoading) {
     return <PanelSkeleton />;
   }
   if (isError) {
@@ -102,7 +110,12 @@ export default function ModulePage() {
               Modules opt out via the manifest (`frontend.log_filter: false`) and
               mount without the bar or the header. */}
           <LogFilterProvider logId={logId} enabled={mod.supports_log_filter}>
-            <ModulePanelSlot logId={logId} moduleId={mod.id} hasFrontend={mod.has_frontend} />
+            <ModulePanelSlot
+              logId={logId}
+              moduleId={mod.id}
+              hasFrontend={mod.has_frontend}
+              layoutItems={layoutItems}
+            />
           </LogFilterProvider>
         </ModuleRunGate>
       )}
@@ -110,25 +123,73 @@ export default function ModulePage() {
   );
 }
 
+const NOOP_ADD_REF = { current: null };
+const NOOP = () => {};
+
+/** A module's `layout.json`, rendered read-only with the dashboard canvas. */
+function ModuleLayoutView({ logId, items }: { logId: string; items: DashboardItem[] }) {
+  return (
+    <DashboardCanvas
+      items={items}
+      logId={logId}
+      editing={false}
+      startAddRef={NOOP_ADD_REF}
+      settings={DEFAULT_CANVAS_SETTINGS}
+      onItemsChange={NOOP}
+    />
+  );
+}
+
 function ModulePanelSlot({
   logId,
   moduleId,
   hasFrontend,
+  layoutItems,
 }: {
   logId: string;
   moduleId: string;
   hasFrontend: boolean;
+  layoutItems: DashboardItem[] | null;
 }) {
+  const isDev = useIsDev();
   const Panel = getModulePanel(moduleId, { hasFrontend });
+  if (Panel && layoutItems) {
+    return (
+      <Tabs defaultValue="panel">
+        <TabsList>
+          <TabsTrigger value="panel">Panel</TabsTrigger>
+          <TabsTrigger value="layout">Layout</TabsTrigger>
+        </TabsList>
+        <TabsContent value="panel">
+          <Panel logId={logId} moduleId={moduleId} />
+        </TabsContent>
+        <TabsContent value="layout">
+          <ModuleLayoutView logId={logId} items={layoutItems} />
+        </TabsContent>
+      </Tabs>
+    );
+  }
   if (Panel) {
     return <Panel logId={logId} moduleId={moduleId} />;
+  }
+  if (layoutItems) {
+    return <ModuleLayoutView logId={logId} items={layoutItems} />;
   }
   return (
     <div className="rounded-xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
       <p className="text-sm text-muted-foreground">
-        This module has no frontend panel yet. The platform mounts its API at{" "}
+        This module has no frontend panel or layout yet. The platform mounts its API at{" "}
         <code className="rounded bg-muted px-1 text-[11px]">/api/v1/modules/{moduleId}/…</code>.
       </p>
+      {isDev && (
+        <Button asChild size="sm" variant="outline" className="mt-4">
+          <Link
+            href={`/dev/studio/${encodeURIComponent(moduleId)}?log=${encodeURIComponent(logId)}`}
+          >
+            Build a layout in the Studio
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }

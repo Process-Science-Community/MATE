@@ -27,6 +27,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import structlog
+
 # Sentinel string carried by the RPC error the host raises for every ctx call
 # made by a soft-cancelled job. The worker (`subprocess_worker.WireConnection`)
 # recognises it and reconstructs `Cancelled` so the handler unwinds even under a
@@ -55,6 +57,28 @@ def cache_unenvelope(env: Any) -> Any:
     if isinstance(env, dict) and env.get("kind") == "json":
         return env["value"]
     return env
+
+
+def report_worker_error(exc: BaseException, ctx: Any, module_id: str, handler: str) -> None:
+    """Log the traceback a worker sent with a failed handler call.
+
+    Goes through the call's ``ctx.logger`` (the host's bus-forwarding logger), so
+    one call reaches structlog, the job's log ring and ``module.log.error`` (the
+    UI log tail). The caller still re-raises *exc* unchanged."""
+    tb = getattr(exc, "remote_traceback", None)
+    if not tb:
+        return
+    logger = getattr(ctx, "logger", None)
+    if logger is None:
+        logger = structlog.get_logger(__name__).bind(module_id=module_id)
+    with contextlib.suppress(Exception):
+        logger.error(
+            "modules.worker.handler_error",
+            module_id=module_id,
+            handler=handler,
+            error=str(exc),
+            traceback=tb,
+        )
 
 
 def jsonify(value: Any) -> Any:

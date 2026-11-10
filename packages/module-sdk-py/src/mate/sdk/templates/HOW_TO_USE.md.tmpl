@@ -1,0 +1,31 @@
+# How to use __NAME__
+
+__NAME__ counts how often each activity occurs in your event log and in how many cases.
+
+## When to use it
+
+- You want a quick overview of which activities happen most often.
+- TODO: name a situation where another module is the better tool.
+
+## Before you start
+
+- A case-centric event log with `case_id`, `activity` and `timestamp` columns.
+- At least one event in one case.
+
+## Settings
+
+This module has no settings.
+
+## Reading the results
+
+### Activity summary
+
+One row per activity with the number of events and the number of distinct cases it appears in, most frequent first.
+
+## Tips and limits
+
+- TODO: size limits, run time and what the module does not do.
+
+## Method
+
+The module groups the events by activity and counts the events and the distinct case ids in each group.

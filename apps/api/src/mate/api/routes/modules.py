@@ -48,6 +48,7 @@ from mate.api.modules.installs import (
 from mate.api.modules.uninstall import uninstall_for_user
 from mate.api.policy import SCOPE_CARD, resolve
 from mate.api.schemas.event_logs import LogModel
+from mate.sdk.layout import ModuleLayout as FileModuleLayout
 from mate.sdk.manifest import Artifact, Source
 
 # UserSetting key holding the per-user record of which default module ids have
@@ -557,21 +558,41 @@ class ModuleLayoutPayload(BaseModel):
     layout: dict[str, Any] = Field(default_factory=dict)
 
 
-@router.get("/{module_id}/layout", response_model=ModuleLayoutPayload)
+class ModuleFileLayoutPayload(BaseModel):
+    layout: dict[str, Any] | None = None
+
+
+def read_module_file_layout(folder: Path | None) -> dict[str, Any] | None:
+    """The module's declarative ``layout.json`` (validated), read fresh, or None."""
+    if folder is None:
+        return None
+    try:
+        layout = FileModuleLayout.load(folder)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid layout.json: {exc}") from exc
+    return layout.model_dump(mode="json", exclude_none=True) if layout is not None else None
+
+
+@router.get("/{module_id}/layout", response_model=ModuleFileLayoutPayload)
 async def get_module_layout(
     module_id: str,
     session: SessionDep,
     user: CurrentUserDep,
-    log_id: Annotated[str, Query(..., min_length=1)],
-) -> ModuleLayoutPayload:
-    """Return the saved layout JSON for this `(user, log, module)` triple, or
-    an empty object if none saved (§7.7). Frontend uses this to restore
-    react-grid-layout positions across reloads.
+    log_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> ModuleFileLayoutPayload:
+    """Without ``log_id``: the module's declarative page layout
+    (``modules/<id>/layout.json``, read fresh each call), ``null`` when it ships
+    none. With ``log_id``: the saved layout JSON for this `(user, log, module)`
+    triple, or an empty object if none saved (§7.7).
     """
     await _assert_owns_module(session, user.id, module_id)
+    if log_id is None:
+        return ModuleFileLayoutPayload(
+            layout=read_module_file_layout(_module_folder(get_module_loader(), module_id))
+        )
     await get_owned_event_log(session, log_id, user.id)
     row = await session.get(ModuleLayout, (user.id, log_id, module_id))
-    return ModuleLayoutPayload(layout=row.layout_json if row else {})
+    return ModuleFileLayoutPayload(layout=row.layout_json if row else {})
 
 
 @router.put("/{module_id}/layout", response_model=ModuleLayoutPayload)

@@ -50,6 +50,23 @@ class Settings(BaseSettings):
         description="Set to 'dev' to enable watchdog hot-reload of modules/ (§5.3 #7).",
     )
 
+    # --- Lite dev mode (docs/DEV_LITE.md) ------------------------------------
+    modules_only: str = Field(
+        default="",
+        description="MODULES_ONLY - csv of module ids to load (plus their hard deps); empty = all.",
+    )
+    dev_force_thread: bool = Field(
+        default=False,
+        description="DEV_FORCE_THREAD - run `execution: worker` jobs in-process so breakpoints bind.",
+    )
+    debugpy_port: int = Field(
+        default=0, ge=0, le=65535, description="DEBUGPY_PORT - >0: API listens for debugpy here."
+    )
+    debugpy_workers: bool = Field(
+        default=False,
+        description="DEBUGPY_WORKERS - worker subprocesses listen for debugpy on a free port.",
+    )
+
     # Behaviour-tracking policy & onboarding default. Read by the frontend via
     # GET /api/v1/usage/config (surfaced as `onboarding_mode`):
     #   force - tracking is ON for every user; the onboarding privacy step and
@@ -423,6 +440,15 @@ class Settings(BaseSettings):
     @property
     def sandboxed_role_set(self) -> frozenset[str]:
         return _csv_set(self.sandboxed_roles)
+
+    @property
+    def modules_only_ids(self) -> set[str]:
+        return {m.strip() for m in self.modules_only.split(",") if m.strip()}
+
+    @property
+    def dev_tools_enabled(self) -> bool:
+        """Dev router + Studio writes: only on a local dev box with the demo bypass."""
+        return self.env == "dev" and self.demo_mode
 
     @property
     def users_dir(self) -> Path:

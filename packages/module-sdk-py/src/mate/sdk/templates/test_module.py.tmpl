@@ -1,0 +1,32 @@
+"""Tests for __ID__. Run: `mate-module test __ID__` (or `uv run pytest modules/__ID__/tests`)."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+from mate.sdk.testing import RecordingProgress, build_test_context, load_module, sample_log
+
+MODULE = load_module(Path(__file__).parents[1])
+
+
+def test_summary_counts_every_event() -> None:
+    async def check() -> None:
+        log = sample_log(rows=200)
+        ctx = await build_test_context(log_id=log.id, module_id="__ID__")
+        out = await MODULE.summary(ctx)  # type: ignore[attr-defined]
+        assert out["rows"], "expected one row per activity"
+        assert sum(row["events"] for row in out["rows"]) == 200
+
+    asyncio.run(check())
+
+
+def test_recount_job_caches_the_summary() -> None:
+    async def check() -> None:
+        ctx = await build_test_context(module_id="__ID__")
+        await MODULE.recount(ctx)  # type: ignore[attr-defined]
+        assert (await ctx.cache.get("summary"))["rows"]
+        assert isinstance(ctx.progress, RecordingProgress)
+        assert ctx.progress.calls[-1]["current"] == 1.0
+
+    asyncio.run(check())

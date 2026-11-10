@@ -34,6 +34,7 @@ from mate.api.modules.ctx_rpc import (
     build_ctx_meta,
     jsonify,
     make_ctx_dispatcher,
+    report_worker_error,
 )
 from mate.api.modules.job_logs import get_job_log_buffer
 from mate.api.modules.runtimes.base import WorkerLaunchSpec
@@ -609,6 +610,9 @@ class SubprocessBridge:
                     "kwargs": {k: jsonify(v) for k, v in kwargs.items()},
                 },
             )
+        except Exception as exc:
+            report_worker_error(exc, ctx, self.manifest.id, attr)
+            raise
         finally:
             self._ctx_registry.pop(token, None)
             self._token_job.pop(token, None)

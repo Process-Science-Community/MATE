@@ -287,12 +287,29 @@ def _purge_legacy_storage_once(settings) -> None:
 _SHUTDOWN_PHASE_TIMEOUT_S = 6.0
 
 
+def _start_debugpy(port: int) -> None:
+    """Lite dev (DEBUGPY_PORT): let an IDE attach to this API process. Never waits
+    for a client; a missing debugpy or a second call (tests) only warns."""
+    try:
+        import debugpy  # type: ignore[import-not-found]
+
+        debugpy.listen(("127.0.0.1", port))
+    except Exception as exc:
+        structlog.get_logger("api.startup").warning(
+            "debugpy.listen_failed", port=port, error=str(exc)
+        )
+        return
+    structlog.get_logger("api.startup").info("debugpy.listening", port=port)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.ensure_dirs()
     _purge_legacy_storage_once(settings)
     _configure_logging(settings.log_level)
+    if settings.debugpy_port:
+        _start_debugpy(settings.debugpy_port)
 
     bus = EventBus()
     set_event_bus(bus)
@@ -534,6 +551,10 @@ def create_app() -> FastAPI:
     # /jobs/{id}/stream, AI chat) keep flushing live and unbuffered.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.include_router(v1)
+    if settings.dev_tools_enabled:
+        from mate.api.routes.dev import router as dev_router
+
+        app.include_router(dev_router, prefix="/api/v1")
 
     # Read-only MCP server for external consumers (opt-in). Mounted as a raw
     # ASGI sub-app (the module loader's @route mechanism can't host one); its

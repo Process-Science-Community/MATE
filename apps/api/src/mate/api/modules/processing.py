@@ -203,7 +203,11 @@ class ModuleProcessingCoordinator:
 
     def _version(self, module_id: str) -> str | None:
         loaded = self._loader.loaded.get(module_id)
-        return loaded.manifest.version if loaded is not None else None
+        if loaded is None:
+            return None
+        # env=dev: a code edit (new fingerprint) makes earlier results stale.
+        fp = getattr(loaded, "dev_fingerprint", None)
+        return f"{loaded.manifest.version}+dev.{fp}" if fp else loaded.manifest.version
 
     def _is_import_root(self, module_id: str) -> bool:
         return any(

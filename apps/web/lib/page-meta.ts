@@ -211,6 +211,12 @@ export function resolvePageMeta(pathname: string, ctx: ResolvePageCtx = {}): Pag
   // Section roots that only redirect – give them a sane label just in case.
   if (parts[0] === "settings") return { title: "Settings" };
   if (parts[0] === "admin") return { title: "Admin" };
+  // Lite dev mode (only reachable when the API mounts /api/v1/dev).
+  if (parts[0] === "dev") {
+    return parts[1] === "studio" && parts[2]
+      ? { title: `Studio · ${parts[2]}`, description: "Build this module's layout.json visually." }
+      : { title: "Dev", description: "Loaded modules, load errors and debug settings." };
+  }
 
   return { title: parts.length ? prettify(parts[parts.length - 1]) : "Processes" };
 }

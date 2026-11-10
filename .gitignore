@@ -65,6 +65,8 @@ data/metadata.db
 data/metadata.db-wal
 data/metadata.db-shm
 data/*.bak
+# Lite dev mode runtime tree (scripts/lite.sh; wipe with `make lite-reset`)
+data/lite/
 # `Settings.data_dir` defaults to the *relative* path `data`, so launching the
 # API from anywhere but the repo root drops a second runtime tree next to the
 # cwd. Only the root `data/` is real - catch the common stray.
@@ -79,8 +81,9 @@ apps/web/.env.local
 packages/shared-types/generated/
 tasks.md
 
-# IDE / OS
-.vscode/
+# IDE / OS (the shared debugger configs for lite dev mode are committed)
+.vscode/*
+!.vscode/launch.json
 .idea/
 *.swp
 .DS_Store

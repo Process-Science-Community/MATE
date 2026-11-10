@@ -24,6 +24,7 @@ Two toolchains: **uv** (Python workspace) and **pnpm** (JS workspace). The `Make
 ```bash
 make install        # uv sync --extra dev  +  pnpm install
 make dev            # run API (uvicorn --reload) + web (next dev) together, no Docker
+make lite           # low-memory native stack, no .env: MODULES=a,b, demo login, data/lite/, debugpy :5678 (docs/DEV_LITE.md)
 make dev-api        # API only – runs alembic upgrade head first, then uvicorn
 make dev-web        # web only
 make test           # uv run --extra dev pytest apps/api/tests -v
@@ -34,7 +35,7 @@ make up / up-dev    # docker compose (prod-style / dev overlay with hot reload)
 ```
 
 - **Run a single Python test:** `uv run --extra dev pytest apps/api/tests/test_foo.py::test_bar -v`
-- **Module tests** live in `modules/<folder>/tests/`: `uv run pytest modules/<folder>/tests`
+- **Modules:** `make module-new ID=x [PANEL=1]` scaffolds, `make module-test ID=x` runs `modules/x/tests`, `make module-validate` checks manifest + `HOW_TO_USE.md` + `layout.json` (all via the SDK's `mate-module` CLI). Debugging recipes per execution mode: [`docs/DEV_LITE.md`](./docs/DEV_LITE.md).
 - **Type-check Python:** `uv run pyright` (strict mode, `apps/api/src` + `packages/module-sdk-py/src`).
 - **DB migration:** add a file under `apps/api/alembic/versions/`; `make dev-api` and the api container both run `alembic upgrade head` on boot.
 - After changing API route signatures or Pydantic schemas, run `make codegen` (API must be running on `:8000`) so the web app's generated types stay in sync.

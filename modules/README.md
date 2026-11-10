@@ -30,6 +30,7 @@ modules/<folder>/
 ├── package.json            # optional – synthesised from manifest if absent
 ├── events.py               # recommended – Pydantic schemas for emitted events
 ├── tests/                  # pytest tests for your handlers
+├── layout.json            # optional – declarative module page (cards on a grid), see §7 "Layout"
 ├── panel/
 │   └── index.tsx           # frontend module page entry (see manifest.frontend.panel)
 ├── widgets/
@@ -443,7 +444,7 @@ A temporary directory unique to this invocation. Cleaned automatically on comple
 
 ### `ctx.logger`
 
-A `structlog.BoundLogger` already bound with `module_id` and `log_id`. Use it; `print()` is dropped.
+A `structlog.BoundLogger` already bound with `module_id` and `log_id`. Use it: its lines also reach the job's log and the live **Logs** tail on the module's detail page. `print()` only lands in the API's stdout (or, from a worker process, in the captured worker output).
 
 ---
 
@@ -507,6 +508,26 @@ export default function Panel({ logId, moduleId, config }: ModulePanelProps) {
 Use the shadcn-themed building blocks in `@mate/module-sdk-ts` rather than re-implementing tables, KPI cards, charts. They consume the same CSS variables as the host app, so light/dark and density switches just work.
 
 **Linking entities.** Wherever your UI renders a variant or an activity, make it clickable: build the href with `variantHref(logId, variantId)` / `activityHref(logId, rawActivityName)` from the SDK (or `@/lib/dashboards/drill`) and render it with `next/link` (a runtime external) — the canonical entity views live at those URLs, and a real `<Link>` keeps route skeletons and cmd-click working. Both helpers take **raw** ids/names and encode once — never pre-encode. Filter-style jumps (e.g. "show variants with this activity") stay explicit buttons using the `DRILL_PARAMS` vocabulary; widgets emitting `onDrill({ params: { activity } })` (or `variant`) land on the entity view automatically unless they target a specific module.
+
+### Layout (no-code alternative to a panel)
+
+A module page does not need React. `modules/<folder>/layout.json` describes it as cards on the dashboard grid, each bound to one of the module's `datasets` (rendered by a built-in visualization) or one of its `frontend.widgets`:
+
+```json
+{
+  "version": 1,
+  "items": [
+    {
+      "i": "summary-table", "kind": "viz", "module_id": "my_module",
+      "dataset_ref": { "module_id": "my_module", "dataset_id": "summary" },
+      "viz_id": "table", "mapping": {}, "title": "Activity summary",
+      "x": 0, "y": 0, "w": 12, "h": 8, "config": {}
+    }
+  ]
+}
+```
+
+The schema is `mate.sdk.ModuleLayout` / `LayoutItem` (items mirror a dashboard card). Without a panel, the module page renders the layout read-only; with both, the page shows **Panel** and **Layout** tabs. Build it visually in the dev-only Studio (`/dev/studio/<id>` under `make lite`, see [`docs/DEV_LITE.md`](../docs/DEV_LITE.md)) instead of writing it by hand; `mate-module validate` checks that every card points at a declared dataset or widget.
 
 ### Widgets
 
@@ -732,51 +753,57 @@ Commit `manifest.yaml`, `module.py`, your tests, your frontend sources, and `uv.
 4. **Topological load.** Hard-dep order. Your module's `Module` subclass is instantiated once.
 5. **Mount.** Routes registered at `/api/v1/modules/{id}/*`, `@on_event` handlers subscribed, `@job` handlers registered with the queue.
 6. **Per-log gating.** When a log is opened, the platform re-evaluates `requirements.event_log` against that log's model and schema. The `log_model` gate runs first – a module whose declared model doesn't match the log is **unavailable** and hidden from the grid (case-centric and object-centric modules never cross). If the model matches, the column / `min_events` / `min_cases` checks decide **available** vs **unavailable**, with a tooltip explaining what's missing.
-7. **Hot reload (dev).** Watchdog on `modules/` re-loads changed files without a platform restart. Manifest dep changes trigger an in-place `uv sync` for that module only.
+7. **Hot reload (dev).** With `ENV=dev` (set by `make lite`), a watchdog on `modules/` re-loads changed files without a platform restart. Manifest dep changes trigger an in-place `uv sync` for that module only. `pyproject.toml`, `HOW_TO_USE.md` and `layout.json` are not watched; the layout is read fresh on every request anyway.
 
-If a module fails to load (manifest error, install error, import error), the failure is reported on the per-module card and in `/settings/modules/{moduleId}` – the rest of the platform stays up.
+If a module fails to load (manifest error, install error, import error), the failure is reported on the per-module card and in `/modules/{moduleId}` – the rest of the platform stays up.
 
 ---
 
 ## 10. Testing
 
-Put pytest tests in `modules/<folder>/tests/`. The SDK ships test helpers that build a fake `ModuleContext` against a temporary log directory:
+Put pytest tests in `modules/<folder>/tests/` (`mate-module new` writes a first one). `mate.sdk.testing` builds a fake `ModuleContext` over a small sample log, so a handler runs without the platform:
 
 ```python
 # modules/my_module/tests/test_handlers.py
-import pytest
-from mate.sdk.testing import build_test_context, sample_log
+import asyncio
+from pathlib import Path
 
-from modules.my_module.module import MyModule
+from mate.sdk.testing import build_test_context, load_module, sample_log
+
+MODULE = load_module(Path(__file__).parents[1])  # imports module.py like the loader does
 
 
-@pytest.mark.asyncio
-async def test_get_kpis():
-    log = sample_log(rows=1000)
-    ctx = await build_test_context(log_id=log.id, module_id="my_module")
-    out = await MyModule().get_kpis(ctx)
-    assert "throughput" in out
+def test_summary() -> None:
+    async def check() -> None:
+        log = sample_log(rows=1000)
+        ctx = await build_test_context(log_id=log.id, module_id="my_module")
+        out = await MODULE.summary(ctx)
+        assert out["rows"]
+
+    asyncio.run(check())
 ```
+
+- `sample_log(rows=None)`: the bundled case-centric log (10 cases, `case_id/activity/timestamp/resource`), tiled to exactly `rows` events when given. Returns an object with `.id` and `.frame` (pandas).
+- `build_test_context(log=None, *, log_id=None, module_id=..., user_id=..., config=None, workdir=None)`: `ctx.event_log` serves the log through pandas / duckdb / polars / pm4py; `ctx.cache` is in memory; `ctx.progress` and `ctx.bus` record their calls (`RecordingProgress.calls`, `RecordingBus.events`); `ctx.registry` knows no other module; `ctx.run_in_process` runs in a thread; `ctx.config` carries `config`. Object-centric logs are not faked (`ctx.object_log` is `None`).
+- `load_module(folder)`: imports `<folder>/module.py` as the package `mate_mod_<id>` (relative imports work) and returns an instance; it checks the class id against the manifest.
 
 Run them from the repo root:
 
 ```
-uv run pytest modules/my_module/tests
+make module-test ID=my_module        # = uv run --extra dev mate-module test my_module
 ```
-
-The platform's CI also runs every module's tests against the platform's `inherit` set, catching version drift early.
 
 ---
 
 ## 11. Distribution
 
-Three channels are supported by the *Settings → Modules → Import* flow:
+A module ships in one of three ways:
 
-1. **Zip / tarball** – drop `modules/<folder>/` into a `.zip` or `.tar.gz`. The archive must contain a valid `HOW_TO_USE.md`; an upload without one is rejected (see §2).
-2. **Git URL** – repo root must contain the module folder layout from §2.
-3. **PyPI / npm** – publish a Python package exposing the `mate.modules` entry point. The platform discovers it without copying files into `modules/`.
+1. **Bundled default** – commit the folder under `modules/`. Every user is seeded with it on first login.
+2. **Archive upload** – zip or tar.gz the folder (without `.venv/`, `.dist/`, `node_modules/`) and import it at *Modules → Install a module* (`/modules/import`) (`POST /api/v1/modules/install`). The archive must contain a valid `manifest.yaml` and `HOW_TO_USE.md` (see §2). The install job unpacks into `data/uploaded_modules/<id>/` – never into `modules/` – installs the dependencies, loads the module and records the uploading user as its owner. A failed install deletes the half-installed folder. Another user's module with the same id is rejected unless the upload is byte-identical.
+3. **Python package** – publish a package exposing a `mate.modules` entry point whose value is the package name; the package folder must hold `manifest.yaml` next to `__init__.py`. The platform discovers it without copying files into `modules/`. A folder under `modules/` with the same id wins. Entry-point modules are not hot-reloaded.
 
-For the first two, the platform unpacks into `modules/<id>/`, runs `uv sync`, runs the JS bundle step, and mounts. Failures roll back cleanly – a half-installed folder is deleted.
+Run `make module-validate` before shipping.
 
 ---
 
@@ -784,8 +811,8 @@ For the first two, the platform unpacks into `modules/<id>/`, runs `uv sync`, ru
 
 Before submitting a module:
 
-- [ ] `manifest.yaml` validates (run `uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/<folder>/manifest.yaml')"`).
-- [ ] `HOW_TO_USE.md` exists and passes `uv run python -m mate.sdk.guide modules/<folder>`; every label, default and limit in it was checked against the panel and the code (§2).
+- [ ] `make module-validate` passes: the manifest loads, `HOW_TO_USE.md` passes the guide check (also `uv run python -m mate.sdk.guide modules/<folder>`), and every `layout.json` card points at a declared dataset or widget.
+- [ ] Every label, default and limit in `HOW_TO_USE.md` was checked against the panel and the code (§2).
 - [ ] `README.md`, if you keep one, holds developer notes only; what users need to know lives in the guide.
 - [ ] `requirements.event_log.log_model` is set to the model the module targets (`case_centric` or `object_centric`).
 - [ ] `id` matches between `manifest.yaml` and `module.py`.

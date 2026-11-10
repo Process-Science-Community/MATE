@@ -1,0 +1,41 @@
+{
+  // Debugger configs for lite dev mode (`make lite`, docs/DEV_LITE.md).
+  // Needs the VS Code "Python Debugger" extension (ms-python.debugpy).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach: MATE API (lite)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5678 },
+      "justMyCode": false
+    },
+    {
+      // Port comes from the `MATE_DEBUGPY module=<id> pid=<pid> port=<port>` line in the
+      // module's logs. Needs `DEBUGPY_WORKERS=true make lite`.
+      "name": "Attach: module worker (pick port)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": "${input:port}" },
+      "justMyCode": false
+    },
+    {
+      // Run with a file of the module open (module.py or anything under tests/).
+      "name": "Python: module tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": ["${fileDirname}", "-q", "-p", "no:cacheprovider"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "port",
+      "type": "promptString",
+      "description": "Worker debugpy port (from the MATE_DEBUGPY line in the module logs)"
+    }
+  ]
+}

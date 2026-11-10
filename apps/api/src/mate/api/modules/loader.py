@@ -37,6 +37,7 @@ from fastapi import APIRouter, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from mate.api.auth import CurrentUser, CurrentUserDep
+from mate.api.config import get_settings
 from mate.api.db.engine import get_sessionmaker
 from mate.api.db.models import EventLog, ModuleConfig
 from mate.api.events import EventBus
@@ -44,7 +45,8 @@ from mate.api.jobs.runtime import JobHandle, JobRuntime
 from mate.api.modules.availability import Availability
 from mate.api.modules.availability import evaluate as evaluate_availability
 from mate.api.modules.cache import ResultCache
-from mate.api.modules.discovery import DiscoveredModule, discover, topo_sort
+from mate.api.modules.content_hash import module_content_hash
+from mate.api.modules.discovery import DiscoveredModule, discover, keep_only, topo_sort
 from mate.api.modules.event_filters import FILTER_OPS
 from mate.api.modules.event_log_access import EventLogAccess
 from mate.api.modules.finder import get_finder, module_namespace, reset_finder
@@ -110,6 +112,12 @@ def _topic_matches(pattern: str, topic: str) -> bool:
     return len(t_segs) >= len(p_segs)
 
 
+async def _dev_fingerprint(folder: Path) -> str | None:
+    if get_settings().env != "dev":
+        return None
+    return (await asyncio.to_thread(module_content_hash, folder))[:12]
+
+
 @dataclass
 class LoadedModule:
     discovered: DiscoveredModule
@@ -117,6 +125,9 @@ class LoadedModule:
     sub_router: APIRouter
     handlers: dict[str, Callable[..., Awaitable[Any]]] = field(default_factory=dict)
     capabilities: list[str] = field(default_factory=list)
+    # env=dev only: short hash of the module folder, salted into the run version
+    # so a code edit marks earlier results stale (processing._version).
+    dev_fingerprint: str | None = None
 
     @property
     def id(self) -> str:
@@ -562,6 +573,9 @@ class ModuleLoader:
         # set every user is seeded with. Uploads added later via ``load_one``
         # must never land here, so it is only ever populated in ``load_all``.
         self.default_module_ids: set[str] = set()
+        # id -> (discovered, "Type: message") for modules whose last install or
+        # import failed; cleared on a successful (re)load. Read by the dev router.
+        self.load_errors: dict[str, tuple[DiscoveredModule, str]] = {}
         self._mount_router: APIRouter | None = None
         self._sub_event_tasks: list[asyncio.Task] = []
         self._bridges: dict[str, SubprocessBridge] = {}
@@ -594,7 +608,10 @@ class ModuleLoader:
         self._id_locks_guard = asyncio.Lock()
 
     async def load_all(self) -> list[LoadedModule]:
-        discovered = discover(self.modules_dir, self.uploaded_modules_dir)
+        discovered = keep_only(
+            discover(self.modules_dir, self.uploaded_modules_dir),
+            get_settings().modules_only_ids,
+        )
         # Snapshot which ids are repo defaults by *root* (not manifest source):
         # an upload already present on disk at boot must not be mistaken for a
         # default just because it discovers as "filesystem".
@@ -623,21 +640,25 @@ class ModuleLoader:
                 # mismatch, missing jar) skip the module with the actionable
                 # message - a stack trace here is noise, not signal.
                 log.warning("modules.loader.install_skipped", module_id=d.id, error=str(exc))
+                self.load_errors[d.id] = (d, f"{type(exc).__name__}: {exc}")
                 continue
             except Exception as exc:
                 log.exception("modules.loader.install_failed", module_id=d.id, error=str(exc))
+                self.load_errors[d.id] = (d, f"{type(exc).__name__}: {exc}")
                 continue
 
             try:
                 instance = await self._instantiate(d)
             except Exception as exc:
                 log.exception("modules.loader.import_failed", module_id=d.id, error=str(exc))
+                self.load_errors[d.id] = (d, f"{type(exc).__name__}: {exc}")
                 continue
 
             loaded = LoadedModule(
                 discovered=d,
                 instance=instance,
                 sub_router=APIRouter(prefix=f"/modules/{d.id}", tags=[f"module:{d.id}"]),
+                dev_fingerprint=await _dev_fingerprint(d.folder),
             )
             self._bind(loaded)
             self.loaded[d.id] = loaded
@@ -713,24 +734,33 @@ class ModuleLoader:
         if existing is not None:
             await self.unload_one(manifest.id)
 
-        finder = get_finder()
-        site = await runtime_for(manifest).materialize(folder, manifest)
-        if site is not None:
-            finder.register(
-                manifest.id,
-                site,
-                inherit=manifest.dependencies.python.inherit,
-            )
-
         d = DiscoveredModule(folder=folder, manifest=manifest)
-        instance = await self._instantiate(d)
+        try:
+            finder = get_finder()
+            site = await runtime_for(manifest).materialize(folder, manifest)
+            if site is not None:
+                finder.register(
+                    manifest.id,
+                    site,
+                    inherit=manifest.dependencies.python.inherit,
+                )
+            instance = await self._instantiate(d)
+        except Exception as exc:
+            self.load_errors[d.id] = (d, f"{type(exc).__name__}: {exc}")
+            raise
+        self.load_errors.pop(d.id, None)
         loaded = LoadedModule(
             discovered=d,
             instance=instance,
             sub_router=APIRouter(prefix=f"/modules/{d.id}", tags=[f"module:{d.id}"]),
+            dev_fingerprint=await _dev_fingerprint(folder),
         )
         self._bind(loaded)
         self.loaded[d.id] = loaded
+        # Same root rule as `load_all`: a folder under the repo defaults root
+        # (e.g. one created while the API runs) is a default; uploads never are.
+        if folder.resolve().is_relative_to(self.modules_dir.resolve()):
+            self.default_module_ids.add(d.id)
         self._offload_meta_cache.pop(d.id, None)
         self.registry.add_module(d.id)
         await self._seed_module_config(d.manifest)
@@ -1137,6 +1167,10 @@ class ModuleLoader:
         )
         if spec is None or spec.loader is None:
             raise ImportError(f"Cannot create import spec for {d.id!r} at {py_path}.")
+        # Evict the previous load's package and submodules (`from .compute import
+        # x`) so a hot reload re-executes edited sibling files, not cached ones.
+        for name in [n for n in sys.modules if n == ns or n.startswith(ns + ".")]:
+            del sys.modules[name]
         mod = importlib.util.module_from_spec(spec)
         sys.modules[ns] = mod
         spec.loader.exec_module(mod)
@@ -1568,6 +1602,9 @@ class ModuleLoader:
         if lm is None:
             return False
         py = lm.manifest.dependencies.python
+        if get_settings().dev_force_thread:
+            # Lite dev: keep jobs in the API process so debugger breakpoints bind.
+            return False
         return py.isolation == "in_process" and getattr(py, "execution", "thread") == "worker"
 
     async def _user_owns(self, user_id: str, module_id: str) -> bool:

@@ -192,6 +192,26 @@ def discover_entry_points() -> list[DiscoveredModule]:
     return out
 
 
+def keep_only(discovered: list[DiscoveredModule], only: set[str]) -> list[DiscoveredModule]:
+    """``MODULES_ONLY``: keep *only* plus the transitive closure of their hard
+    ``requirements.modules``. Empty *only* keeps everything. Unknown ids are
+    logged; a missing dependency is left for ``topo_sort`` to report."""
+    if not only:
+        return discovered
+    by_id = {d.id: d for d in discovered}
+    for mid in sorted(only - by_id.keys()):
+        log.warning("modules.discovery.modules_only_unknown", module_id=mid)
+    keep: set[str] = set()
+    stack = [mid for mid in only if mid in by_id]
+    while stack:
+        mid = stack.pop()
+        if mid in keep:
+            continue
+        keep.add(mid)
+        stack.extend(dep for dep in by_id[mid].manifest.requirements.modules if dep in by_id)
+    return [d for d in discovered if d.id in keep]
+
+
 def topo_sort(discovered: Iterable[DiscoveredModule]) -> list[DiscoveredModule]:
     """Topological sort by hard `requirements.modules`.
 

@@ -15,6 +15,7 @@ import {
   PinOff,
   ShieldCheck,
   Sun,
+  Wrench,
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
 import { prefetchDashboards, prefetchEventLogs, prefetchModules } from "@/lib/client-prefetch";
 import { useMounted } from "@/lib/use-mounted";
+import { useIsDev } from "@/lib/dev-queries";
 import { useUi } from "@/lib/stores/ui";
 import { Button } from "@/components/ui/button";
 import { MateLogo } from "@/components/mate-logo";
@@ -87,6 +89,11 @@ const ADMIN_NAV: NavItem[] = [
   },
 ];
 
+// Lite dev mode only (the API mounts `/api/v1/dev` only then).
+const DEV_NAV: NavItem[] = [
+  { href: "/dev", label: "Dev", icon: Wrench, match: (p) => p.startsWith("/dev") },
+];
+
 export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const pinned = useUi((s) => s.sidebarPinned);
   const togglePinned = useUi((s) => s.toggleSidebarPinned);
@@ -96,6 +103,7 @@ export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const track = useTrack();
   const qc = useQueryClient();
+  const isDev = useIsDev();
 
   const expanded = pinned || hovered;
   const collapsed = !expanded;
@@ -148,7 +156,7 @@ export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
 
       <nav className="flex-1 px-2 pt-1" onMouseEnter={() => setHovered(true)}>
         <ul className="space-y-0.5">
-          {(isAdmin ? [...NAV, ...ADMIN_NAV] : NAV).map((item) => {
+          {[...NAV, ...(isAdmin ? ADMIN_NAV : []), ...(isDev ? DEV_NAV : [])].map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
             const link = (
