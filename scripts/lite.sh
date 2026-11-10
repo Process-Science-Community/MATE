@@ -129,10 +129,14 @@ done
 
 if curl -fsS "$API/health" >/dev/null 2>&1; then
   logs="$(curl -fsS -H "$AUTH_HEADER" "$API/api/v1/event-logs" || echo "?")"
+  # Skip the first-run wizard and tour; it would cover the Studio on a fresh data dir.
+  curl -fsS -o /dev/null -X PUT -H "$AUTH_HEADER" -H "Content-Type: application/json" \
+    -d '{"completed":true,"experience_level":"expert","tour_completed":true}' \
+    "$API/api/v1/onboarding" || true
   if [ "$logs" = "[]" ]; then
-    echo "lite: seeding a sample event log (apps/api/tests/fixtures/sample.xes)"
+    echo "lite: seeding a sample event log (scripts/lite/sample_log.csv, 120 cases)"
     curl -fsS -o /dev/null -H "$AUTH_HEADER" \
-      -F "file=@apps/api/tests/fixtures/sample.xes" -F "name=Sample log (lite)" \
+      -F "file=@scripts/lite/sample_log.csv" -F "name=Order process (lite)" \
       "$API/api/v1/event-logs" || echo "lite: seeding failed (upload it from the UI instead)" >&2
   fi
   loaded="$(curl -fsS -H "$AUTH_HEADER" "$API/api/v1/modules" | uv run --extra dev python -c \

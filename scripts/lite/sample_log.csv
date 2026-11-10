@@ -1,0 +1,1053 @@
+case_id,activity,timestamp,resource
+case-001,register order,2026-01-06T02:18:00+00:00,alice
+case-001,check credit,2026-01-06T08:42:00+00:00,carol
+case-001,check stock,2026-01-06T17:31:00+00:00,bob
+case-001,approve order,2026-01-06T18:19:00+00:00,carol
+case-001,pick items,2026-01-07T01:53:00+00:00,hank
+case-001,pack,2026-01-07T03:14:00+00:00,gina
+case-001,ship,2026-01-07T04:56:00+00:00,ivan
+case-001,send invoice,2026-01-07T06:06:00+00:00,alice
+case-001,receive payment,2026-01-07T10:04:00+00:00,judy
+case-002,register order,2026-01-06T11:40:00+00:00,alice
+case-002,check credit,2026-01-06T16:46:00+00:00,carol
+case-002,check stock,2026-01-06T19:23:00+00:00,bob
+case-002,approve order,2026-01-07T05:17:00+00:00,frank
+case-002,pick items,2026-01-07T15:00:00+00:00,gina
+case-002,pack,2026-01-07T16:55:00+00:00,gina
+case-002,ship,2026-01-07T23:26:00+00:00,ivan
+case-002,send invoice,2026-01-08T08:56:00+00:00,alice
+case-002,send reminder,2026-01-08T18:43:00+00:00,judy
+case-002,receive payment,2026-01-08T22:23:00+00:00,judy
+case-003,register order,2026-01-06T17:54:00+00:00,dan
+case-003,check stock,2026-01-06T23:10:00+00:00,bob
+case-003,check credit,2026-01-07T02:24:00+00:00,carol
+case-003,approve order,2026-01-07T03:57:00+00:00,frank
+case-003,pick items,2026-01-07T13:04:00+00:00,hank
+case-003,pack,2026-01-07T19:05:00+00:00,hank
+case-003,ship,2026-01-08T00:09:00+00:00,ivan
+case-003,send invoice,2026-01-08T02:19:00+00:00,dan
+case-003,receive payment,2026-01-08T05:17:00+00:00,judy
+case-004,register order,2026-01-06T14:29:00+00:00,dan
+case-004,check stock,2026-01-06T20:27:00+00:00,erin
+case-004,check credit,2026-01-07T05:05:00+00:00,carol
+case-004,approve order,2026-01-07T06:25:00+00:00,carol
+case-004,pick items,2026-01-07T11:11:00+00:00,hank
+case-004,pack,2026-01-07T12:27:00+00:00,gina
+case-004,ship,2026-01-07T17:54:00+00:00,ivan
+case-004,send invoice,2026-01-07T22:55:00+00:00,dan
+case-004,receive payment,2026-01-08T05:00:00+00:00,judy
+case-005,register order,2026-01-07T01:53:00+00:00,dan
+case-005,check stock,2026-01-07T04:15:00+00:00,bob
+case-005,check credit,2026-01-07T11:12:00+00:00,carol
+case-005,approve order,2026-01-07T19:50:00+00:00,carol
+case-005,pick items,2026-01-07T22:50:00+00:00,hank
+case-005,pack,2026-01-08T05:51:00+00:00,hank
+case-005,ship,2026-01-08T08:21:00+00:00,ivan
+case-005,send invoice,2026-01-08T17:54:00+00:00,dan
+case-005,receive payment,2026-01-09T01:09:00+00:00,judy
+case-006,register order,2026-01-07T10:10:00+00:00,alice
+case-006,check credit,2026-01-07T14:17:00+00:00,carol
+case-006,check stock,2026-01-07T14:39:00+00:00,erin
+case-006,approve order,2026-01-07T17:55:00+00:00,frank
+case-006,pick items,2026-01-07T22:53:00+00:00,gina
+case-006,pack,2026-01-08T01:32:00+00:00,hank
+case-006,ship,2026-01-08T10:49:00+00:00,ivan
+case-006,send invoice,2026-01-08T20:38:00+00:00,dan
+case-006,receive payment,2026-01-08T22:56:00+00:00,judy
+case-007,register order,2026-01-07T21:42:00+00:00,dan
+case-007,check stock,2026-01-08T04:39:00+00:00,erin
+case-007,check credit,2026-01-08T11:32:00+00:00,carol
+case-007,approve order,2026-01-08T19:55:00+00:00,frank
+case-007,pick items,2026-01-08T21:08:00+00:00,gina
+case-007,pack,2026-01-08T22:26:00+00:00,gina
+case-007,ship,2026-01-09T06:07:00+00:00,ivan
+case-007,send invoice,2026-01-09T08:09:00+00:00,dan
+case-007,receive payment,2026-01-09T09:12:00+00:00,judy
+case-008,register order,2026-01-07T16:36:00+00:00,alice
+case-008,check stock,2026-01-07T20:18:00+00:00,erin
+case-008,check credit,2026-01-07T23:00:00+00:00,carol
+case-008,approve order,2026-01-08T05:05:00+00:00,frank
+case-008,pick items,2026-01-08T13:20:00+00:00,gina
+case-008,pack,2026-01-08T15:28:00+00:00,hank
+case-008,ship,2026-01-08T23:35:00+00:00,ivan
+case-008,send invoice,2026-01-09T08:00:00+00:00,dan
+case-008,receive payment,2026-01-09T09:37:00+00:00,judy
+case-009,register order,2026-01-08T01:55:00+00:00,alice
+case-009,check stock,2026-01-08T05:35:00+00:00,erin
+case-009,check credit,2026-01-08T08:15:00+00:00,carol
+case-009,approve order,2026-01-08T17:25:00+00:00,frank
+case-009,pick items,2026-01-08T19:08:00+00:00,hank
+case-009,pack,2026-01-09T04:08:00+00:00,hank
+case-009,ship,2026-01-09T07:09:00+00:00,ivan
+case-009,send invoice,2026-01-09T11:07:00+00:00,dan
+case-009,receive payment,2026-01-09T15:05:00+00:00,judy
+case-010,register order,2026-01-08T16:00:00+00:00,dan
+case-010,check credit,2026-01-08T22:14:00+00:00,carol
+case-010,check stock,2026-01-08T22:52:00+00:00,erin
+case-010,approve order,2026-01-09T07:05:00+00:00,frank
+case-010,pick items,2026-01-09T10:33:00+00:00,hank
+case-010,pack,2026-01-09T18:20:00+00:00,hank
+case-010,ship,2026-01-10T00:43:00+00:00,ivan
+case-010,send invoice,2026-01-10T04:38:00+00:00,alice
+case-010,receive payment,2026-01-10T08:40:00+00:00,judy
+case-011,register order,2026-01-08T14:11:00+00:00,dan
+case-011,check stock,2026-01-08T20:13:00+00:00,bob
+case-011,check credit,2026-01-08T22:25:00+00:00,carol
+case-011,approve order,2026-01-09T01:59:00+00:00,frank
+case-011,pick items,2026-01-09T05:11:00+00:00,hank
+case-011,pack,2026-01-09T11:01:00+00:00,gina
+case-011,ship,2026-01-09T17:56:00+00:00,ivan
+case-011,send invoice,2026-01-10T00:57:00+00:00,alice
+case-011,receive payment,2026-01-10T03:49:00+00:00,judy
+case-012,register order,2026-01-09T05:06:00+00:00,alice
+case-012,check stock,2026-01-09T13:21:00+00:00,erin
+case-012,check credit,2026-01-09T16:10:00+00:00,carol
+case-012,reject order,2026-01-09T16:41:00+00:00,frank
+case-012,cancel,2026-01-09T18:36:00+00:00,dan
+case-013,register order,2026-01-09T06:38:00+00:00,dan
+case-013,check stock,2026-01-09T10:25:00+00:00,erin
+case-013,check credit,2026-01-09T19:08:00+00:00,carol
+case-013,approve order,2026-01-10T00:51:00+00:00,frank
+case-013,pick items,2026-01-10T10:18:00+00:00,hank
+case-013,pack,2026-01-10T12:42:00+00:00,gina
+case-013,ship,2026-01-10T18:54:00+00:00,ivan
+case-013,send invoice,2026-01-11T03:53:00+00:00,dan
+case-013,send reminder,2026-01-11T12:36:00+00:00,judy
+case-013,receive payment,2026-01-11T21:50:00+00:00,judy
+case-014,register order,2026-01-09T14:14:00+00:00,alice
+case-014,check stock,2026-01-09T17:20:00+00:00,bob
+case-014,check credit,2026-01-10T01:34:00+00:00,carol
+case-014,approve order,2026-01-10T11:13:00+00:00,carol
+case-014,pick items,2026-01-10T16:56:00+00:00,hank
+case-014,pack,2026-01-10T18:54:00+00:00,gina
+case-014,ship,2026-01-10T23:18:00+00:00,ivan
+case-014,send invoice,2026-01-11T04:11:00+00:00,alice
+case-014,receive payment,2026-01-11T06:01:00+00:00,judy
+case-015,register order,2026-01-09T22:14:00+00:00,dan
+case-015,check stock,2026-01-10T03:57:00+00:00,bob
+case-015,check credit,2026-01-10T08:50:00+00:00,carol
+case-015,reject order,2026-01-10T17:40:00+00:00,frank
+case-015,cancel,2026-01-11T02:29:00+00:00,dan
+case-016,register order,2026-01-10T14:42:00+00:00,alice
+case-016,check stock,2026-01-10T22:30:00+00:00,bob
+case-016,check credit,2026-01-11T05:46:00+00:00,carol
+case-016,approve order,2026-01-11T12:37:00+00:00,frank
+case-016,pick items,2026-01-11T18:10:00+00:00,gina
+case-016,pack,2026-01-11T22:26:00+00:00,hank
+case-016,ship,2026-01-11T23:50:00+00:00,ivan
+case-016,send invoice,2026-01-12T05:10:00+00:00,alice
+case-016,receive payment,2026-01-12T07:58:00+00:00,judy
+case-017,register order,2026-01-10T09:46:00+00:00,dan
+case-017,check stock,2026-01-10T18:14:00+00:00,bob
+case-017,check credit,2026-01-10T22:13:00+00:00,carol
+case-017,approve order,2026-01-11T05:44:00+00:00,frank
+case-017,pick items,2026-01-11T11:41:00+00:00,hank
+case-017,pack,2026-01-11T15:11:00+00:00,hank
+case-017,ship,2026-01-11T20:47:00+00:00,ivan
+case-017,send invoice,2026-01-12T03:11:00+00:00,alice
+case-017,send reminder,2026-01-12T09:07:00+00:00,judy
+case-017,receive payment,2026-01-12T16:48:00+00:00,judy
+case-018,register order,2026-01-10T18:15:00+00:00,alice
+case-018,check stock,2026-01-10T22:19:00+00:00,bob
+case-018,check credit,2026-01-10T23:55:00+00:00,carol
+case-018,approve order,2026-01-11T04:43:00+00:00,carol
+case-018,pick items,2026-01-11T07:58:00+00:00,hank
+case-018,pack,2026-01-11T10:20:00+00:00,hank
+case-018,ship,2026-01-11T14:54:00+00:00,ivan
+case-018,send invoice,2026-01-11T17:36:00+00:00,dan
+case-018,receive payment,2026-01-11T23:20:00+00:00,judy
+case-019,register order,2026-01-11T06:25:00+00:00,alice
+case-019,check stock,2026-01-11T11:10:00+00:00,bob
+case-019,check credit,2026-01-11T12:50:00+00:00,carol
+case-019,reject order,2026-01-11T14:25:00+00:00,frank
+case-019,cancel,2026-01-11T15:43:00+00:00,dan
+case-020,register order,2026-01-11T08:44:00+00:00,alice
+case-020,check stock,2026-01-11T09:38:00+00:00,bob
+case-020,check credit,2026-01-11T11:40:00+00:00,carol
+case-020,approve order,2026-01-11T16:18:00+00:00,carol
+case-020,pick items,2026-01-11T19:33:00+00:00,gina
+case-020,pack,2026-01-12T01:02:00+00:00,hank
+case-020,ship,2026-01-12T10:15:00+00:00,ivan
+case-020,send invoice,2026-01-12T15:21:00+00:00,dan
+case-020,receive payment,2026-01-13T00:03:00+00:00,judy
+case-021,register order,2026-01-11T13:25:00+00:00,alice
+case-021,check credit,2026-01-11T22:12:00+00:00,carol
+case-021,check stock,2026-01-12T07:08:00+00:00,erin
+case-021,approve order,2026-01-12T11:29:00+00:00,frank
+case-021,pick items,2026-01-12T13:27:00+00:00,hank
+case-021,pack,2026-01-12T22:03:00+00:00,hank
+case-021,ship,2026-01-13T06:51:00+00:00,ivan
+case-021,send invoice,2026-01-13T10:41:00+00:00,alice
+case-021,send reminder,2026-01-13T16:41:00+00:00,judy
+case-021,receive payment,2026-01-13T19:14:00+00:00,judy
+case-022,register order,2026-01-12T00:31:00+00:00,dan
+case-022,check credit,2026-01-12T03:28:00+00:00,carol
+case-022,check stock,2026-01-12T05:04:00+00:00,erin
+case-022,approve order,2026-01-12T13:52:00+00:00,frank
+case-022,pick items,2026-01-12T18:10:00+00:00,hank
+case-022,pack,2026-01-12T19:06:00+00:00,hank
+case-022,ship,2026-01-12T22:25:00+00:00,ivan
+case-022,send invoice,2026-01-13T03:10:00+00:00,dan
+case-022,receive payment,2026-01-13T03:23:00+00:00,judy
+case-023,register order,2026-01-12T07:20:00+00:00,alice
+case-023,check stock,2026-01-12T12:46:00+00:00,bob
+case-023,check credit,2026-01-12T19:01:00+00:00,carol
+case-023,approve order,2026-01-12T19:12:00+00:00,frank
+case-023,pick items,2026-01-13T01:52:00+00:00,gina
+case-023,pack,2026-01-13T10:08:00+00:00,hank
+case-023,ship,2026-01-13T18:52:00+00:00,ivan
+case-023,send invoice,2026-01-13T23:16:00+00:00,alice
+case-023,receive payment,2026-01-14T00:59:00+00:00,judy
+case-024,register order,2026-01-12T13:16:00+00:00,dan
+case-024,check stock,2026-01-12T17:24:00+00:00,bob
+case-024,check credit,2026-01-13T02:35:00+00:00,carol
+case-024,approve order,2026-01-13T09:23:00+00:00,frank
+case-024,pick items,2026-01-13T17:59:00+00:00,gina
+case-024,pack,2026-01-13T22:59:00+00:00,gina
+case-024,ship,2026-01-13T23:53:00+00:00,ivan
+case-024,send invoice,2026-01-14T08:40:00+00:00,alice
+case-024,receive payment,2026-01-14T17:46:00+00:00,judy
+case-025,register order,2026-01-13T00:05:00+00:00,alice
+case-025,check stock,2026-01-13T00:46:00+00:00,bob
+case-025,check credit,2026-01-13T03:12:00+00:00,carol
+case-025,approve order,2026-01-13T05:09:00+00:00,frank
+case-025,pick items,2026-01-13T13:01:00+00:00,gina
+case-025,pack,2026-01-13T13:30:00+00:00,gina
+case-025,ship,2026-01-13T22:01:00+00:00,ivan
+case-025,send invoice,2026-01-13T22:14:00+00:00,dan
+case-025,receive payment,2026-01-13T23:35:00+00:00,judy
+case-026,register order,2026-01-13T04:26:00+00:00,dan
+case-026,check stock,2026-01-13T08:36:00+00:00,bob
+case-026,check credit,2026-01-13T12:42:00+00:00,carol
+case-026,approve order,2026-01-13T21:17:00+00:00,frank
+case-026,pick items,2026-01-13T22:45:00+00:00,hank
+case-026,pack,2026-01-14T03:49:00+00:00,gina
+case-026,ship,2026-01-14T07:22:00+00:00,ivan
+case-026,send invoice,2026-01-14T10:02:00+00:00,dan
+case-026,receive payment,2026-01-14T14:32:00+00:00,judy
+case-027,register order,2026-01-13T13:45:00+00:00,alice
+case-027,check credit,2026-01-13T17:37:00+00:00,carol
+case-027,check stock,2026-01-13T22:44:00+00:00,erin
+case-027,approve order,2026-01-14T06:49:00+00:00,frank
+case-027,pick items,2026-01-14T14:56:00+00:00,gina
+case-027,pack,2026-01-15T00:28:00+00:00,gina
+case-027,ship,2026-01-15T05:57:00+00:00,ivan
+case-027,send invoice,2026-01-15T14:11:00+00:00,alice
+case-027,send reminder,2026-01-15T19:17:00+00:00,judy
+case-027,receive payment,2026-01-15T20:45:00+00:00,judy
+case-028,register order,2026-01-13T15:26:00+00:00,alice
+case-028,check stock,2026-01-13T18:01:00+00:00,erin
+case-028,check credit,2026-01-14T00:19:00+00:00,carol
+case-028,approve order,2026-01-14T09:09:00+00:00,frank
+case-028,pick items,2026-01-14T11:14:00+00:00,hank
+case-028,pack,2026-01-14T15:20:00+00:00,hank
+case-028,ship,2026-01-14T23:47:00+00:00,ivan
+case-028,send invoice,2026-01-15T00:22:00+00:00,alice
+case-028,receive payment,2026-01-15T00:35:00+00:00,judy
+case-029,register order,2026-01-14T06:02:00+00:00,dan
+case-029,check credit,2026-01-14T11:35:00+00:00,carol
+case-029,check stock,2026-01-14T17:24:00+00:00,bob
+case-029,approve order,2026-01-14T23:06:00+00:00,frank
+case-029,pick items,2026-01-15T06:03:00+00:00,gina
+case-029,pack,2026-01-15T09:33:00+00:00,gina
+case-029,ship,2026-01-15T14:39:00+00:00,ivan
+case-029,send invoice,2026-01-15T21:10:00+00:00,alice
+case-029,receive payment,2026-01-16T04:02:00+00:00,judy
+case-030,register order,2026-01-14T10:51:00+00:00,alice
+case-030,check stock,2026-01-14T15:48:00+00:00,bob
+case-030,check credit,2026-01-14T16:50:00+00:00,carol
+case-030,reject order,2026-01-14T19:32:00+00:00,frank
+case-030,cancel,2026-01-15T00:14:00+00:00,dan
+case-031,register order,2026-01-14T20:28:00+00:00,alice
+case-031,check stock,2026-01-15T03:27:00+00:00,bob
+case-031,check credit,2026-01-15T04:59:00+00:00,carol
+case-031,approve order,2026-01-15T12:09:00+00:00,frank
+case-031,pick items,2026-01-15T14:40:00+00:00,hank
+case-031,pack,2026-01-15T23:07:00+00:00,gina
+case-031,ship,2026-01-16T08:40:00+00:00,ivan
+case-031,send invoice,2026-01-16T11:44:00+00:00,dan
+case-031,receive payment,2026-01-16T18:58:00+00:00,judy
+case-032,register order,2026-01-14T22:36:00+00:00,dan
+case-032,check stock,2026-01-15T02:50:00+00:00,erin
+case-032,check credit,2026-01-15T11:14:00+00:00,carol
+case-032,approve order,2026-01-15T13:26:00+00:00,carol
+case-032,pick items,2026-01-15T16:21:00+00:00,gina
+case-032,pack,2026-01-15T20:03:00+00:00,hank
+case-032,ship,2026-01-16T05:36:00+00:00,ivan
+case-032,send invoice,2026-01-16T13:29:00+00:00,dan
+case-032,receive payment,2026-01-16T21:19:00+00:00,judy
+case-033,register order,2026-01-15T09:39:00+00:00,alice
+case-033,check credit,2026-01-15T15:15:00+00:00,carol
+case-033,check stock,2026-01-15T21:42:00+00:00,erin
+case-033,approve order,2026-01-16T07:35:00+00:00,carol
+case-033,pick items,2026-01-16T08:05:00+00:00,hank
+case-033,pack,2026-01-16T14:47:00+00:00,hank
+case-033,ship,2026-01-16T23:53:00+00:00,ivan
+case-033,send invoice,2026-01-17T06:28:00+00:00,dan
+case-033,send reminder,2026-01-17T12:24:00+00:00,judy
+case-033,receive payment,2026-01-17T21:04:00+00:00,judy
+case-034,register order,2026-01-15T13:51:00+00:00,alice
+case-034,check stock,2026-01-15T18:38:00+00:00,bob
+case-034,check credit,2026-01-16T01:21:00+00:00,carol
+case-034,approve order,2026-01-16T09:07:00+00:00,frank
+case-034,pick items,2026-01-16T14:36:00+00:00,gina
+case-034,pack,2026-01-16T16:56:00+00:00,gina
+case-034,ship,2026-01-17T00:21:00+00:00,ivan
+case-034,send invoice,2026-01-17T08:52:00+00:00,alice
+case-034,send reminder,2026-01-17T10:16:00+00:00,judy
+case-034,receive payment,2026-01-17T19:26:00+00:00,judy
+case-035,register order,2026-01-16T01:04:00+00:00,alice
+case-035,check credit,2026-01-16T09:02:00+00:00,carol
+case-035,check stock,2026-01-16T18:36:00+00:00,bob
+case-035,approve order,2026-01-16T18:47:00+00:00,carol
+case-035,pick items,2026-01-16T22:55:00+00:00,gina
+case-035,pack,2026-01-17T04:16:00+00:00,gina
+case-035,ship,2026-01-17T08:43:00+00:00,ivan
+case-035,send invoice,2026-01-17T10:47:00+00:00,alice
+case-035,send reminder,2026-01-17T12:09:00+00:00,judy
+case-035,receive payment,2026-01-17T21:16:00+00:00,judy
+case-036,register order,2026-01-16T08:20:00+00:00,dan
+case-036,check credit,2026-01-16T16:21:00+00:00,carol
+case-036,check stock,2026-01-16T21:54:00+00:00,bob
+case-036,approve order,2026-01-17T06:10:00+00:00,carol
+case-036,pick items,2026-01-17T15:40:00+00:00,gina
+case-036,pack,2026-01-17T16:19:00+00:00,hank
+case-036,ship,2026-01-17T21:43:00+00:00,ivan
+case-036,send invoice,2026-01-17T22:15:00+00:00,alice
+case-036,receive payment,2026-01-18T06:55:00+00:00,judy
+case-037,register order,2026-01-16T07:02:00+00:00,dan
+case-037,check stock,2026-01-16T07:46:00+00:00,erin
+case-037,check credit,2026-01-16T15:06:00+00:00,carol
+case-037,approve order,2026-01-16T22:01:00+00:00,carol
+case-037,pick items,2026-01-16T22:17:00+00:00,hank
+case-037,pack,2026-01-17T07:03:00+00:00,gina
+case-037,ship,2026-01-17T10:43:00+00:00,ivan
+case-037,send invoice,2026-01-17T14:18:00+00:00,dan
+case-037,receive payment,2026-01-17T17:46:00+00:00,judy
+case-038,register order,2026-01-16T21:37:00+00:00,alice
+case-038,check credit,2026-01-17T01:35:00+00:00,carol
+case-038,check stock,2026-01-17T08:52:00+00:00,bob
+case-038,approve order,2026-01-17T11:31:00+00:00,frank
+case-038,pick items,2026-01-17T12:36:00+00:00,gina
+case-038,pack,2026-01-17T13:10:00+00:00,gina
+case-038,ship,2026-01-17T20:25:00+00:00,ivan
+case-038,send invoice,2026-01-17T21:36:00+00:00,alice
+case-038,receive payment,2026-01-18T04:28:00+00:00,judy
+case-039,register order,2026-01-17T00:59:00+00:00,dan
+case-039,check stock,2026-01-17T04:24:00+00:00,bob
+case-039,check credit,2026-01-17T13:31:00+00:00,carol
+case-039,approve order,2026-01-17T14:13:00+00:00,frank
+case-039,pick items,2026-01-17T20:50:00+00:00,hank
+case-039,pack,2026-01-18T02:39:00+00:00,hank
+case-039,ship,2026-01-18T05:42:00+00:00,ivan
+case-039,send invoice,2026-01-18T05:54:00+00:00,alice
+case-039,receive payment,2026-01-18T10:50:00+00:00,judy
+case-040,register order,2026-01-17T05:42:00+00:00,dan
+case-040,check stock,2026-01-17T11:57:00+00:00,erin
+case-040,check credit,2026-01-17T19:29:00+00:00,carol
+case-040,approve order,2026-01-17T20:29:00+00:00,frank
+case-040,pick items,2026-01-17T23:59:00+00:00,hank
+case-040,pack,2026-01-18T09:23:00+00:00,hank
+case-040,ship,2026-01-18T12:50:00+00:00,ivan
+case-040,send invoice,2026-01-18T19:12:00+00:00,dan
+case-040,receive payment,2026-01-18T19:53:00+00:00,judy
+case-041,register order,2026-01-17T08:45:00+00:00,dan
+case-041,check credit,2026-01-17T09:59:00+00:00,carol
+case-041,check stock,2026-01-17T14:32:00+00:00,bob
+case-041,approve order,2026-01-17T15:46:00+00:00,frank
+case-041,pick items,2026-01-17T22:07:00+00:00,hank
+case-041,pack,2026-01-18T04:00:00+00:00,gina
+case-041,ship,2026-01-18T08:38:00+00:00,ivan
+case-041,send invoice,2026-01-18T13:30:00+00:00,dan
+case-041,receive payment,2026-01-18T13:43:00+00:00,judy
+case-042,register order,2026-01-17T22:06:00+00:00,dan
+case-042,check stock,2026-01-18T02:33:00+00:00,erin
+case-042,check credit,2026-01-18T11:08:00+00:00,carol
+case-042,approve order,2026-01-18T19:46:00+00:00,carol
+case-042,pick items,2026-01-18T20:04:00+00:00,hank
+case-042,pack,2026-01-18T22:48:00+00:00,gina
+case-042,ship,2026-01-19T04:33:00+00:00,ivan
+case-042,send invoice,2026-01-19T12:34:00+00:00,dan
+case-042,send reminder,2026-01-19T14:04:00+00:00,judy
+case-042,receive payment,2026-01-19T20:55:00+00:00,judy
+case-043,register order,2026-01-18T07:27:00+00:00,dan
+case-043,check stock,2026-01-18T10:21:00+00:00,erin
+case-043,check credit,2026-01-18T12:18:00+00:00,carol
+case-043,approve order,2026-01-18T16:59:00+00:00,carol
+case-043,pick items,2026-01-18T20:42:00+00:00,gina
+case-043,pack,2026-01-19T04:03:00+00:00,hank
+case-043,ship,2026-01-19T11:50:00+00:00,ivan
+case-043,send invoice,2026-01-19T15:59:00+00:00,alice
+case-043,receive payment,2026-01-19T23:15:00+00:00,judy
+case-044,register order,2026-01-18T10:14:00+00:00,dan
+case-044,check stock,2026-01-18T15:24:00+00:00,erin
+case-044,check credit,2026-01-19T01:14:00+00:00,carol
+case-044,approve order,2026-01-19T07:45:00+00:00,frank
+case-044,pick items,2026-01-19T12:21:00+00:00,gina
+case-044,pack,2026-01-19T20:00:00+00:00,gina
+case-044,ship,2026-01-19T23:20:00+00:00,ivan
+case-044,send invoice,2026-01-20T03:31:00+00:00,alice
+case-044,send reminder,2026-01-20T08:29:00+00:00,judy
+case-044,receive payment,2026-01-20T14:13:00+00:00,judy
+case-045,register order,2026-01-18T15:52:00+00:00,dan
+case-045,check stock,2026-01-18T16:39:00+00:00,bob
+case-045,check credit,2026-01-18T16:53:00+00:00,carol
+case-045,approve order,2026-01-18T20:59:00+00:00,frank
+case-045,pick items,2026-01-19T03:31:00+00:00,gina
+case-045,pack,2026-01-19T08:41:00+00:00,gina
+case-045,ship,2026-01-19T10:53:00+00:00,ivan
+case-045,send invoice,2026-01-19T14:17:00+00:00,alice
+case-045,send reminder,2026-01-19T15:43:00+00:00,judy
+case-045,receive payment,2026-01-20T00:37:00+00:00,judy
+case-046,register order,2026-01-18T21:16:00+00:00,alice
+case-046,check stock,2026-01-19T03:24:00+00:00,bob
+case-046,check credit,2026-01-19T04:12:00+00:00,carol
+case-046,approve order,2026-01-19T10:10:00+00:00,carol
+case-046,pick items,2026-01-19T11:05:00+00:00,gina
+case-046,pack,2026-01-19T15:36:00+00:00,gina
+case-046,ship,2026-01-19T19:14:00+00:00,ivan
+case-046,send invoice,2026-01-20T00:59:00+00:00,dan
+case-046,receive payment,2026-01-20T07:29:00+00:00,judy
+case-047,register order,2026-01-19T14:31:00+00:00,dan
+case-047,check stock,2026-01-19T15:45:00+00:00,erin
+case-047,check credit,2026-01-19T17:38:00+00:00,carol
+case-047,approve order,2026-01-20T03:11:00+00:00,carol
+case-047,pick items,2026-01-20T12:27:00+00:00,gina
+case-047,pack,2026-01-20T15:24:00+00:00,hank
+case-047,ship,2026-01-20T20:11:00+00:00,ivan
+case-047,send invoice,2026-01-21T01:11:00+00:00,dan
+case-047,send reminder,2026-01-21T08:28:00+00:00,judy
+case-047,receive payment,2026-01-21T13:57:00+00:00,judy
+case-048,register order,2026-01-19T17:22:00+00:00,alice
+case-048,check stock,2026-01-20T00:12:00+00:00,erin
+case-048,check credit,2026-01-20T03:50:00+00:00,carol
+case-048,approve order,2026-01-20T11:24:00+00:00,carol
+case-048,pick items,2026-01-20T18:47:00+00:00,gina
+case-048,pack,2026-01-20T20:29:00+00:00,hank
+case-048,ship,2026-01-21T02:52:00+00:00,ivan
+case-048,send invoice,2026-01-21T05:48:00+00:00,alice
+case-048,receive payment,2026-01-21T06:13:00+00:00,judy
+case-049,register order,2026-01-20T04:56:00+00:00,dan
+case-049,check stock,2026-01-20T13:42:00+00:00,bob
+case-049,check credit,2026-01-20T16:21:00+00:00,carol
+case-049,approve order,2026-01-20T21:21:00+00:00,carol
+case-049,pick items,2026-01-21T06:24:00+00:00,gina
+case-049,pack,2026-01-21T07:42:00+00:00,gina
+case-049,ship,2026-01-21T14:24:00+00:00,ivan
+case-049,send invoice,2026-01-21T17:56:00+00:00,dan
+case-049,receive payment,2026-01-21T20:15:00+00:00,judy
+case-050,register order,2026-01-20T02:38:00+00:00,alice
+case-050,check stock,2026-01-20T06:35:00+00:00,erin
+case-050,check credit,2026-01-20T10:05:00+00:00,carol
+case-050,approve order,2026-01-20T13:22:00+00:00,carol
+case-050,pick items,2026-01-20T14:14:00+00:00,hank
+case-050,pack,2026-01-20T23:14:00+00:00,gina
+case-050,ship,2026-01-21T05:56:00+00:00,ivan
+case-050,send invoice,2026-01-21T08:12:00+00:00,alice
+case-050,receive payment,2026-01-21T12:34:00+00:00,judy
+case-051,register order,2026-01-20T10:41:00+00:00,alice
+case-051,check stock,2026-01-20T17:30:00+00:00,erin
+case-051,check credit,2026-01-21T03:03:00+00:00,carol
+case-051,approve order,2026-01-21T10:23:00+00:00,frank
+case-051,pick items,2026-01-21T14:48:00+00:00,hank
+case-051,pack,2026-01-21T21:36:00+00:00,hank
+case-051,ship,2026-01-22T05:23:00+00:00,ivan
+case-051,send invoice,2026-01-22T08:36:00+00:00,alice
+case-051,receive payment,2026-01-22T08:49:00+00:00,judy
+case-052,register order,2026-01-20T22:59:00+00:00,alice
+case-052,check stock,2026-01-21T07:13:00+00:00,erin
+case-052,check credit,2026-01-21T09:12:00+00:00,carol
+case-052,approve order,2026-01-21T11:33:00+00:00,frank
+case-052,pick items,2026-01-21T19:03:00+00:00,hank
+case-052,pack,2026-01-21T20:46:00+00:00,hank
+case-052,ship,2026-01-22T05:32:00+00:00,ivan
+case-052,send invoice,2026-01-22T06:23:00+00:00,alice
+case-052,receive payment,2026-01-22T07:57:00+00:00,judy
+case-053,register order,2026-01-21T06:36:00+00:00,alice
+case-053,check stock,2026-01-21T07:12:00+00:00,bob
+case-053,check credit,2026-01-21T09:14:00+00:00,carol
+case-053,approve order,2026-01-21T11:38:00+00:00,frank
+case-053,pick items,2026-01-21T16:42:00+00:00,gina
+case-053,pack,2026-01-21T20:38:00+00:00,gina
+case-053,ship,2026-01-22T02:47:00+00:00,ivan
+case-053,send invoice,2026-01-22T05:39:00+00:00,dan
+case-053,send reminder,2026-01-22T10:30:00+00:00,judy
+case-053,receive payment,2026-01-22T13:07:00+00:00,judy
+case-054,register order,2026-01-21T14:48:00+00:00,alice
+case-054,check stock,2026-01-21T20:24:00+00:00,erin
+case-054,check credit,2026-01-21T21:11:00+00:00,carol
+case-054,approve order,2026-01-22T00:27:00+00:00,frank
+case-054,pick items,2026-01-22T03:22:00+00:00,hank
+case-054,pack,2026-01-22T09:07:00+00:00,hank
+case-054,ship,2026-01-22T12:09:00+00:00,ivan
+case-054,send invoice,2026-01-22T14:16:00+00:00,alice
+case-054,receive payment,2026-01-22T20:34:00+00:00,judy
+case-055,register order,2026-01-21T17:28:00+00:00,dan
+case-055,check stock,2026-01-21T23:58:00+00:00,erin
+case-055,check credit,2026-01-22T06:32:00+00:00,carol
+case-055,approve order,2026-01-22T09:11:00+00:00,frank
+case-055,pick items,2026-01-22T14:59:00+00:00,gina
+case-055,pack,2026-01-22T22:41:00+00:00,gina
+case-055,ship,2026-01-23T01:51:00+00:00,ivan
+case-055,send invoice,2026-01-23T07:04:00+00:00,dan
+case-055,receive payment,2026-01-23T12:31:00+00:00,judy
+case-056,register order,2026-01-21T23:42:00+00:00,dan
+case-056,check credit,2026-01-22T07:14:00+00:00,carol
+case-056,check stock,2026-01-22T16:08:00+00:00,erin
+case-056,reject order,2026-01-22T17:06:00+00:00,frank
+case-056,cancel,2026-01-23T01:36:00+00:00,dan
+case-057,register order,2026-01-22T09:13:00+00:00,dan
+case-057,check credit,2026-01-22T11:11:00+00:00,carol
+case-057,check stock,2026-01-22T20:27:00+00:00,bob
+case-057,approve order,2026-01-23T03:40:00+00:00,frank
+case-057,pick items,2026-01-23T06:06:00+00:00,gina
+case-057,pack,2026-01-23T12:31:00+00:00,hank
+case-057,ship,2026-01-23T15:23:00+00:00,ivan
+case-057,send invoice,2026-01-23T15:47:00+00:00,alice
+case-057,send reminder,2026-01-23T18:29:00+00:00,judy
+case-057,receive payment,2026-01-23T20:17:00+00:00,judy
+case-058,register order,2026-01-22T15:40:00+00:00,alice
+case-058,check credit,2026-01-22T16:47:00+00:00,carol
+case-058,check stock,2026-01-23T00:31:00+00:00,erin
+case-058,approve order,2026-01-23T04:55:00+00:00,carol
+case-058,pick items,2026-01-23T05:05:00+00:00,gina
+case-058,pack,2026-01-23T06:18:00+00:00,gina
+case-058,ship,2026-01-23T13:23:00+00:00,ivan
+case-058,send invoice,2026-01-23T17:36:00+00:00,alice
+case-058,receive payment,2026-01-23T18:45:00+00:00,judy
+case-059,register order,2026-01-22T20:13:00+00:00,alice
+case-059,check credit,2026-01-23T05:13:00+00:00,carol
+case-059,check stock,2026-01-23T08:21:00+00:00,erin
+case-059,approve order,2026-01-23T09:36:00+00:00,frank
+case-059,pick items,2026-01-23T10:35:00+00:00,hank
+case-059,pack,2026-01-23T19:56:00+00:00,gina
+case-059,ship,2026-01-24T02:30:00+00:00,ivan
+case-059,send invoice,2026-01-24T10:36:00+00:00,alice
+case-059,receive payment,2026-01-24T18:29:00+00:00,judy
+case-060,register order,2026-01-22T23:16:00+00:00,dan
+case-060,check stock,2026-01-23T03:55:00+00:00,bob
+case-060,check credit,2026-01-23T08:37:00+00:00,carol
+case-060,approve order,2026-01-23T17:42:00+00:00,frank
+case-060,pick items,2026-01-23T22:54:00+00:00,gina
+case-060,pack,2026-01-24T00:31:00+00:00,gina
+case-060,ship,2026-01-24T03:34:00+00:00,ivan
+case-060,send invoice,2026-01-24T07:45:00+00:00,alice
+case-060,receive payment,2026-01-24T10:38:00+00:00,judy
+case-061,register order,2026-01-23T13:19:00+00:00,dan
+case-061,check credit,2026-01-23T21:32:00+00:00,carol
+case-061,check stock,2026-01-23T22:09:00+00:00,erin
+case-061,approve order,2026-01-24T02:18:00+00:00,frank
+case-061,pick items,2026-01-24T06:05:00+00:00,hank
+case-061,pack,2026-01-24T07:34:00+00:00,gina
+case-061,ship,2026-01-24T10:12:00+00:00,ivan
+case-061,send invoice,2026-01-24T10:49:00+00:00,alice
+case-061,receive payment,2026-01-24T12:48:00+00:00,judy
+case-062,register order,2026-01-23T14:31:00+00:00,alice
+case-062,check credit,2026-01-23T15:50:00+00:00,carol
+case-062,check stock,2026-01-23T17:07:00+00:00,erin
+case-062,approve order,2026-01-23T20:41:00+00:00,carol
+case-062,pick items,2026-01-24T03:24:00+00:00,gina
+case-062,pack,2026-01-24T07:46:00+00:00,gina
+case-062,ship,2026-01-24T11:24:00+00:00,ivan
+case-062,send invoice,2026-01-24T12:08:00+00:00,alice
+case-062,receive payment,2026-01-24T13:47:00+00:00,judy
+case-063,register order,2026-01-23T23:39:00+00:00,dan
+case-063,check credit,2026-01-24T05:15:00+00:00,carol
+case-063,check stock,2026-01-24T12:38:00+00:00,erin
+case-063,reject order,2026-01-24T13:09:00+00:00,frank
+case-063,cancel,2026-01-24T17:41:00+00:00,dan
+case-064,register order,2026-01-24T08:45:00+00:00,dan
+case-064,check stock,2026-01-24T13:49:00+00:00,bob
+case-064,check credit,2026-01-24T21:01:00+00:00,carol
+case-064,approve order,2026-01-25T04:37:00+00:00,carol
+case-064,pick items,2026-01-25T10:42:00+00:00,hank
+case-064,pack,2026-01-25T11:41:00+00:00,gina
+case-064,ship,2026-01-25T13:24:00+00:00,ivan
+case-064,send invoice,2026-01-25T16:28:00+00:00,dan
+case-064,receive payment,2026-01-25T16:39:00+00:00,judy
+case-065,register order,2026-01-24T17:32:00+00:00,alice
+case-065,check credit,2026-01-25T02:05:00+00:00,carol
+case-065,check stock,2026-01-25T10:41:00+00:00,erin
+case-065,approve order,2026-01-25T19:38:00+00:00,frank
+case-065,pick items,2026-01-25T22:30:00+00:00,hank
+case-065,pack,2026-01-26T02:19:00+00:00,gina
+case-065,ship,2026-01-26T10:59:00+00:00,ivan
+case-065,send invoice,2026-01-26T13:01:00+00:00,alice
+case-065,receive payment,2026-01-26T21:33:00+00:00,judy
+case-066,register order,2026-01-24T20:38:00+00:00,dan
+case-066,check stock,2026-01-24T21:13:00+00:00,erin
+case-066,check credit,2026-01-25T00:54:00+00:00,carol
+case-066,approve order,2026-01-25T05:33:00+00:00,frank
+case-066,pick items,2026-01-25T15:01:00+00:00,gina
+case-066,pack,2026-01-25T21:39:00+00:00,gina
+case-066,ship,2026-01-26T05:40:00+00:00,ivan
+case-066,send invoice,2026-01-26T14:54:00+00:00,alice
+case-066,send reminder,2026-01-26T21:00:00+00:00,judy
+case-066,receive payment,2026-01-27T06:04:00+00:00,judy
+case-067,register order,2026-01-25T07:39:00+00:00,dan
+case-067,check credit,2026-01-25T11:45:00+00:00,carol
+case-067,check stock,2026-01-25T17:37:00+00:00,erin
+case-067,approve order,2026-01-25T21:50:00+00:00,carol
+case-067,pick items,2026-01-26T02:33:00+00:00,hank
+case-067,pack,2026-01-26T05:21:00+00:00,gina
+case-067,ship,2026-01-26T09:44:00+00:00,ivan
+case-067,send invoice,2026-01-26T18:48:00+00:00,dan
+case-067,receive payment,2026-01-26T21:42:00+00:00,judy
+case-068,register order,2026-01-25T07:54:00+00:00,alice
+case-068,check stock,2026-01-25T09:48:00+00:00,bob
+case-068,check credit,2026-01-25T16:31:00+00:00,carol
+case-068,approve order,2026-01-25T19:12:00+00:00,frank
+case-068,pick items,2026-01-26T00:26:00+00:00,hank
+case-068,pack,2026-01-26T05:16:00+00:00,gina
+case-068,ship,2026-01-26T07:17:00+00:00,ivan
+case-068,send invoice,2026-01-26T12:14:00+00:00,alice
+case-068,receive payment,2026-01-26T19:01:00+00:00,judy
+case-069,register order,2026-01-25T18:37:00+00:00,alice
+case-069,check stock,2026-01-26T03:19:00+00:00,erin
+case-069,check credit,2026-01-26T11:23:00+00:00,carol
+case-069,reject order,2026-01-26T13:58:00+00:00,frank
+case-069,cancel,2026-01-26T21:02:00+00:00,dan
+case-070,register order,2026-01-26T06:21:00+00:00,alice
+case-070,check stock,2026-01-26T10:25:00+00:00,bob
+case-070,check credit,2026-01-26T12:42:00+00:00,carol
+case-070,approve order,2026-01-26T20:14:00+00:00,frank
+case-070,pick items,2026-01-27T00:50:00+00:00,gina
+case-070,pack,2026-01-27T08:09:00+00:00,gina
+case-070,ship,2026-01-27T15:08:00+00:00,ivan
+case-070,send invoice,2026-01-27T19:34:00+00:00,dan
+case-070,receive payment,2026-01-28T03:58:00+00:00,judy
+case-071,register order,2026-01-26T04:17:00+00:00,dan
+case-071,check stock,2026-01-26T04:37:00+00:00,erin
+case-071,check credit,2026-01-26T13:08:00+00:00,carol
+case-071,approve order,2026-01-26T13:57:00+00:00,frank
+case-071,pick items,2026-01-26T23:23:00+00:00,gina
+case-071,pack,2026-01-27T02:17:00+00:00,gina
+case-071,ship,2026-01-27T11:18:00+00:00,ivan
+case-071,send invoice,2026-01-27T13:11:00+00:00,dan
+case-071,receive payment,2026-01-27T22:35:00+00:00,judy
+case-072,register order,2026-01-26T19:28:00+00:00,dan
+case-072,check stock,2026-01-27T02:38:00+00:00,erin
+case-072,check credit,2026-01-27T06:23:00+00:00,carol
+case-072,approve order,2026-01-27T13:14:00+00:00,carol
+case-072,pick items,2026-01-27T19:28:00+00:00,gina
+case-072,pack,2026-01-27T23:56:00+00:00,hank
+case-072,ship,2026-01-28T06:37:00+00:00,ivan
+case-072,send invoice,2026-01-28T07:49:00+00:00,alice
+case-072,send reminder,2026-01-28T09:15:00+00:00,judy
+case-072,receive payment,2026-01-28T16:35:00+00:00,judy
+case-073,register order,2026-01-27T04:09:00+00:00,alice
+case-073,check stock,2026-01-27T11:00:00+00:00,erin
+case-073,check credit,2026-01-27T14:47:00+00:00,carol
+case-073,approve order,2026-01-27T17:09:00+00:00,carol
+case-073,pick items,2026-01-27T20:36:00+00:00,hank
+case-073,pack,2026-01-28T06:21:00+00:00,gina
+case-073,ship,2026-01-28T09:00:00+00:00,ivan
+case-073,send invoice,2026-01-28T16:13:00+00:00,dan
+case-073,send reminder,2026-01-28T21:24:00+00:00,judy
+case-073,receive payment,2026-01-29T05:34:00+00:00,judy
+case-074,register order,2026-01-27T06:26:00+00:00,alice
+case-074,check credit,2026-01-27T14:49:00+00:00,carol
+case-074,check stock,2026-01-27T19:46:00+00:00,erin
+case-074,approve order,2026-01-28T00:06:00+00:00,frank
+case-074,pick items,2026-01-28T05:44:00+00:00,hank
+case-074,pack,2026-01-28T14:10:00+00:00,hank
+case-074,ship,2026-01-28T15:47:00+00:00,ivan
+case-074,send invoice,2026-01-28T18:33:00+00:00,dan
+case-074,receive payment,2026-01-29T01:17:00+00:00,judy
+case-075,register order,2026-01-27T07:33:00+00:00,dan
+case-075,check stock,2026-01-27T07:58:00+00:00,bob
+case-075,check credit,2026-01-27T11:42:00+00:00,carol
+case-075,approve order,2026-01-27T16:52:00+00:00,frank
+case-075,pick items,2026-01-27T18:45:00+00:00,gina
+case-075,pack,2026-01-27T22:54:00+00:00,gina
+case-075,ship,2026-01-28T06:46:00+00:00,ivan
+case-075,send invoice,2026-01-28T09:32:00+00:00,alice
+case-075,receive payment,2026-01-28T16:34:00+00:00,judy
+case-076,register order,2026-01-28T01:31:00+00:00,dan
+case-076,check stock,2026-01-28T05:03:00+00:00,erin
+case-076,check credit,2026-01-28T08:51:00+00:00,carol
+case-076,approve order,2026-01-28T16:30:00+00:00,carol
+case-076,pick items,2026-01-29T02:08:00+00:00,gina
+case-076,pack,2026-01-29T06:48:00+00:00,hank
+case-076,ship,2026-01-29T10:57:00+00:00,ivan
+case-076,send invoice,2026-01-29T19:11:00+00:00,dan
+case-076,receive payment,2026-01-30T04:51:00+00:00,judy
+case-077,register order,2026-01-28T06:40:00+00:00,alice
+case-077,check stock,2026-01-28T16:02:00+00:00,bob
+case-077,check credit,2026-01-28T18:56:00+00:00,carol
+case-077,approve order,2026-01-29T03:05:00+00:00,frank
+case-077,pick items,2026-01-29T08:18:00+00:00,hank
+case-077,pack,2026-01-29T14:51:00+00:00,hank
+case-077,ship,2026-01-29T22:09:00+00:00,ivan
+case-077,send invoice,2026-01-30T01:23:00+00:00,dan
+case-077,send reminder,2026-01-30T02:02:00+00:00,judy
+case-077,receive payment,2026-01-30T02:58:00+00:00,judy
+case-078,register order,2026-01-28T02:44:00+00:00,alice
+case-078,check stock,2026-01-28T09:59:00+00:00,bob
+case-078,check credit,2026-01-28T15:55:00+00:00,carol
+case-078,approve order,2026-01-28T22:19:00+00:00,frank
+case-078,pick items,2026-01-29T06:34:00+00:00,gina
+case-078,pack,2026-01-29T11:34:00+00:00,hank
+case-078,ship,2026-01-29T17:34:00+00:00,ivan
+case-078,send invoice,2026-01-29T22:01:00+00:00,alice
+case-078,receive payment,2026-01-30T03:07:00+00:00,judy
+case-079,register order,2026-01-28T15:48:00+00:00,dan
+case-079,check stock,2026-01-28T19:26:00+00:00,erin
+case-079,check credit,2026-01-28T21:36:00+00:00,carol
+case-079,approve order,2026-01-29T01:02:00+00:00,frank
+case-079,pick items,2026-01-29T06:18:00+00:00,gina
+case-079,pack,2026-01-29T07:57:00+00:00,gina
+case-079,ship,2026-01-29T14:55:00+00:00,ivan
+case-079,send invoice,2026-01-30T00:23:00+00:00,alice
+case-079,receive payment,2026-01-30T07:21:00+00:00,judy
+case-080,register order,2026-01-29T00:16:00+00:00,alice
+case-080,check credit,2026-01-29T08:58:00+00:00,carol
+case-080,check stock,2026-01-29T11:38:00+00:00,bob
+case-080,reject order,2026-01-29T15:25:00+00:00,frank
+case-080,cancel,2026-01-29T23:23:00+00:00,dan
+case-081,register order,2026-01-29T00:53:00+00:00,alice
+case-081,check stock,2026-01-29T07:20:00+00:00,bob
+case-081,check credit,2026-01-29T12:46:00+00:00,carol
+case-081,approve order,2026-01-29T18:05:00+00:00,carol
+case-081,pick items,2026-01-30T01:26:00+00:00,gina
+case-081,pack,2026-01-30T07:02:00+00:00,gina
+case-081,ship,2026-01-30T14:33:00+00:00,ivan
+case-081,send invoice,2026-01-30T23:12:00+00:00,alice
+case-081,receive payment,2026-01-31T01:23:00+00:00,judy
+case-082,register order,2026-01-29T16:46:00+00:00,alice
+case-082,check credit,2026-01-30T01:02:00+00:00,carol
+case-082,check stock,2026-01-30T10:33:00+00:00,bob
+case-082,approve order,2026-01-30T12:07:00+00:00,frank
+case-082,pick items,2026-01-30T15:54:00+00:00,gina
+case-082,pack,2026-01-30T16:19:00+00:00,hank
+case-082,ship,2026-01-30T16:33:00+00:00,ivan
+case-082,send invoice,2026-01-30T18:47:00+00:00,alice
+case-082,receive payment,2026-01-30T22:40:00+00:00,judy
+case-083,register order,2026-01-29T21:51:00+00:00,alice
+case-083,check stock,2026-01-29T22:52:00+00:00,erin
+case-083,check credit,2026-01-30T01:30:00+00:00,carol
+case-083,approve order,2026-01-30T06:40:00+00:00,frank
+case-083,pick items,2026-01-30T14:41:00+00:00,hank
+case-083,pack,2026-01-30T15:44:00+00:00,gina
+case-083,ship,2026-01-30T16:05:00+00:00,ivan
+case-083,send invoice,2026-01-30T16:30:00+00:00,alice
+case-083,receive payment,2026-01-30T23:18:00+00:00,judy
+case-084,register order,2026-01-30T06:28:00+00:00,alice
+case-084,check stock,2026-01-30T12:01:00+00:00,erin
+case-084,check credit,2026-01-30T21:59:00+00:00,carol
+case-084,approve order,2026-01-31T06:10:00+00:00,carol
+case-084,pick items,2026-01-31T08:48:00+00:00,gina
+case-084,pack,2026-01-31T15:09:00+00:00,gina
+case-084,ship,2026-01-31T22:26:00+00:00,ivan
+case-084,send invoice,2026-02-01T05:10:00+00:00,dan
+case-084,send reminder,2026-02-01T09:58:00+00:00,judy
+case-084,receive payment,2026-02-01T15:07:00+00:00,judy
+case-085,register order,2026-01-30T08:50:00+00:00,alice
+case-085,check stock,2026-01-30T11:34:00+00:00,erin
+case-085,check credit,2026-01-30T19:02:00+00:00,carol
+case-085,approve order,2026-01-31T01:37:00+00:00,frank
+case-085,pick items,2026-01-31T08:12:00+00:00,gina
+case-085,pack,2026-01-31T16:04:00+00:00,hank
+case-085,ship,2026-01-31T16:15:00+00:00,ivan
+case-085,send invoice,2026-01-31T20:54:00+00:00,dan
+case-085,receive payment,2026-02-01T04:16:00+00:00,judy
+case-086,register order,2026-01-30T19:05:00+00:00,alice
+case-086,check stock,2026-01-31T05:00:00+00:00,bob
+case-086,check credit,2026-01-31T09:50:00+00:00,carol
+case-086,approve order,2026-01-31T15:55:00+00:00,carol
+case-086,pick items,2026-02-01T01:17:00+00:00,hank
+case-086,pack,2026-02-01T07:57:00+00:00,gina
+case-086,ship,2026-02-01T12:06:00+00:00,ivan
+case-086,send invoice,2026-02-01T13:14:00+00:00,dan
+case-086,receive payment,2026-02-01T21:20:00+00:00,judy
+case-087,register order,2026-01-31T04:23:00+00:00,alice
+case-087,check stock,2026-01-31T13:42:00+00:00,erin
+case-087,check credit,2026-01-31T14:56:00+00:00,carol
+case-087,approve order,2026-01-31T21:53:00+00:00,frank
+case-087,pick items,2026-02-01T06:57:00+00:00,hank
+case-087,pack,2026-02-01T15:15:00+00:00,gina
+case-087,ship,2026-02-01T18:38:00+00:00,ivan
+case-087,send invoice,2026-02-01T22:04:00+00:00,alice
+case-087,send reminder,2026-02-02T01:19:00+00:00,judy
+case-087,receive payment,2026-02-02T07:40:00+00:00,judy
+case-088,register order,2026-01-31T11:35:00+00:00,dan
+case-088,check credit,2026-01-31T13:33:00+00:00,carol
+case-088,check stock,2026-01-31T21:37:00+00:00,bob
+case-088,approve order,2026-02-01T00:26:00+00:00,frank
+case-088,pick items,2026-02-01T01:07:00+00:00,hank
+case-088,pack,2026-02-01T06:04:00+00:00,gina
+case-088,ship,2026-02-01T07:50:00+00:00,ivan
+case-088,send invoice,2026-02-01T11:29:00+00:00,dan
+case-088,receive payment,2026-02-01T21:19:00+00:00,judy
+case-089,register order,2026-01-31T16:47:00+00:00,alice
+case-089,check credit,2026-01-31T21:17:00+00:00,carol
+case-089,check stock,2026-02-01T03:13:00+00:00,bob
+case-089,approve order,2026-02-01T06:28:00+00:00,frank
+case-089,pick items,2026-02-01T08:03:00+00:00,gina
+case-089,pack,2026-02-01T09:05:00+00:00,gina
+case-089,ship,2026-02-01T18:45:00+00:00,ivan
+case-089,send invoice,2026-02-02T02:44:00+00:00,dan
+case-089,receive payment,2026-02-02T03:59:00+00:00,judy
+case-090,register order,2026-01-31T18:08:00+00:00,alice
+case-090,check stock,2026-02-01T02:56:00+00:00,erin
+case-090,check credit,2026-02-01T06:13:00+00:00,carol
+case-090,approve order,2026-02-01T09:06:00+00:00,frank
+case-090,pick items,2026-02-01T13:16:00+00:00,gina
+case-090,pack,2026-02-01T16:22:00+00:00,gina
+case-090,ship,2026-02-01T20:54:00+00:00,ivan
+case-090,send invoice,2026-02-01T22:04:00+00:00,alice
+case-090,send reminder,2026-02-01T23:02:00+00:00,judy
+case-090,receive payment,2026-02-02T07:57:00+00:00,judy
+case-091,register order,2026-02-01T00:33:00+00:00,dan
+case-091,check credit,2026-02-01T08:14:00+00:00,carol
+case-091,check stock,2026-02-01T16:26:00+00:00,erin
+case-091,approve order,2026-02-01T22:56:00+00:00,frank
+case-091,pick items,2026-02-02T05:45:00+00:00,gina
+case-091,pack,2026-02-02T12:18:00+00:00,hank
+case-091,ship,2026-02-02T18:56:00+00:00,ivan
+case-091,send invoice,2026-02-03T02:37:00+00:00,alice
+case-091,receive payment,2026-02-03T05:13:00+00:00,judy
+case-092,register order,2026-02-01T10:55:00+00:00,alice
+case-092,check credit,2026-02-01T17:27:00+00:00,carol
+case-092,check stock,2026-02-02T01:14:00+00:00,bob
+case-092,approve order,2026-02-02T07:58:00+00:00,carol
+case-092,pick items,2026-02-02T09:24:00+00:00,hank
+case-092,pack,2026-02-02T15:21:00+00:00,hank
+case-092,ship,2026-02-02T19:30:00+00:00,ivan
+case-092,send invoice,2026-02-02T21:38:00+00:00,dan
+case-092,send reminder,2026-02-03T00:14:00+00:00,judy
+case-092,receive payment,2026-02-03T04:10:00+00:00,judy
+case-093,register order,2026-02-01T14:42:00+00:00,dan
+case-093,check credit,2026-02-01T22:00:00+00:00,carol
+case-093,check stock,2026-02-02T02:22:00+00:00,bob
+case-093,approve order,2026-02-02T02:58:00+00:00,frank
+case-093,pick items,2026-02-02T12:52:00+00:00,hank
+case-093,pack,2026-02-02T18:44:00+00:00,gina
+case-093,ship,2026-02-02T23:20:00+00:00,ivan
+case-093,send invoice,2026-02-03T01:21:00+00:00,dan
+case-093,receive payment,2026-02-03T09:18:00+00:00,judy
+case-094,register order,2026-02-01T21:46:00+00:00,dan
+case-094,check stock,2026-02-02T02:49:00+00:00,bob
+case-094,check credit,2026-02-02T07:22:00+00:00,carol
+case-094,approve order,2026-02-02T13:45:00+00:00,frank
+case-094,pick items,2026-02-02T18:22:00+00:00,gina
+case-094,pack,2026-02-02T22:35:00+00:00,gina
+case-094,ship,2026-02-03T05:24:00+00:00,ivan
+case-094,send invoice,2026-02-03T12:39:00+00:00,alice
+case-094,receive payment,2026-02-03T13:47:00+00:00,judy
+case-095,register order,2026-02-02T07:59:00+00:00,alice
+case-095,check stock,2026-02-02T15:42:00+00:00,bob
+case-095,check credit,2026-02-03T00:51:00+00:00,carol
+case-095,approve order,2026-02-03T04:11:00+00:00,frank
+case-095,pick items,2026-02-03T11:46:00+00:00,gina
+case-095,pack,2026-02-03T18:54:00+00:00,gina
+case-095,ship,2026-02-03T23:47:00+00:00,ivan
+case-095,send invoice,2026-02-04T02:18:00+00:00,alice
+case-095,send reminder,2026-02-04T11:22:00+00:00,judy
+case-095,receive payment,2026-02-04T14:31:00+00:00,judy
+case-096,register order,2026-02-02T20:37:00+00:00,dan
+case-096,check credit,2026-02-02T23:46:00+00:00,carol
+case-096,check stock,2026-02-03T02:16:00+00:00,bob
+case-096,reject order,2026-02-03T07:41:00+00:00,frank
+case-096,cancel,2026-02-03T08:01:00+00:00,dan
+case-097,register order,2026-02-02T21:06:00+00:00,dan
+case-097,check stock,2026-02-03T02:59:00+00:00,erin
+case-097,check credit,2026-02-03T11:33:00+00:00,carol
+case-097,approve order,2026-02-03T11:58:00+00:00,frank
+case-097,pick items,2026-02-03T20:16:00+00:00,gina
+case-097,pack,2026-02-04T00:58:00+00:00,gina
+case-097,ship,2026-02-04T04:18:00+00:00,ivan
+case-097,send invoice,2026-02-04T05:05:00+00:00,alice
+case-097,receive payment,2026-02-04T11:35:00+00:00,judy
+case-098,register order,2026-02-03T02:13:00+00:00,dan
+case-098,check stock,2026-02-03T06:33:00+00:00,erin
+case-098,check credit,2026-02-03T13:13:00+00:00,carol
+case-098,approve order,2026-02-03T18:21:00+00:00,carol
+case-098,pick items,2026-02-04T02:57:00+00:00,hank
+case-098,pack,2026-02-04T11:52:00+00:00,gina
+case-098,ship,2026-02-04T21:05:00+00:00,ivan
+case-098,send invoice,2026-02-04T21:36:00+00:00,alice
+case-098,receive payment,2026-02-04T23:16:00+00:00,judy
+case-099,register order,2026-02-03T09:40:00+00:00,alice
+case-099,check credit,2026-02-03T11:28:00+00:00,carol
+case-099,check stock,2026-02-03T16:05:00+00:00,bob
+case-099,approve order,2026-02-04T02:05:00+00:00,frank
+case-099,pick items,2026-02-04T11:10:00+00:00,gina
+case-099,pack,2026-02-04T18:54:00+00:00,gina
+case-099,ship,2026-02-05T01:03:00+00:00,ivan
+case-099,send invoice,2026-02-05T04:16:00+00:00,alice
+case-099,send reminder,2026-02-05T09:05:00+00:00,judy
+case-099,receive payment,2026-02-05T17:11:00+00:00,judy
+case-100,register order,2026-02-03T23:05:00+00:00,alice
+case-100,check credit,2026-02-04T08:29:00+00:00,carol
+case-100,check stock,2026-02-04T12:31:00+00:00,bob
+case-100,approve order,2026-02-04T22:27:00+00:00,frank
+case-100,pick items,2026-02-05T05:23:00+00:00,gina
+case-100,pack,2026-02-05T05:51:00+00:00,hank
+case-100,ship,2026-02-05T13:11:00+00:00,ivan
+case-100,send invoice,2026-02-05T20:06:00+00:00,alice
+case-100,receive payment,2026-02-06T02:27:00+00:00,judy
+case-101,register order,2026-02-04T07:47:00+00:00,dan
+case-101,check stock,2026-02-04T14:47:00+00:00,bob
+case-101,check credit,2026-02-04T20:29:00+00:00,carol
+case-101,approve order,2026-02-05T02:40:00+00:00,carol
+case-101,pick items,2026-02-05T10:02:00+00:00,gina
+case-101,pack,2026-02-05T16:25:00+00:00,gina
+case-101,ship,2026-02-06T01:38:00+00:00,ivan
+case-101,send invoice,2026-02-06T02:58:00+00:00,dan
+case-101,receive payment,2026-02-06T10:31:00+00:00,judy
+case-102,register order,2026-02-04T12:56:00+00:00,dan
+case-102,check stock,2026-02-04T13:53:00+00:00,bob
+case-102,check credit,2026-02-04T14:38:00+00:00,carol
+case-102,approve order,2026-02-04T19:27:00+00:00,carol
+case-102,pick items,2026-02-04T21:19:00+00:00,hank
+case-102,pack,2026-02-04T23:33:00+00:00,gina
+case-102,ship,2026-02-05T07:07:00+00:00,ivan
+case-102,send invoice,2026-02-05T07:57:00+00:00,dan
+case-102,send reminder,2026-02-05T10:02:00+00:00,judy
+case-102,receive payment,2026-02-05T16:07:00+00:00,judy
+case-103,register order,2026-02-04T17:56:00+00:00,dan
+case-103,check stock,2026-02-04T19:32:00+00:00,erin
+case-103,check credit,2026-02-05T04:48:00+00:00,carol
+case-103,reject order,2026-02-05T12:28:00+00:00,frank
+case-103,cancel,2026-02-05T21:21:00+00:00,dan
+case-104,register order,2026-02-04T19:39:00+00:00,dan
+case-104,check credit,2026-02-05T03:34:00+00:00,carol
+case-104,check stock,2026-02-05T10:19:00+00:00,bob
+case-104,approve order,2026-02-05T19:50:00+00:00,frank
+case-104,pick items,2026-02-06T03:51:00+00:00,hank
+case-104,pack,2026-02-06T12:10:00+00:00,hank
+case-104,ship,2026-02-06T17:37:00+00:00,ivan
+case-104,send invoice,2026-02-06T21:55:00+00:00,dan
+case-104,receive payment,2026-02-07T01:51:00+00:00,judy
+case-105,register order,2026-02-05T09:11:00+00:00,alice
+case-105,check stock,2026-02-05T13:25:00+00:00,erin
+case-105,check credit,2026-02-05T23:05:00+00:00,carol
+case-105,approve order,2026-02-06T07:38:00+00:00,frank
+case-105,pick items,2026-02-06T12:39:00+00:00,gina
+case-105,pack,2026-02-06T17:51:00+00:00,gina
+case-105,ship,2026-02-06T18:23:00+00:00,ivan
+case-105,send invoice,2026-02-07T03:57:00+00:00,alice
+case-105,receive payment,2026-02-07T10:03:00+00:00,judy
+case-106,register order,2026-02-05T18:40:00+00:00,dan
+case-106,check stock,2026-02-05T20:41:00+00:00,bob
+case-106,check credit,2026-02-05T23:29:00+00:00,carol
+case-106,reject order,2026-02-06T05:24:00+00:00,frank
+case-106,cancel,2026-02-06T07:57:00+00:00,dan
+case-107,register order,2026-02-05T18:47:00+00:00,dan
+case-107,check stock,2026-02-05T23:32:00+00:00,bob
+case-107,check credit,2026-02-06T06:44:00+00:00,carol
+case-107,approve order,2026-02-06T06:58:00+00:00,frank
+case-107,pick items,2026-02-06T16:31:00+00:00,gina
+case-107,pack,2026-02-07T01:10:00+00:00,hank
+case-107,ship,2026-02-07T11:05:00+00:00,ivan
+case-107,send invoice,2026-02-07T18:22:00+00:00,dan
+case-107,receive payment,2026-02-07T20:25:00+00:00,judy
+case-108,register order,2026-02-06T05:11:00+00:00,dan
+case-108,check stock,2026-02-06T14:19:00+00:00,erin
+case-108,check credit,2026-02-06T19:58:00+00:00,carol
+case-108,approve order,2026-02-07T04:39:00+00:00,frank
+case-108,pick items,2026-02-07T12:23:00+00:00,hank
+case-108,pack,2026-02-07T15:41:00+00:00,hank
+case-108,ship,2026-02-07T18:19:00+00:00,ivan
+case-108,send invoice,2026-02-08T04:18:00+00:00,dan
+case-108,receive payment,2026-02-08T08:25:00+00:00,judy
+case-109,register order,2026-02-06T10:43:00+00:00,alice
+case-109,check stock,2026-02-06T18:09:00+00:00,bob
+case-109,check credit,2026-02-06T18:45:00+00:00,carol
+case-109,approve order,2026-02-06T23:17:00+00:00,frank
+case-109,pick items,2026-02-07T04:34:00+00:00,hank
+case-109,pack,2026-02-07T13:55:00+00:00,hank
+case-109,ship,2026-02-07T22:54:00+00:00,ivan
+case-109,send invoice,2026-02-08T05:42:00+00:00,dan
+case-109,receive payment,2026-02-08T11:58:00+00:00,judy
+case-110,register order,2026-02-06T15:19:00+00:00,alice
+case-110,check credit,2026-02-06T17:10:00+00:00,carol
+case-110,check stock,2026-02-06T23:43:00+00:00,erin
+case-110,approve order,2026-02-07T09:27:00+00:00,carol
+case-110,pick items,2026-02-07T12:49:00+00:00,hank
+case-110,pack,2026-02-07T21:17:00+00:00,hank
+case-110,ship,2026-02-08T04:57:00+00:00,ivan
+case-110,send invoice,2026-02-08T14:09:00+00:00,alice
+case-110,receive payment,2026-02-08T17:13:00+00:00,judy
+case-111,register order,2026-02-06T22:09:00+00:00,alice
+case-111,check stock,2026-02-07T03:20:00+00:00,erin
+case-111,check credit,2026-02-07T12:11:00+00:00,carol
+case-111,approve order,2026-02-07T15:01:00+00:00,frank
+case-111,pick items,2026-02-07T23:54:00+00:00,gina
+case-111,pack,2026-02-08T08:41:00+00:00,gina
+case-111,ship,2026-02-08T15:53:00+00:00,ivan
+case-111,send invoice,2026-02-08T17:04:00+00:00,alice
+case-111,send reminder,2026-02-08T23:15:00+00:00,judy
+case-111,receive payment,2026-02-09T06:26:00+00:00,judy
+case-112,register order,2026-02-07T05:21:00+00:00,dan
+case-112,check credit,2026-02-07T07:11:00+00:00,carol
+case-112,check stock,2026-02-07T07:51:00+00:00,bob
+case-112,approve order,2026-02-07T11:00:00+00:00,frank
+case-112,pick items,2026-02-07T20:36:00+00:00,hank
+case-112,pack,2026-02-08T05:50:00+00:00,gina
+case-112,ship,2026-02-08T15:48:00+00:00,ivan
+case-112,send invoice,2026-02-08T22:58:00+00:00,alice
+case-112,receive payment,2026-02-09T01:36:00+00:00,judy
+case-113,register order,2026-02-07T14:04:00+00:00,dan
+case-113,check credit,2026-02-07T22:12:00+00:00,carol
+case-113,check stock,2026-02-07T23:25:00+00:00,bob
+case-113,approve order,2026-02-08T05:05:00+00:00,carol
+case-113,pick items,2026-02-08T09:18:00+00:00,hank
+case-113,pack,2026-02-08T14:10:00+00:00,gina
+case-113,ship,2026-02-08T14:53:00+00:00,ivan
+case-113,send invoice,2026-02-08T16:44:00+00:00,alice
+case-113,send reminder,2026-02-08T22:51:00+00:00,judy
+case-113,receive payment,2026-02-09T06:41:00+00:00,judy
+case-114,register order,2026-02-07T14:54:00+00:00,dan
+case-114,check stock,2026-02-07T15:59:00+00:00,bob
+case-114,check credit,2026-02-07T20:24:00+00:00,carol
+case-114,reject order,2026-02-07T21:19:00+00:00,frank
+case-114,cancel,2026-02-08T00:26:00+00:00,dan
+case-115,register order,2026-02-08T01:28:00+00:00,dan
+case-115,check stock,2026-02-08T02:47:00+00:00,bob
+case-115,check credit,2026-02-08T09:36:00+00:00,carol
+case-115,approve order,2026-02-08T16:49:00+00:00,frank
+case-115,pick items,2026-02-08T23:47:00+00:00,hank
+case-115,pack,2026-02-09T00:19:00+00:00,gina
+case-115,ship,2026-02-09T01:58:00+00:00,ivan
+case-115,send invoice,2026-02-09T05:02:00+00:00,dan
+case-115,receive payment,2026-02-09T11:40:00+00:00,judy
+case-116,register order,2026-02-08T06:07:00+00:00,dan
+case-116,check stock,2026-02-08T15:23:00+00:00,erin
+case-116,check credit,2026-02-08T21:16:00+00:00,carol
+case-116,approve order,2026-02-08T22:33:00+00:00,carol
+case-116,pick items,2026-02-09T05:55:00+00:00,hank
+case-116,pack,2026-02-09T15:32:00+00:00,gina
+case-116,ship,2026-02-09T22:18:00+00:00,ivan
+case-116,send invoice,2026-02-10T06:26:00+00:00,dan
+case-116,receive payment,2026-02-10T12:28:00+00:00,judy
+case-117,register order,2026-02-08T19:59:00+00:00,alice
+case-117,check stock,2026-02-09T00:16:00+00:00,bob
+case-117,check credit,2026-02-09T02:00:00+00:00,carol
+case-117,reject order,2026-02-09T06:46:00+00:00,frank
+case-117,cancel,2026-02-09T16:24:00+00:00,dan
+case-118,register order,2026-02-09T03:11:00+00:00,alice
+case-118,check credit,2026-02-09T10:15:00+00:00,carol
+case-118,check stock,2026-02-09T13:58:00+00:00,erin
+case-118,approve order,2026-02-09T22:15:00+00:00,carol
+case-118,pick items,2026-02-10T02:17:00+00:00,hank
+case-118,pack,2026-02-10T04:41:00+00:00,hank
+case-118,ship,2026-02-10T12:21:00+00:00,ivan
+case-118,send invoice,2026-02-10T21:38:00+00:00,alice
+case-118,receive payment,2026-02-11T04:41:00+00:00,judy
+case-119,register order,2026-02-09T11:25:00+00:00,dan
+case-119,check stock,2026-02-09T18:09:00+00:00,bob
+case-119,check credit,2026-02-10T04:00:00+00:00,carol
+case-119,approve order,2026-02-10T09:28:00+00:00,carol
+case-119,pick items,2026-02-10T16:17:00+00:00,gina
+case-119,pack,2026-02-10T19:28:00+00:00,gina
+case-119,ship,2026-02-11T01:06:00+00:00,ivan
+case-119,send invoice,2026-02-11T03:07:00+00:00,alice
+case-119,send reminder,2026-02-11T12:52:00+00:00,judy
+case-119,receive payment,2026-02-11T21:34:00+00:00,judy
+case-120,register order,2026-02-09T13:01:00+00:00,dan
+case-120,check stock,2026-02-09T15:20:00+00:00,erin
+case-120,check credit,2026-02-09T20:19:00+00:00,carol
+case-120,reject order,2026-02-10T03:22:00+00:00,frank
+case-120,cancel,2026-02-10T05:47:00+00:00,dan

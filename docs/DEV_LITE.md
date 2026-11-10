@@ -14,7 +14,9 @@ make lite MODULES=my_module      # API + bundler + web; Ctrl-C stops all three
 ```
 
 Open <http://localhost:3000>. You are signed in as the demo user (with admin),
-and a small sample event log is imported on the first start. Leave out
+the first-run wizard is skipped, and a sample event log (`scripts/lite/sample_log.csv`,
+an order process with 120 cases and about 1,000 events, enough for every
+case-centric module's minimum; object-centric modules need an OCEL upload) is imported on the first start. Leave out
 `MODULES=` to load every module.
 
 `make lite` needs no `.env`. It sets everything it needs itself (see
