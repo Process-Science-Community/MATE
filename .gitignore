@@ -91,3 +91,6 @@ scripts/deploy.env
 
 # Claude Code worktrees (nested checkouts, never commit)
 .claude/worktrees/
+
+# Benchmark logs downloaded by scripts/benchmark/fetch_logs.sh
+bench-logs/

@@ -70,13 +70,25 @@ def _bytes(text: str) -> int:
     return int(float(m.group(1)) * _UNITS.get(m.group(2).lower(), 1))
 
 
+def _epoch(ts: str | None) -> float | None:
+    # `jobs` timestamps are naive UTC (models._utcnow).
+    if not ts:
+        return None
+    return datetime.fromisoformat(ts).replace(tzinfo=UTC).timestamp()
+
+
 class MemSampler:
-    """Streams `docker stats` for one container and keeps the peak MemUsage."""
+    """Streams `docker stats` MemUsage for one container as (unix time, bytes) samples.
+
+    The stream is started a little before the job and stopped a little after it,
+    so peaks are taken with `peak_between(job.started_at, job.finished_at)`, never
+    over the whole capture: eager precompute starts within ~0.2 s of an import
+    finishing and would otherwise leak into the import's figure.
+    """
 
     def __init__(self, container: str) -> None:
         self.container = container
-        self.peak = 0
-        self.samples = 0
+        self.series: list[tuple[float, int]] = []
         self._proc: subprocess.Popen[str] | None = None
         self._thread: threading.Thread | None = None
 
@@ -98,8 +110,21 @@ class MemSampler:
             clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line)
             used = clean.split("/")[0]
             if used.strip():
-                self.samples += 1
-                self.peak = max(self.peak, _bytes(used))
+                self.series.append((time.time(), _bytes(used)))
+
+    def peak_between(self, start: float | None, end: float | None) -> tuple[int | None, int]:
+        """Peak bytes over samples taken in [start, end], and how many there were.
+
+        A job shorter than the stream interval can contain no sample; then the
+        first sample after `start` stands in (count reported as 0).
+        """
+        if start is None or end is None:
+            return None, 0
+        inside = [b for t, b in self.series if start <= t <= end]
+        if inside:
+            return max(inside), len(inside)
+        after = [b for t, b in self.series if t >= start]
+        return (after[0] if after else None), 0
 
     def __exit__(self, *_exc: object) -> None:
         # One more stats tick so a short job still gets a sample after it ends.
@@ -139,6 +164,10 @@ def machine_spec() -> dict[str, Any]:
     return {
         "cpu_model": sh("lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -1"),
         "cpus": sh("nproc"),
+        "cpu_topology": sh(
+            "lscpu | awk -F: '/^(Socket\\(s\\)|Core\\(s\\) per socket|Thread\\(s\\) per core)/"
+            ' {gsub(/^ +/, "", $2); printf "%s=%s; ", $1, $2}\''
+        ),
         "ram": sh("free -h | awk '/^Mem:/ {print $2}'"),
         "kernel": platform.release(),
         "os": sh(". /etc/os-release && echo $PRETTY_NAME"),
@@ -205,7 +234,7 @@ def bench_log(
         job = c.wait_job(created["job_id"], timeout=4 * 3600)
     log_id = created["log_id"]
     detail = c.get(f"/event-logs/{log_id}")
-    print(f"[{key}] import {job['status']}; peak api mem {mem.peak / 2**20:.0f} MiB", flush=True)
+    print(f"[{key}] import {job['status']}", flush=True)
 
     result: dict[str, Any] = {
         "key": key,
@@ -219,8 +248,7 @@ def bench_log(
         "variants": detail.get("variants_count"),
         "roles_pinned": roles or {},
         "column_roles": detail.get("column_roles"),
-        "peak_mem_bytes_import": mem.peak,
-        "mem_samples_import": mem.samples,
+        "mem_samples_captured": len(mem.series),
         "modules": {},
     }
     if job["status"] != "completed":
@@ -230,6 +258,7 @@ def bench_log(
     # Eager precompute (fired by the import itself) first, then every other module
     # that precomputes, one at a time.
     states = c.runs(log_id)
+    samplers: dict[str, MemSampler] = {}
     order = sorted(states, key=lambda m: (states[m].get("precompute") != "eager", m))
     for module_id in order:
         before = c.runs(log_id).get(module_id, {})
@@ -238,6 +267,7 @@ def bench_log(
         t0 = time.monotonic()
         with MemSampler(API_CONTAINER) as mmem:
             final = c.wait_run(log_id, module_id, module_timeout)
+        samplers[module_id] = mmem
         print(
             f"[{key}] {module_id}: {final['status']} ({time.monotonic() - t0:.1f}s polled)",
             flush=True,
@@ -247,7 +277,6 @@ def bench_log(
             "status": final["status"],
             "job_id": final.get("job_id"),
             "error": final.get("error"),
-            "peak_mem_bytes": mmem.peak,
         }
 
     db = jobs_from_db(
@@ -256,15 +285,26 @@ def bench_log(
     imp = db.get(created["job_id"], {})
     result["import_wall_s"] = imp.get("wall_s")
     result["import_queue_s"] = imp.get("queue_s")
+    peak, n = mem.peak_between(_epoch(imp.get("started_at")), _epoch(imp.get("finished_at")))
+    result["peak_mem_bytes_import"], result["mem_samples_import"] = peak, n
+    print(
+        f"[{key}] peak api mem during import job {(peak or 0) / 2**20:.0f} MiB ({n} samples)",
+        flush=True,
+    )
     result["import_started_at"] = imp.get("started_at")
     result["import_finished_at"] = imp.get("finished_at")
-    for m in result["modules"].values():
+    for mid, m in result["modules"].items():
         row = db.get(m.get("job_id") or "", {})
         m["wall_s"] = row.get("wall_s")
         m["queue_s"] = row.get("queue_s")
         m["job_status"] = row.get("status")
         m["started_at"] = row.get("started_at")
         m["finished_at"] = row.get("finished_at")
+        sampler = samplers.get(mid)
+        if sampler is not None:
+            m["peak_mem_bytes"], m["mem_samples"] = sampler.peak_between(
+                _epoch(row.get("started_at")), _epoch(row.get("finished_at"))
+            )
     return result
 
 
@@ -292,10 +332,15 @@ def main() -> None:
     # this is the same idempotent call the UI's "Restore defaults" makes.
     restored = c.post("/modules/restore-defaults")["restored"]
     print(f"restored default modules: {restored}", flush=True)
+    with MemSampler(API_CONTAINER) as idle:
+        time.sleep(10)
+    idle_bytes = sorted(b for _, b in idle.series)
+    idle_median = idle_bytes[len(idle_bytes) // 2] if idle_bytes else None
     out: dict[str, Any] = {
         "started_at": _now(),
         "machine": machine_spec(),
         "modules_restored": restored,
+        "idle_mem_bytes": idle_median,
         "logs": [],
     }
     for spec in args.log:
