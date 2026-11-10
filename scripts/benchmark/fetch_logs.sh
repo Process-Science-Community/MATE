@@ -7,9 +7,14 @@ dir=${1:-bench-logs}
 mkdir -p "$dir"
 cd "$dir"
 
-fetch() { # url name md5
-  [ -f "$2" ] || curl -fsSL --retry 4 -o "$2" "$1"
-  echo "$3  $2" | md5sum -c -
+fetch() { # url name md5 - download to a temp name, keep it only if the MD5 matches
+  if [ -f "$2" ] && echo "$3  $2" | md5sum -c --quiet - 2>/dev/null; then
+    echo "$2: OK (cached)"; return
+  fi
+  curl -fsSL --retry 4 -o "$2.part" "$1"
+  echo "$3  $2.part" | md5sum -c --quiet -
+  mv "$2.part" "$2"
+  echo "$2: OK"
 }
 
 # Sepsis Cases - Event Log (doi:10.4121/uuid:915d2bfb-7e84-49ad-a286-dc35f063a460)

@@ -62,7 +62,9 @@ def render(data: dict[str, Any]) -> str:
         out.append(
             f"| {NAMES.get(log['key'], log['key'])} | {_n(log['events'])} | {_n(log['cases'])} | {_n(log['variants'])} "
             f"| {_s(log.get('import_wall_s'))} | {_ms(log.get('import_queue_s'))} "
-            f"| {_mib(log['peak_mem_bytes_import'])} "
+            # No docker stats reading inside the job window: report n/a rather than a
+            # reading from after the job (see MemSampler.peak_between).
+            f"| {_mib(log['peak_mem_bytes_import']) if log.get('mem_samples_import') else 'n/a'} "
             f"| {_s(stats[0])} | {_s(stats[1])} | {_s(stats[2])} | {len(ok)}/{total} |"
         )
 

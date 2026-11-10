@@ -227,6 +227,7 @@ def bench_log(
     with path.open("rb") as fh:
         staged = c.post("/event-logs/stage", files={"file": (path.name, fh)})
     with MemSampler(API_CONTAINER) as mem:
+        time.sleep(1.5)  # let the stats stream start before the job does
         form = {"staging_token": staged["staging_token"], "name": key}
         if roles:
             form["column_roles"] = json.dumps(roles)
@@ -262,10 +263,13 @@ def bench_log(
     order = sorted(states, key=lambda m: (states[m].get("precompute") != "eager", m))
     for module_id in order:
         before = c.runs(log_id).get(module_id, {})
-        if before.get("status") in {"idle", "stale"}:
-            c.post(f"/event-logs/{log_id}/module-runs/{module_id}", json={})
         t0 = time.monotonic()
+        # Sampler first: the stream's first line takes ~0.5-1 s to arrive, and a
+        # short job can otherwise finish before it.
         with MemSampler(API_CONTAINER) as mmem:
+            time.sleep(1.5)
+            if before.get("status") in {"idle", "stale"}:
+                c.post(f"/event-logs/{log_id}/module-runs/{module_id}", json={})
             final = c.wait_run(log_id, module_id, module_timeout)
         samplers[module_id] = mmem
         print(
