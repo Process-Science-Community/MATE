@@ -67,6 +67,7 @@ The realm JSON imports **only into an empty Keycloak database**; everything afte
 | Create accounts | Keycloak console → Users → Add user, then set a temporary password. The platform creates its own `users` row on first contact. |
 | Grant admin | Realm roles → `admin` → Assign role. The seeded account deliberately has no admin role. |
 | Broker an institutional IdP | `./infra/keycloak/configure-university-idp.sh`, then set `KEYCLOAK_IDP_HINT` so users skip Keycloak's form. Keep the local form as break-glass. |
+| Anonymous reviewer / demo accounts | `./infra/keycloak/create-reviewer-accounts.sh` creates local accounts with the `reviewer` role (never tracked), generated passwords and preloaded sample content; they sign in at `/login/start?local=1`. See `docs/REVIEWER_ACCESS.md`. |
 | Offer Google, Microsoft and GitHub | Register an OAuth app at each provider, run `./infra/keycloak/configure-social-idps.sh` with their client ids and secrets (and `MICROSOFT_TENANT`), then set `KEYCLOAK_SOCIAL_IDPS`. A provider never attaches to an existing account on a matching email; people connect methods themselves under *Profile → Sign-in methods*. See `docs/DEPLOY.md`. |
 | Admin REST client (user deletion) | `./infra/keycloak/configure-admin-client.sh` |
 | MCP OAuth client | `./infra/keycloak/configure-mcp-client.sh` |
@@ -176,6 +177,9 @@ Compressed uploads and archives unpack behind zip-bomb guards. The caps count by
 | `MCP_WRITE_RATE_LIMIT_PER_MINUTE` / `_BURST` | `30` / `10` | Tighter bucket for mutating tools. |
 | `MCP_TOOL_TIMEOUT_SECONDS` | `30` | Per-call timeout. |
 | `USER_TRACKING_ONBOARDING` | `force` | `force`, `on`, or `off` — see [Security and privacy](security-and-privacy.html#usage-analytics). |
+| `USER_TRACKING_EXEMPT_ROLES` / `_USERS` | `reviewer` / empty | Accounts never tracked, even under `force`: holders of these realm roles, plus listed usernames or Keycloak ids. |
+| `SAMPLE_CONTENT_MANIFEST` | empty | Manifest of accounts to seed with sample logs and a starter dashboard at start, once each. |
+| `MODULE_UPLOAD_BLOCKED_ROLES` | empty | Realm roles that may not upload modules (e.g. `reviewer`). |
 
 > [!NOTE]
 > Environment changes need a container **recreate** (`docker compose up -d`), not a restart: `restart` keeps the old environment.

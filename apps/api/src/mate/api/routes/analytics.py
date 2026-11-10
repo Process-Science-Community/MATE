@@ -25,7 +25,7 @@ from sqlalchemy import ColumnElement, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
-from mate.api.auth import CurrentUserDep
+from mate.api.auth import CurrentUser, CurrentUserDep
 from mate.api.config import get_settings
 from mate.api.db.models import (
     AnalyticsEvent,
@@ -42,6 +42,7 @@ from mate.api.services.analytics_objects import (
     derive_server_objects,
     persist_event_objects,
 )
+from mate.api.services.tracking_exemption import is_tracking_exempt, roles_exempt
 
 log = structlog.get_logger(__name__)
 # Path deliberately neutral (`/usage` instead of `/analytics`) so default
@@ -82,6 +83,11 @@ class AnalyticsConfigPayload(BaseModel):
     # under `force`. Never persisted (excluded in ``_save_config``) and any
     # client-supplied value on PUT is ignored (overwritten by ``_effective``).
     onboarding_mode: OnboardingMode = "on"
+    # Read-only: True when this account is exempt from tracking
+    # (services/tracking_exemption.py). Exempt accounts always report
+    # ``enabled: false``, whatever the policy or the stored choice says. Never
+    # persisted, and ignored on PUT.
+    tracking_exempt: bool = False
 
 
 def _load_config(row: UserSetting | None) -> AnalyticsConfigPayload:
@@ -90,17 +96,21 @@ def _load_config(row: UserSetting | None) -> AnalyticsConfigPayload:
     return AnalyticsConfigPayload.model_validate(row.value_json)
 
 
-def _effective(cfg: AnalyticsConfigPayload) -> AnalyticsConfigPayload:
+def _effective(cfg: AnalyticsConfigPayload, *, exempt: bool = False) -> AnalyticsConfigPayload:
     """Overlay the server tracking policy onto a stored/loaded config.
 
     ``onboarding_mode`` always reflects ``USER_TRACKING_ONBOARDING`` rather
     than anything the client stored. Under ``force`` tracking is enabled
     unconditionally - the user cannot opt out, so the stored ``enabled`` flag
-    is irrelevant and we report (and gate ingestion on) ``True``.
+    is irrelevant and we report (and gate ingestion on) ``True``. An exempt
+    account (``exempt=True``) is the one exception: it reports ``False`` under
+    every policy, so neither the browser nor any server recorder captures it.
     """
     mode = get_settings().user_tracking_onboarding
-    update: dict[str, Any] = {"onboarding_mode": mode}
-    if mode == "force":
+    update: dict[str, Any] = {"onboarding_mode": mode, "tracking_exempt": exempt}
+    if exempt:
+        update["enabled"] = False
+    elif mode == "force":
         update["enabled"] = True
     return cfg.model_copy(update=update)
 
@@ -110,7 +120,7 @@ async def _save_config(
 ) -> AnalyticsConfigPayload:
     row = await session.get(UserSetting, (user_id, ANALYTICS_CONFIG_KEY))
     # ``onboarding_mode`` is server policy, not user state - never persist it.
-    data = cfg.model_dump(mode="json", exclude={"onboarding_mode"})
+    data = cfg.model_dump(mode="json", exclude={"onboarding_mode", "tracking_exempt"})
     if row is None:
         session.add(UserSetting(user_id=user_id, key=ANALYTICS_CONFIG_KEY, value_json=data))
     else:
@@ -135,9 +145,19 @@ async def cached_config(session: AsyncSession, user_id: str) -> AnalyticsConfigP
     if hit is not None and hit[1] > now:
         return hit[0]
     row = await session.get(UserSetting, (user_id, ANALYTICS_CONFIG_KEY))
-    cfg = _effective(_load_config(row))
+    cfg = _effective(_load_config(row), exempt=await is_tracking_exempt(session, user_id))
     _consent_cache[user_id] = (cfg, now + _CONSENT_TTL_SECONDS)
     return cfg
+
+
+def invalidate_consent_cache(user_id: str) -> None:
+    """Drop ``user_id``'s cached effective config (after a policy-relevant change)."""
+    _consent_cache.pop(user_id, None)
+
+
+async def _user_exempt(session: AsyncSession, user: CurrentUser) -> bool:
+    """Exemption for a request-time principal: its live roles count too."""
+    return roles_exempt(user.roles) or await is_tracking_exempt(session, user.id)
 
 
 @router.get("/config", response_model=AnalyticsConfigPayload)
@@ -147,7 +167,7 @@ async def get_config(session: SessionDep, user: CurrentUserDep) -> AnalyticsConf
     # Persist the lazily-generated seed so the anon id is stable across calls.
     if row is None:
         await _save_config(session, cfg, user.id)
-    return _effective(cfg)
+    return _effective(cfg, exempt=await _user_exempt(session, user))
 
 
 @router.put("/config", response_model=AnalyticsConfigPayload)
@@ -157,7 +177,7 @@ async def put_config(
     if payload.enabled and payload.opted_in_at is None:
         payload = payload.model_copy(update={"opted_in_at": datetime.now(UTC).replace(tzinfo=None)})
     saved = await _save_config(session, payload, user.id)
-    return _effective(saved)
+    return _effective(saved, exempt=await _user_exempt(session, user))
 
 
 # --------------------------------------------------------------------------
@@ -311,7 +331,9 @@ async def ingest_events(request: Request, session: SessionDep, user: CurrentUser
     is disabled - this is the privacy safety net independent of the client.
     """
     cfg = await cached_config(session, user.id)
-    if not cfg.enabled:
+    # The live role check covers a role granted after this process first saw
+    # the account (the persisted flag is synced once per process).
+    if not cfg.enabled or roles_exempt(user.roles):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     raw = await request.body()
@@ -433,7 +455,7 @@ class AnalyticsSummary(BaseModel):
 @router.get("/summary", response_model=AnalyticsSummary)
 async def get_summary(session: SessionDep, user: CurrentUserDep) -> AnalyticsSummary:
     cfg_row = await session.get(UserSetting, (user.id, ANALYTICS_CONFIG_KEY))
-    cfg = _effective(_load_config(cfg_row))
+    cfg = _effective(_load_config(cfg_row), exempt=await _user_exempt(session, user))
 
     total_events = (
         await session.scalar(

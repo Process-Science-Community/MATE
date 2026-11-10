@@ -56,6 +56,9 @@ data/users/
 data/staging/
 data/uploaded_modules/
 data/module-uploads/
+# Sample-content manifests + their logs, written on the VM by
+# infra/keycloak/create-reviewer-accounts.sh (account ids are deployment-specific).
+data/sample-content/
 data/uv-python/
 data/.multi_user_migrated
 data/metadata.db

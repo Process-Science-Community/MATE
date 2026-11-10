@@ -108,6 +108,15 @@ services:
       # Usage-tracking default/policy: force | on | off. `force` keeps tracking
       # on for everyone and hides the privacy step + Settings → Privacy tab.
       USER_TRACKING_ONBOARDING: ${USER_TRACKING_ONBOARDING:-force}
+      # Never-tracked accounts, whatever the policy above: holders of these realm
+      # roles + the listed usernames / Keycloak ids (comma-separated).
+      USER_TRACKING_EXEMPT_ROLES: ${USER_TRACKING_EXEMPT_ROLES:-reviewer}
+      USER_TRACKING_EXEMPT_USERS: ${USER_TRACKING_EXEMPT_USERS:-}
+      # Sample logs + starter dashboard seeded into listed accounts at start
+      # (written by infra/keycloak/create-reviewer-accounts.sh). Empty = off.
+      SAMPLE_CONTENT_MANIFEST: ${SAMPLE_CONTENT_MANIFEST:-}
+      # Realm roles refused module upload (uploaded code runs in-process).
+      MODULE_UPLOAD_BLOCKED_ROLES: ${MODULE_UPLOAD_BLOCKED_ROLES:-}
       DEMO_MODE: ${DEMO_MODE:-false}
       DEMO_ADMIN: ${DEMO_ADMIN:-false}
       # Allow the web container's browser-side origin (the host's port 3000).

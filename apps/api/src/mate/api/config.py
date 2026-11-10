@@ -11,6 +11,11 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _csv_set(raw: str) -> frozenset[str]:
+    """Parse a comma-separated env value into a set of non-empty, trimmed items."""
+    return frozenset(item.strip() for item in raw.split(",") if item.strip())
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -54,6 +59,44 @@ class Settings(BaseSettings):
     user_tracking_onboarding: Literal["force", "on", "off"] = Field(
         default="force",
         description="USER_TRACKING_ONBOARDING - tracking default/policy (force|on|off).",
+    )
+    # Per-user exemption from usage tracking, overriding the policy above (even
+    # `force`): no client, request, job or MCP event is ever recorded for an
+    # exempt account, and GET /usage/config reports `enabled: false` so the
+    # browser does not capture either. An account is exempt when it holds one of
+    # these Keycloak realm roles, or its username / Keycloak id is listed below.
+    # Used for the anonymous conference-reviewer accounts
+    # (infra/keycloak/create-reviewer-accounts.sh assigns the `reviewer` role).
+    # Comma-separated; empty disables that rule.
+    user_tracking_exempt_roles: str = Field(
+        default="reviewer",
+        description="USER_TRACKING_EXEMPT_ROLES - realm roles never tracked (comma-separated).",
+    )
+    user_tracking_exempt_users: str = Field(
+        default="",
+        description="USER_TRACKING_EXEMPT_USERS - usernames or Keycloak ids never tracked "
+        "(comma-separated).",
+    )
+
+    # Sample content seeded into listed accounts at API start (see
+    # services/sample_content.py): a JSON manifest naming the accounts, the
+    # sample logs (paths relative to the manifest) and a starter dashboard.
+    # Each account is seeded once (marker in user_settings); re-runs skip it.
+    # infra/keycloak/create-reviewer-accounts.sh writes one for the reviewers.
+    # Empty disables seeding.
+    sample_content_manifest: str = Field(
+        default="",
+        description="SAMPLE_CONTENT_MANIFEST - path to a sample-content manifest seeded at start.",
+    )
+
+    # Realm roles that may not upload modules (POST /modules/install). Uploaded
+    # module code runs inside the API process and can read every account's data,
+    # so an account that must stay sandboxed (e.g. `reviewer`) is listed here.
+    # Comma-separated; empty (default) lets every account upload.
+    module_upload_blocked_roles: str = Field(
+        default="",
+        description="MODULE_UPLOAD_BLOCKED_ROLES - realm roles refused module upload "
+        "(comma-separated).",
     )
 
     # Job queue. ``worker_concurrency`` is the boot default for the asyncio
@@ -365,6 +408,18 @@ class Settings(BaseSettings):
     # rate limit). 0 disables it.
     mcp_write_rate_limit_per_minute: int = Field(default=30, ge=0, le=100_000)
     mcp_write_rate_limit_burst: int = Field(default=10, ge=0, le=100_000)
+
+    @property
+    def tracking_exempt_roles(self) -> frozenset[str]:
+        return _csv_set(self.user_tracking_exempt_roles)
+
+    @property
+    def tracking_exempt_users(self) -> frozenset[str]:
+        return _csv_set(self.user_tracking_exempt_users)
+
+    @property
+    def module_upload_blocked_role_set(self) -> frozenset[str]:
+        return _csv_set(self.module_upload_blocked_roles)
 
     @property
     def users_dir(self) -> Path:

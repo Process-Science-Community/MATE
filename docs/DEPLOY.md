@@ -203,8 +203,15 @@ Keycloak's own login page:
 3. Set `KEYCLOAK_IDP_HINT=keycloak-oidc` in `.env` (already defaulted in
    `docker-compose.prod.yml`) and restart the `web` service.
 
-Break-glass: the local `admin@flows-funds.local` user still works via the
-Keycloak admin console (`master` realm), which the redirect does not touch.
+Local realm accounts (break-glass, test or reviewer accounts) sign in through
+MATE's **Login with email** button, i.e. `/login/start?local=1`, which omits the
+hint. That only works while the browser flow's *Identity Provider Redirector* has
+no default provider; the script leaves it unset unless `SET_DEFAULT_PROVIDER=1`.
+Older runs of the script set it – `./infra/keycloak/create-reviewer-accounts.sh status`
+reports it, and `CLEAR_IDP_REDIRECTOR=1 ./infra/keycloak/create-reviewer-accounts.sh`
+removes it (university users are unaffected: the web app still sends the hint).
+The Keycloak admin console (`master` realm) is never redirected. See
+[`REVIEWER_ACCESS.md`](./REVIEWER_ACCESS.md) for the conference-reviewer accounts.
 
 ### Google, Microsoft and GitHub sign-in
 
@@ -280,7 +287,8 @@ Other things to know:
   credentials; for GitHub the script pins `select_account` (its only documented value),
   which shows the account picker; Google accepts `login` but does not document it, so
   check §6 step 9 once. A provider's own session is outside MATE's reach.
-- `configure-university-idp.sh` sets a default provider on the browser flow's *Identity
+- `configure-university-idp.sh` with `SET_DEFAULT_PROVIDER=1` (and every run of it
+  before that flag existed) sets a default provider on the browser flow's *Identity
   Provider Redirector*. With it, "Login with email" and every direct Keycloak sign-in
   (an MCP client's) lands on the university whatever the hint says, and Keycloak's own
   provider buttons never show. The new script warns when it finds one; clear it under

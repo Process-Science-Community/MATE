@@ -18,6 +18,7 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | --- | --- |
 | [`INSTRUCTIONS.md`](./INSTRUCTIONS.md) | The design spec: tech-stack rationale, storage strategy, repo layout, the full module system (§5), API surface, frontend structure, job/progress architecture. The "why" behind everything; code docstrings cite its section numbers. |
 | [`DEPLOY.md`](./DEPLOY.md) | Prod deploy runbook for the uni VM: proxy chain, secrets + realm setup, resource limits, Neo4j sidecar, verify checklist, update procedure, MCP server enablement. |
+| [`REVIEWER_ACCESS.md`](./REVIEWER_ACCESS.md) | Anonymous conference-reviewer accounts: login URL, tracking exemption, preloaded sample content, isolation, expiry, VM steps. |
 | [`MCP.md`](./MCP.md) | MCP server **consumer** reference: endpoint, auth (PAT/OAuth), scopes, tool catalog, data wall, client setup. Operator-side setup lives in `DEPLOY.md` ("MCP server"). |
 | [`S3_OFFLOAD.md`](./S3_OFFLOAD.md) | S3 storage design doc (all phases implemented): local cache + eviction, bypass-hole closure, migration + quota, hydration performance, and the still-open multi-node seams. Storage code docstrings cite it. |
 

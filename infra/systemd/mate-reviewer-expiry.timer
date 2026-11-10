@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily check whether the MATE reviewer accounts have expired
+Documentation=https://github.com/Process-Science-Community/MATE/blob/main/docs/REVIEWER_ACCESS.md
+
+[Timer]
+# `expire` is a no-op before REVIEWER_EXPIRES, so a daily run is safe and
+# survives the VM being down on the day itself.
+OnCalendar=*-*-* 00:15:00
+OnBootSec=5min
+Persistent=true
+Unit=mate-reviewer-expiry.service
+
+[Install]
+WantedBy=timers.target

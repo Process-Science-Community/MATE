@@ -27,6 +27,7 @@ from mate.api.auth.jwks import get_signing_key
 from mate.api.config import get_settings
 from mate.api.db.models import User
 from mate.api.db.session import SessionDep
+from mate.api.services.tracking_exemption import sync_role_exemption
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,10 @@ async def _jit_sync_user(session: AsyncSession, user: CurrentUser) -> None:
         existing.preferred_username = user.preferred_username
         existing.name = user.name
         await session.flush()
+
+    # Persist a tracking exemption carried by the token's roles (e.g. `reviewer`)
+    # so recorders that only know the user id honour it too.
+    await sync_role_exemption(session, user.id, user.roles)
 
     _seen_user_ids.add(user.id)
     # Ensure the on-disk per-user dirs exist before any handler tries to write

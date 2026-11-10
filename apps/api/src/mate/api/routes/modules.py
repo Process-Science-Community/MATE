@@ -16,6 +16,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, Response, Up
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.config import get_settings
@@ -87,7 +88,7 @@ def _has_guide(loader: ModuleLoader, module_id: str) -> bool:
 
 
 async def _reconcile_default_modules(
-    session: SessionDep, user_id: str, default_ids: set[str]
+    session: AsyncSession, user_id: str, default_ids: set[str]
 ) -> None:
     """Grant *user_id* any default modules not previously offered to them.
 
@@ -116,6 +117,22 @@ async def _reconcile_default_modules(
         session.add(UserSetting(user_id=user_id, key=_DEFAULTS_SEEDED_KEY, value_json=merged))
     else:
         row.value_json = merged
+
+
+async def reconcile_user_default_modules(
+    session: AsyncSession, loader: ModuleLoader, user_id: str
+) -> None:
+    """Grant *user_id* the effective default modules (see ``_reconcile_default_modules``).
+
+    Effective defaults = bundled ids + admin-declared ids (the latter filtered to
+    actually-loaded modules so we never seed an id that can't be listed), minus
+    the ids an admin withheld. Also used by the sample-content seeder, which has
+    to install the defaults before the account's first visit.
+    """
+    admin_ids = await get_admin_default_ids(session)
+    withheld = await get_excluded_default_ids(session)
+    effective_defaults = (loader.default_module_ids | (admin_ids & set(loader.loaded))) - withheld
+    await _reconcile_default_modules(session, user_id, effective_defaults)
 
 
 class ModuleSummary(BaseModel):
@@ -185,10 +202,7 @@ async def list_modules(
     # session, and it runs on every visit to the modules surface. Effective
     # defaults = bundled ids + admin-declared ids (the latter filtered to
     # actually-loaded modules so we never seed an id that can't be listed).
-    admin_ids = await get_admin_default_ids(session)
-    withheld = await get_excluded_default_ids(session)
-    effective_defaults = (loader.default_module_ids | (admin_ids & set(loader.loaded))) - withheld
-    await _reconcile_default_modules(session, user.id, effective_defaults)
+    await reconcile_user_default_modules(session, loader, user.id)
 
     # Per-user visibility: only modules this user has installed. The loader
     # holds every module loaded into the process (shared), so we intersect.
@@ -504,6 +518,14 @@ async def install_from_upload(
     that unpacks and registers the module. Returns the job id so the dock can
     stream progress (`GET /api/v1/events` SSE filtered by `job.*`).
     """
+    # Uploaded module code runs in the API process and can read every account's
+    # data, so sandboxed accounts (MODULE_UPLOAD_BLOCKED_ROLES, e.g. `reviewer`)
+    # may use the installed modules but not add their own.
+    if get_settings().module_upload_blocked_role_set.intersection(user.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Module upload is not available for this account.",
+        )
     filename = file.filename or "upload"
     if not _has_allowed_upload_suffix(filename):
         raise HTTPException(

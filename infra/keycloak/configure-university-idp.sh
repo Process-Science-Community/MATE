@@ -7,14 +7,17 @@
 #
 # What it does (all idempotent – safe to re-run):
 #   1. Creates/updates the `university` OIDC identity provider (trustEmail=on).
-#   2. Sets the browser flow's "Identity Provider Redirector" default provider
-#      to `university` – anyone hitting Keycloak directly is bounced to the IdP.
+#   2. Only with SET_DEFAULT_PROVIDER=1: sets the browser flow's "Identity
+#      Provider Redirector" default provider to `university` – anyone hitting
+#      Keycloak directly is bounced to the IdP. Off by default: it also bounces
+#      MATE's "Login with email" door (/login/start?local=1), so local realm
+#      accounts (reviewers, test accounts, break-glass) could never sign in.
 #   3. Disables the "Review Profile" step in the "first broker login" flow so a
 #      new user is provisioned silently (no profile-confirmation page).
 #
 # The app-side kc_idp_hint (KEYCLOAK_IDP_HINT=university, see auth.ts) already
-# skips the form for logins that start from the web app; step 2 is the
-# belt-and-suspenders for direct Keycloak hits.
+# skips the form for logins that start from the web app; step 2 only adds the
+# same for direct Keycloak hits, at the price of locking local accounts out.
 #
 # Requirements: docker (Keycloak running in a container), python3 + curl on the
 # host. Admin console runs against the `master` realm and is NOT affected.
@@ -151,6 +154,10 @@ else
 fi
 
 # ── 3. Browser flow → Identity Provider Redirector → default = university ────
+if [ "${SET_DEFAULT_PROVIDER:-0}" != "1" ]; then
+  echo "→ Leaving the browser-flow redirector without a default provider"
+  echo "  (local accounts keep the 'Login with email' door; SET_DEFAULT_PROVIDER=1 forces '$IDP_ALIAS')"
+else
 echo "→ Setting browser-flow default identity provider to '$IDP_ALIAS'"
 browser_execs="$(kc get authentication/flows/browser/executions -r "$REALM")"
 redir_exec_id="$(printf '%s' "$browser_execs" | python3 -c "
@@ -174,6 +181,7 @@ else
   kc create "authentication/executions/$redir_exec_id/config" -r "$REALM" \
     -s "alias=${IDP_ALIAS}-idp-redirector" -s "config.defaultProvider=$IDP_ALIAS"
   echo "  created redirector config"
+fi
 fi
 
 # ── 4. First broker login → disable "Review Profile" ─────────────────────────

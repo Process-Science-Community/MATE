@@ -51,6 +51,7 @@ from mate.api.routes import v1
 from mate.api.routes.analytics import prune_expired, record_server_event
 from mate.api.schemas.common import HealthResponse
 from mate.api.services.analytics_objects import ObjectRef
+from mate.api.services.sample_content import seed_from_settings as seed_sample_content
 from mate.api.services.usage_recorder import server_event_writer_loop
 from mate.api.shutdown import install_signal_observer, mark_shutting_down
 from mate.api.storage import get_storage_settings
@@ -404,6 +405,12 @@ async def lifespan(app: FastAPI):
     # S3-mode metadata.db snapshot loop: keeps a restorable DB copy in the bucket
     # so losing the VM doesn't orphan its objects. No-op in local mode.
     db_backup_task = asyncio.create_task(db_backup_loop())
+    # Sample content for accounts listed in SAMPLE_CONTENT_MANIFEST (the
+    # conference-reviewer accounts): imports + starter dashboard through the
+    # normal job path, once per account. No-op when the setting is empty.
+    sample_content_task = asyncio.create_task(
+        seed_sample_content(get_sessionmaker(), runtime, loader, coordinator)
+    )
 
     # Live CPU/RAM sampler for Admin → System. Built after the loader so its first
     # breakdown can already see subprocess workers; manages its own asyncio task.
@@ -458,6 +465,7 @@ async def lifespan(app: FastAPI):
             processing_task,
             eviction_task,
             db_backup_task,
+            sample_content_task,
         ):
             task.cancel()
             with suppress(asyncio.CancelledError, Exception):
