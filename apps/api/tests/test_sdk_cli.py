@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -294,3 +295,112 @@ def test_validate_controls_need_a_params_schema(
     capsys.readouterr()
     assert main(["validate", str(tmp_path / MOD)]) == 1
     assert "nothing to control; declare a dataset's `params_schema`" in capsys.readouterr().out
+
+
+# -- widget scaffold, entry files, placeholder viz cards ----------------------
+
+
+def _widget_ids(folder: Path) -> list[str]:
+    from mate.sdk.manifest import Manifest
+
+    return [w.id for w in Manifest.load_yaml(folder / "manifest.yaml").frontend.widgets]
+
+
+@pytest.mark.parametrize("panel", [False, True], ids=["no-frontend", "panel-only-frontend"])
+def test_widget_adds_tsx_and_manifest_entry(tmp_path: Path, panel: bool) -> None:
+    assert main(["new", MOD, "--dir", str(tmp_path), *(["--panel"] if panel else [])]) == 0
+    folder = tmp_path / MOD
+    assert main(["widget", MOD, "top-activities", "--dir", str(tmp_path)]) == 0
+    tsx = (folder / "widgets" / "TopActivities.tsx").read_text()
+    assert "export default function TopActivities" in tsx and '"/summary"' in tsx
+    assert not re.search(r"__[A-Z_]+__", tsx)  # every placeholder replaced
+    assert _widget_ids(folder) == ["top-activities"]
+    assert ("panel: ./panel/index.tsx" in (folder / "manifest.yaml").read_text()) is panel
+    assert main(["validate", str(folder)]) == 0
+
+
+def test_widget_appends_to_existing_widgets_keeping_comments(tmp_path: Path) -> None:
+    assert main(["new", MOD, "--dir", str(tmp_path)]) == 0
+    folder = tmp_path / MOD
+    manifest = folder / "manifest.yaml"
+    (folder / "widgets").mkdir()
+    (folder / "widgets" / "Old.tsx").write_text("export default function Old() { return null; }\n")
+    manifest.write_text(
+        manifest.read_text()
+        + "\nfrontend:\n    log_filter: false  # keep me\n    widgets:\n"
+        + "    - id: old\n      entry: ./widgets/Old.tsx\n\n    # trailing comment\n"
+        + "permissions:\n  - read:event_log\n"
+    )
+    assert main(["widget", MOD, "new-one", "--dir", str(tmp_path), "--title", "New: one"]) == 0
+    text = manifest.read_text()
+    assert "# keep me" in text and "# trailing comment" in text
+    assert _widget_ids(folder) == ["old", "new-one"]
+    assert main(["validate", str(folder)]) == 0
+
+
+def test_widget_refuses_duplicate_bad_id_and_restores_on_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["new", MOD, "--dir", str(tmp_path)]) == 0
+    folder = tmp_path / MOD
+    manifest = folder / "manifest.yaml"
+    assert main(["widget", MOD, "chart", "--dir", str(tmp_path)]) == 0
+    before = manifest.read_text()
+    assert main(["widget", MOD, "chart", "--dir", str(tmp_path)]) == 1
+    assert "already declares" in capsys.readouterr().err
+    for bad in ("Chart", "my_chart", "1x", ""):
+        assert main(["widget", MOD, bad, "--dir", str(tmp_path)]) == 2
+    assert manifest.read_text() == before
+    # A shape the text edit cannot handle: the manifest is restored, the snippet printed.
+    broken = before[: before.index("frontend:")] + "frontend:\n  widgets: []\n"
+    manifest.write_text(broken)
+    capsys.readouterr()
+    assert main(["widget", MOD, "other", "--dir", str(tmp_path)]) == 1
+    assert manifest.read_text() == broken
+    assert "- id: other" in capsys.readouterr().err
+    assert not (folder / "widgets" / "Other.tsx").exists()
+
+
+def test_widget_flow_style_frontend_is_restored_and_ids_do_not_shadow_imports(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["new", MOD, "--dir", str(tmp_path)]) == 0
+    folder = tmp_path / MOD
+    manifest = folder / "manifest.yaml"
+    flow = manifest.read_text() + "\nfrontend: {log_filter: false}\n"
+    manifest.write_text(flow)
+    capsys.readouterr()
+    assert main(["widget", MOD, "chart", "--dir", str(tmp_path)]) == 1
+    assert manifest.read_text() == flow
+    assert "- id: chart" in capsys.readouterr().err
+    manifest.write_text(flow.replace("\nfrontend: {log_filter: false}\n", ""))
+    assert main(["widget", MOD, "bar-chart", "--dir", str(tmp_path)]) == 0
+    tsx = (folder / "widgets" / "BarChart.tsx").read_text()
+    assert "export default function BarChartWidget(" in tsx
+
+
+def test_validate_catches_missing_widget_entry(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["new", MOD, "--dir", str(tmp_path)]) == 0
+    assert main(["widget", MOD, "gone", "--dir", str(tmp_path)]) == 0
+    (tmp_path / MOD / "widgets" / "Gone.tsx").unlink()
+    capsys.readouterr()
+    assert main(["validate", str(tmp_path / MOD)]) == 1
+    assert "widget 'gone' entry './widgets/Gone.tsx' does not exist" in capsys.readouterr().out
+
+
+def test_placeholder_viz_loads_but_fails_validate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path, layout = _scaffold_layout(tmp_path)
+    viz = _card(layout, "viz")
+    del viz["dataset_ref"]
+    viz["viz_id"] = "petri-net"
+    path.write_text(json.dumps(layout))
+    assert ModuleLayout.load(tmp_path / MOD) is not None  # the Studio may save it
+    capsys.readouterr()
+    assert main(["validate", str(tmp_path / MOD)]) == 1
+    assert "has no data yet; declare a graph dataset" in capsys.readouterr().out
+    with pytest.raises(ValidationError, match="viz_id"):
+        ModuleLayout.model_validate({"items": [_item(kind="viz")]})

@@ -3,7 +3,8 @@
 A module can ship its page as data instead of a hand-written TSX panel. The
 layout is a grid of cards on the platform's 12-column board grid. A card is one of:
 
-- ``viz``: a generic visualization bound to one of the module's manifest ``datasets``.
+- ``viz``: a generic visualization bound to one of the module's manifest ``datasets``
+  (unbound = a Studio placeholder that ``mate-module validate`` rejects).
 - ``widget``: one of the module's ``frontend.widgets`` (TSX).
 - ``text``: markdown (``config.markdown``), e.g. a heading and an intro.
 - ``controls``: a form over page params (``config.source: "params"``, keys from the
@@ -71,8 +72,9 @@ class LayoutItem(BaseModel):
     @model_validator(mode="after")
     def _check_kind(self) -> LayoutItem:
         c, name = self.config, f"{self.kind} card {self.i!r}"
-        if self.kind == "viz" and (self.dataset_ref is None or not self.viz_id):
-            raise ValueError(f"{name} needs dataset_ref and viz_id")
+        # No dataset_ref = a Studio placeholder ("Needs data"); `validate` flags it.
+        if self.kind == "viz" and not self.viz_id:
+            raise ValueError(f"{name} needs viz_id")
         if self.kind == "widget" and not self.widget_id:
             raise ValueError(f"{name} needs widget_id")
         if self.kind == "text" and not isinstance(c.get("markdown"), str):

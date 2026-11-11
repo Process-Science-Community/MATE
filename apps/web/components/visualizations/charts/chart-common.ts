@@ -1,9 +1,13 @@
-import { formatNumber } from "@/lib/format";
+import type { WidgetPropSchema } from "@/lib/dashboard-queries";
+import { VALUE_FORMATS, formatDurationShort, formatValue, type ValueFormat } from "@/lib/format";
+
+export { VALUE_FORMATS, formatDurationShort, formatValue, type ValueFormat } from "@/lib/format";
 import type {
   ColumnSpec,
   ColumnType,
   DatasetEnvelope,
   FieldMapping,
+  KpiData,
   KpiMeasure,
   TableData,
 } from "@/lib/visualizations/types";
@@ -17,29 +21,71 @@ export function durationKeys(options: Record<string, unknown> | undefined): stri
   return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string") : [];
 }
 
-/** Seconds as the two largest units: "1d 2h", "3h 4m", "12m", "40s". */
-export function formatDurationShort(seconds: number): string {
-  if (!Number.isFinite(seconds)) return "—";
-  const sign = seconds < 0 ? "-" : "";
-  const s = Math.round(Math.abs(seconds));
-  const d = Math.floor(s / 86_400);
-  const h = Math.floor((s % 86_400) / 3_600);
-  const m = Math.floor((s % 3_600) / 60);
-  if (d) return `${sign}${d}d${h ? ` ${h}h` : ""}`;
-  if (h) return `${sign}${h}h${m ? ` ${m}m` : ""}`;
-  if (m) return `${sign}${m}m`;
-  return `${sign}${s}s`;
-}
 
-/** One KPI measure as text, honouring its `format` and the duration option. */
+export const VALUE_FORMAT_PROP: WidgetPropSchema = {
+  type: "string",
+  title: "Value format",
+  enum: [...VALUE_FORMATS],
+  enumLabels: ["Number", "Integer", "Percent (0-1)", "Percent (0-100)", "Duration (s)", "Date/time", "Text"],
+  default: "number",
+};
+
+export const LEGEND_PROP: WidgetPropSchema = {
+  type: "string",
+  title: "Legend",
+  enum: ["off", "bottom", "right"],
+  enumLabels: ["Off", "Bottom", "Right"],
+  default: "bottom",
+  ui: { widget: "segmented" },
+};
+
+/** One KPI measure as text, honouring its `format`, the duration option, an
+ * explicit `value_format` override (not "auto") and `decimals`. */
 export function formatMeasure(m: KpiMeasure, options?: Record<string, unknown>): string {
   if (m.value == null) return "—";
   if (typeof m.value === "string") return m.value;
-  const v = m.value;
-  if (m.format === "duration" || durationKeys(options).includes(m.key)) return formatDurationShort(v);
-  if (m.format === "percent") return `${(v * 100).toFixed(1)}%`;
-  if (m.format === "integer") return formatNumber(Math.round(v));
-  return formatNumber(v);
+  const decimals = typeof options?.decimals === "number" ? options.decimals : undefined;
+  const override = options?.value_format;
+  if (typeof override === "string" && override !== "auto") return formatValue(m.value, override, decimals);
+  if (m.format === "duration" || durationKeys(options).includes(m.key)) return formatDurationShort(m.value);
+  return formatValue(m.value, m.format, decimals);
+}
+
+/** An option that is a list of ids: a string[] or a comma-separated string. */
+export function listOption(options: Record<string, unknown> | undefined, key: string): string[] {
+  const v = options?.[key];
+  const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : [];
+  return raw.map((k) => String(k).trim()).filter(Boolean);
+}
+
+/** `legend` option: "off" | "bottom" | "right"; the legacy boolean `false` means off. */
+export function legendPos(options: Record<string, unknown>): "off" | "bottom" | "right" {
+  const v = options.legend;
+  if (v === false || v === "off") return "off";
+  return v === "right" ? "right" : "bottom";
+}
+
+/** recharts `<Legend>` props for a legend position. */
+export function legendProps(pos: "bottom" | "right") {
+  return pos === "right"
+    ? ({ layout: "vertical", align: "right", verticalAlign: "middle", wrapperStyle: { fontSize: 11 } } as const)
+    : ({ wrapperStyle: { fontSize: 11 } } as const);
+}
+
+export function kpiItems(d: DatasetEnvelope): KpiMeasure[] {
+  return d.shape === "kpi" && d.data && "items" in d.data ? (d.data as KpiData).items : [];
+}
+
+/** The measures named in `keys` (in that order), or all of them when empty. */
+export function pickMeasures(items: KpiMeasure[], keys: string[]): KpiMeasure[] {
+  if (!keys.length) return items;
+  return keys.map((k) => items.find((m) => m.key === k)).filter((m): m is KpiMeasure => !!m);
+}
+
+/** The measure named by the `measure` option, else the first numeric one, else the first. */
+export function pickMeasure(items: KpiMeasure[], options: Record<string, unknown>): KpiMeasure | undefined {
+  const key = typeof options.measure === "string" ? options.measure.trim() : "";
+  return (key && items.find((m) => m.key === key)) || items.find((m) => typeof m.value === "number") || items[0];
 }
 
 /** Categorical palette for series/cells. Kept explicit (not theme tokens) so
@@ -59,7 +105,24 @@ export const CHART_COLORS = [
 
 const NUMERIC: ColumnType[] = ["number", "integer", "duration"];
 
+const KPI_COLUMNS: ColumnSpec[] = [
+  { id: "label", label: "Measure", type: "string", role: "dimension" },
+  { id: "value", label: "Value", type: "number", role: "measure" },
+];
+
+/** The dataset as a table. A `kpi` dataset becomes one `{label, value, format}`
+ * row per numeric measure, so category/value charts (pie, radar, ...) can plot
+ * it; the value column is a duration when every measure is one. */
 export function asTable(d: DatasetEnvelope): TableData {
+  if (d.shape === "kpi") {
+    const items = kpiItems(d).filter((m) => typeof m.value === "number");
+    const rows = items.map((m) => ({ label: m.label, value: m.value, format: m.format }));
+    const allDurations = items.length > 0 && items.every((m) => m.format === "duration");
+    return {
+      columns: allDurations ? [KPI_COLUMNS[0], { ...KPI_COLUMNS[1], type: "duration" }] : KPI_COLUMNS,
+      rows,
+    };
+  }
   return d.shape === "table" && d.data && "columns" in d.data
     ? (d.data as TableData)
     : { columns: [], rows: [] };
@@ -103,6 +166,20 @@ export function resolveValue(cols: ColumnSpec[], mapping: FieldMapping, key = "v
   const m = mapping[key];
   if (typeof m === "string" && cols.some((c) => c.id === m)) return m;
   return numericCols(cols)[0]?.id;
+}
+
+/** How to print a column's values: an explicit `value_format` option wins,
+ * else the column's own type/format (`duration` seconds, `percent100`, ...). */
+export function columnFormat(
+  cols: ColumnSpec[],
+  id: string | undefined,
+  options?: Record<string, unknown>,
+): ValueFormat | undefined {
+  const o = options?.value_format;
+  if (typeof o === "string" && o !== "auto") return o as ValueFormat;
+  const c = cols.find((col) => col.id === id);
+  if (c?.type === "duration") return "duration";
+  return c?.format as ValueFormat | undefined;
 }
 
 export function labelOf(cols: ColumnSpec[], id: string): string {

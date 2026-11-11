@@ -23,6 +23,7 @@ import type {
   TreeData,
   TreeNode,
 } from "./types";
+import { inferFormat } from "@/lib/format";
 
 type Json = Record<string, unknown>;
 
@@ -32,6 +33,8 @@ function isObject(v: unknown): v is Json {
 
 function prettify(key: string): string {
   return key
+    // The unit suffix becomes the format (duration, percent), not label text.
+    .replace(/_(s|sec|secs|seconds|pct|percent)$/i, "")
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
@@ -72,10 +75,89 @@ export function tableFromRows(rows: Json[]): TableData {
   }
   const columns: ColumnSpec[] = keys.map((k) => {
     const sample = rows.find((r) => r[k] != null)?.[k];
-    const type = inferType(sample);
-    return { id: k, label: prettify(k), type, role: roleFor(type) };
+    let type = inferType(sample);
+    const format = type === "number" || type === "integer" ? inferFormat(k) : undefined;
+    if (format === "duration") type = "duration";
+    const col: ColumnSpec = { id: k, label: prettify(k), type, role: roleFor(type) };
+    if (format === "percent100") col.format = format;
+    return col;
   });
   return { columns, rows };
+}
+
+/** `{columns: string[], rows: unknown[][]}` → row objects. */
+function zipRows(columns: unknown[], rows: unknown[][]): Json[] {
+  const ids = columns.map(String);
+  return rows.map((r) => Object.fromEntries(ids.map((id, i) => [id, r[i]])));
+}
+
+const isMatrix = (v: unknown): v is number[][] =>
+  Array.isArray(v) && v.length > 0 && v.every((r) => Array.isArray(r));
+const isStrArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string");
+
+/** A dense matrix (`matrix: number[][]`, or `metrics: {name: number[][]}`) with
+ * a label array → long rows `{row, col, value | <metric>…}`. Null if absent. */
+function matrixRows(obj: Json): Json[] | null {
+  let metrics: Record<string, number[][]>;
+  if (isMatrix(obj.matrix)) metrics = { value: obj.matrix };
+  else if (
+    isObject(obj.metrics) &&
+    Object.keys(obj.metrics).length > 0 &&
+    Object.values(obj.metrics).every(isMatrix)
+  )
+    metrics = obj.metrics as Record<string, number[][]>;
+  else return null;
+  const labelKey = ["labels", "activities", "log_ids", "names", "row_labels"].find((k) =>
+    isStrArray(obj[k]),
+  );
+  const rowLabels = labelKey ? (obj[labelKey] as string[]) : [];
+  const colLabels = isStrArray(obj.col_labels) ? obj.col_labels : rowLabels;
+  const out: Json[] = [];
+  Object.values(metrics)[0].forEach((r, i) =>
+    r.forEach((_, j) => {
+      const row: Json = { row: rowLabels[i] ?? String(i), col: colLabels[j] ?? String(j) };
+      for (const [name, m] of Object.entries(metrics)) row[name] = m[i]?.[j] ?? null;
+      out.push(row);
+    }),
+  );
+  return out;
+}
+
+/** Parallel arrays (a string[] index plus same-length number[] arrays, e.g.
+ * `{periods, arrivals, completions}`) → one row per index entry. */
+function parallelRows(obj: Json): Json[] | null {
+  const indexKey = Object.keys(obj).find((k) => isStrArray(obj[k]));
+  if (!indexKey) return null;
+  const index = obj[indexKey] as string[];
+  const valueKeys = Object.keys(obj).filter((k) => {
+    const v = obj[k];
+    return (
+      k !== indexKey &&
+      Array.isArray(v) &&
+      v.length === index.length &&
+      v.every((x) => x == null || typeof x === "number")
+    );
+  });
+  if (valueKeys.length === 0) return null;
+  return index.map((label, i) =>
+    Object.fromEntries([[indexKey, label], ...valueKeys.map((k) => [k, (obj[k] as unknown[])[i]])]),
+  );
+}
+
+/** Table data a producer already shaped (`{columns?, rows}`): typed columns are
+ * kept, string columns zip array rows, missing columns are inferred. */
+function tableFromData(data: Json): TableData {
+  const rows = Array.isArray(data.rows) ? (data.rows as unknown[]) : [];
+  const cols = Array.isArray(data.columns) ? (data.columns as unknown[]) : [];
+  if (rows.length > 0 && rows.every(Array.isArray)) {
+    return tableFromRows(zipRows(cols, rows as unknown[][]));
+  }
+  const objRows = rows.filter(isObject);
+  if (cols.length > 0 && cols.every((c) => isObject(c) && typeof c.id === "string")) {
+    return { columns: cols as unknown as ColumnSpec[], rows: objRows };
+  }
+  return tableFromRows(objRows);
 }
 
 /** Collect numeric leaves of an object (one level of nesting) into KPI measures. */
@@ -85,6 +167,16 @@ function measuresFrom(obj: Json, prefix = ""): KpiMeasure[] {
     const key = prefix ? `${prefix}.${k}` : k;
     if (typeof v === "number") {
       out.push({ key, label: prettify(k), value: v, format: kpiFormat(k, v) });
+    } else if (isObject(v) && typeof v.value_b === "number") {
+      // An A/B comparison: B is the value, A its baseline.
+      out.push({
+        key,
+        label: typeof v.label === "string" ? v.label : prettify(k),
+        value: v.value_b,
+        baseline: typeof v.value_a === "number" ? v.value_a : null,
+        better: v.lower_is_better ? "lower" : "higher",
+        format: kpiFormat(k, v.value_b),
+      });
     } else if (isObject(v)) {
       out.push(...measuresFrom(v, key));
     }
@@ -92,7 +184,33 @@ function measuresFrom(obj: Json, prefix = ""): KpiMeasure[] {
   return out;
 }
 
+/** `[{key, value, label?, format?, unit?, baseline?}]` item arrays → measures. */
+function measuresFromItems(items: unknown[]): KpiMeasure[] {
+  return items.filter(isObject).flatMap((it) => {
+    const key = String(it.key ?? it.id ?? "");
+    const v = it.value;
+    if (!key || !(typeof v === "number" || typeof v === "string" || v === null)) return [];
+    const m: KpiMeasure = {
+      key,
+      label: typeof it.label === "string" ? it.label : prettify(key),
+      value: v,
+    };
+    const fmt =
+      typeof it.format === "string"
+        ? (it.format as KpiMeasure["format"])
+        : typeof v === "number"
+          ? kpiFormat(key, v)
+          : undefined;
+    if (fmt) m.format = fmt;
+    if (typeof it.unit === "string") m.unit = it.unit;
+    if (typeof it.baseline === "number") m.baseline = it.baseline;
+    return [m];
+  });
+}
+
 function kpiFormat(key: string, value: number): KpiMeasure["format"] {
+  const inferred = inferFormat(key);
+  if (inferred === "duration" || inferred === "percent100") return inferred;
   const k = key.toLowerCase();
   if (/(fitness|precision|perc|percent|share|ratio|rate)/.test(k) && value >= 0 && value <= 1) {
     return "percent";
@@ -142,11 +260,19 @@ function graphFromPetri(json: Json): GraphData {
   const transitions = Array.isArray(json.transitions) ? (json.transitions as Json[]) : [];
   const arcs = Array.isArray(json.arcs) ? (json.arcs as Json[]) : [];
   const nodes: GraphNode[] = [
-    ...places.map((p) => ({ id: String(p.id), label: String(p.label ?? ""), kind: "place" })),
+    ...places.map((p) => ({
+      id: String(p.id),
+      label: String(p.label ?? ""),
+      kind: "place",
+      // Absent flags stay undefined so PetriNetViz falls back to the structure.
+      initial: typeof p.is_initial === "boolean" ? p.is_initial : undefined,
+      final: typeof p.is_final === "boolean" ? p.is_final : undefined,
+      tokens: typeof p.tokens === "number" ? p.tokens : undefined,
+    })),
     ...transitions.map((t) => ({
       id: String(t.id),
-      label: t.is_invisible ? "" : String(t.label ?? t.name ?? ""),
-      kind: "transition",
+      label: String(t.label ?? t.name ?? ""),
+      kind: t.is_invisible ? "silent" : "transition",
     })),
   ];
   const edges: GraphEdge[] = arcs.map((a, i) => ({
@@ -158,16 +284,48 @@ function graphFromPetri(json: Json): GraphData {
   return { directed: true, nodes, edges };
 }
 
+/** A generic `{nodes, edges}` graph (value from value|count|frequency). */
+function graphFromNodesEdges(json: Json): GraphData {
+  const num = (o: Json) =>
+    [o.value, o.count, o.frequency].find((v): v is number => typeof v === "number");
+  const nodes: GraphNode[] = (json.nodes as unknown[]).filter(isObject).map((n) => ({
+    id: String(n.id),
+    label: String(n.label ?? n.id),
+    value: num(n),
+    kind: typeof n.kind === "string" ? n.kind : undefined,
+  }));
+  const edges: GraphEdge[] = (Array.isArray(json.edges) ? (json.edges as unknown[]) : [])
+    .filter(isObject)
+    .map((e, i) => ({
+      id: String(e.id ?? `e${i}`),
+      source: String(e.source),
+      target: String(e.target),
+      value: num(e),
+      label: typeof e.label === "string" ? e.label : undefined,
+    }));
+  const ids = (v: unknown) =>
+    Array.isArray(v) ? v.map(String) : isObject(v) ? Object.keys(v) : undefined;
+  return {
+    directed: json.directed !== false,
+    nodes,
+    edges,
+    start: ids(json.start),
+    end: ids(json.end),
+  };
+}
+
 // ── tree ─────────────────────────────────────────────────────────────────
 
 function treeFromProcessTree(json: Json): TreeData {
   let counter = 0;
   const walk = (node: Json): TreeNode => {
     const children = Array.isArray(node.children) ? (node.children as Json[]) : [];
-    const label = (node.label as string) ?? (node.operator as string) ?? "·";
+    const operator = typeof node.operator === "string" ? node.operator : undefined;
+    const label = (node.label as string) ?? operator ?? "·";
     return {
       id: String(node.id ?? `n${counter++}`),
       label,
+      kind: operator,
       children: children.map(walk),
     };
   };
@@ -196,6 +354,12 @@ function treeFromPrefix(json: Json): TreeData {
   return { root: root ?? { id: "root", label: "start", children: [] } };
 }
 
+function treeDefaults(n: unknown): TreeNode {
+  if (!isObject(n)) return { id: "root", label: "", children: [] };
+  return { ...n, id: String(n.id ?? ""), label: String(n.label ?? ""), children: arrayOr(n.children).map(treeDefaults) } as TreeNode;
+}
+const arrayOr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
 // ── public entry ───────────────────────────────────────────────────────────
 
 /** Normalize a module route's response into the declared shape. `shape` comes
@@ -204,8 +368,38 @@ export function normalize(shape: DatasetShape, json: unknown): DatasetEnvelope {
   const obj: Json = isObject(json) ? json : {};
   const kind = typeof obj.kind === "string" ? obj.kind : "";
 
+  // Envelope passthrough: a route that already returns `{shape, data}` of the
+  // declared shape is used as-is (a table's schema is inferred when missing).
+  if (obj.shape === shape && isObject(obj.data)) {
+    const meta = isObject(obj.meta) ? (obj.meta as DatasetEnvelope["meta"]) : undefined;
+    if (shape !== "table") {
+      // Default the collections the vizzes iterate, so a partial envelope renders empty instead of throwing.
+      const d = obj.data as Json;
+      const data =
+        shape === "graph"
+          ? { ...d, nodes: arrayOr(d.nodes), edges: arrayOr(d.edges) }
+          : shape === "kpi"
+            ? { ...d, items: arrayOr(d.items) }
+            : shape === "tree"
+              ? { ...d, root: treeDefaults(d.root) }
+              : d;
+      return envelope(shape, data as unknown as DatasetEnvelope["data"], [], meta);
+    }
+    const table = tableFromData(obj.data);
+    return envelope("table", table, table.columns, {
+      ...meta,
+      rowCount: meta?.rowCount ?? table.rows.length,
+      note: table.rows.length === 0 ? (meta?.note ?? "No rows.") : meta?.note,
+    });
+  }
+
   if (shape === "graph") {
-    const g = kind === "petri_net" ? graphFromPetri(obj) : graphFromDfg(obj);
+    const g =
+      kind === "petri_net"
+        ? graphFromPetri(obj)
+        : !Array.isArray(obj.activities) && Array.isArray(obj.nodes)
+          ? graphFromNodesEdges(obj)
+          : graphFromDfg(obj);
     return envelope("graph", g, [], { sourceKind: kind });
   }
 
@@ -217,7 +411,10 @@ export function normalize(shape: DatasetShape, json: unknown): DatasetEnvelope {
   if (shape === "kpi") {
     let items: KpiMeasure[] = [];
     let note: string | undefined;
-    if (kind === "conformance") {
+    const list = Array.isArray(obj.items) ? obj.items : Array.isArray(obj.kpis) ? obj.kpis : null;
+    if (list) {
+      items = measuresFromItems(list);
+    } else if (kind === "conformance") {
       if (obj.ran === false || !isObject(obj.kpis)) {
         note = "No conformance run yet - run conformance on this log first.";
       } else {
@@ -242,21 +439,38 @@ export function normalize(shape: DatasetShape, json: unknown): DatasetEnvelope {
 
   // table (default): prefer the known slice, else the first array-of-objects.
   let rows: Json[] = [];
+  let fromMatrix = false;
   let note: string | undefined;
   if (kind === "conformance") {
     rows = Array.isArray(obj.per_activity) ? (obj.per_activity as Json[]) : [];
     if (rows.length === 0 && obj.ran === false) note = "No conformance run yet.";
   } else if (Array.isArray(obj.drifts)) {
     rows = obj.drifts as Json[];
+  } else if (
+    Array.isArray(obj.columns) &&
+    Array.isArray(obj.rows) &&
+    obj.rows.length > 0 &&
+    obj.rows.every(Array.isArray)
+  ) {
+    rows = zipRows(obj.columns, obj.rows as unknown[][]);
   } else {
-    for (const v of Object.values(obj)) {
-      if (Array.isArray(v) && v.length > 0 && isObject(v[0])) {
-        rows = v as Json[];
-        break;
+    rows = matrixRows(obj) ?? [];
+    fromMatrix = rows.length > 0;
+    if (rows.length === 0) {
+      for (const v of Object.values(obj)) {
+        if (Array.isArray(v) && v.length > 0 && isObject(v[0])) {
+          rows = v as Json[];
+          break;
+        }
       }
     }
+    if (rows.length === 0) rows = parallelRows(obj) ?? [];
   }
   const table = tableFromRows(rows);
+  // Matrix labels ("0", "2023", numeric log ids) are categories, never measures.
+  if (fromMatrix)
+    for (const c of table.columns)
+      if (c.id === "row" || c.id === "col") Object.assign(c, { type: "string", role: roleFor("string") });
   return envelope("table", table, table.columns, {
     sourceKind: kind,
     rowCount: rows.length,

@@ -96,6 +96,7 @@ function controlFor(prop: PropSchema): string {
   if (explicit === "segmented" && hasEnum) return "segmented";
   if (explicit === "multiselect" && hasEnum) return "multiselect";
   if (explicit === "select" && hasEnum) return "select";
+  if (explicit === "textarea") return "textarea";
   if (explicit === "switch" || prop.type === "boolean") return "switch";
   if (prop.type === "array" && hasEnum) return "multiselect";
   if (hasEnum) return "select";
@@ -265,6 +266,17 @@ export function SchemaField({
           placeholder={String(prop.default ?? "")}
           disabled={disabled}
           className={cn(inputCls, !compact && "max-w-lg font-mono text-xs")}
+        />
+      )}
+
+      {control === "textarea" && (
+        <textarea
+          id={id}
+          value={current == null ? "" : String(current)}
+          onChange={(e) => onChange(e.target.value)}
+          rows={5}
+          disabled={disabled}
+          className="w-full rounded-md border border-input bg-transparent px-2.5 py-1.5 font-mono text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
         />
       )}
 

@@ -223,7 +223,7 @@ export interface DashboardDetail {
 
 /** One configurable field on a card, in the module `config_schema` dialect. */
 export interface WidgetPropSchema {
-  type?: "number" | "integer" | "string" | "boolean";
+  type?: "number" | "integer" | "string" | "boolean" | "array";
   title?: string;
   description?: string;
   default?: unknown;
@@ -233,7 +233,15 @@ export interface WidgetPropSchema {
   enum?: string[];
   /** Optional display labels parallel to `enum` (falls back to the value). */
   enumLabels?: string[];
-  ui?: { widget?: string };
+  ui?: {
+    widget?: string;
+    group?: string;
+    help?: string;
+    /** Generic viz options only: fill `enum`/`enumLabels` from the bound
+     * dataset when the form renders (column ids or KPI measure keys). Use
+     * `type: "array"` for a multiselect, a string type for a single pick. */
+    enumFrom?: "columns" | "numericColumns" | "categoryColumns" | "datetimeColumns" | "measures";
+  };
 }
 
 export interface WidgetConfigSchema {

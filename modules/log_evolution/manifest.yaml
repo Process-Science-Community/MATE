@@ -48,6 +48,23 @@ dependencies:
     # Precompute runs in a killable child process so Cancel/shutdown stop it.
     execution: worker
 
+# Data for the platform's generic visualizations (Studio catalog, layout.json,
+# dashboards). Each entry reads an existing GET route; the web adapters
+# (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
+datasets:
+  - id: timeseries
+    title: Arrivals, completions and WIP
+    description: Per period, cases started, cases finished, active cases and events.
+    icon: LineChart
+    shape: table
+    route: /timeseries
+  - id: dotted
+    title: Dotted chart points
+    description: One point per event (y = case index, t = epoch ms, a = activity index).
+    icon: ScatterChart
+    shape: table
+    route: /dotted
+
 frontend:
   panel: ./panel/index.tsx
   widgets:

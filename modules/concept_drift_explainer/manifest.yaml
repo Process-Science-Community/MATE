@@ -72,6 +72,17 @@ dependencies:
       - duckdb
     isolation: in_process
 
+# Data for the platform's generic visualizations (Studio catalog, layout.json,
+# dashboards). Each entry reads an existing GET route; the web adapters
+# (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
+datasets:
+  - id: drifts
+    title: Detected drifts
+    description: The drifts of the last run (empty until the module has run).
+    icon: TrendingUp
+    shape: table
+    route: /drifts
+
 frontend:
   panel: ./panel/index.tsx
   log_filter: false

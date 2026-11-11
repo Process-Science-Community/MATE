@@ -56,6 +56,41 @@ dependencies:
     # Precompute runs in a killable child process so Cancel/shutdown stop it.
     execution: worker
 
+# Data for the platform's generic visualizations (Studio catalog, layout.json,
+# dashboards). Each entry reads an existing GET route; the web adapters
+# (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
+datasets:
+  - id: kpis
+    title: Performance KPIs
+    description: Cases, events, variants, cycle-time percentiles and throughput.
+    icon: Gauge
+    shape: kpi
+    route: /kpis
+  - id: activity_stats
+    title: Activity sojourn times
+    description: Per activity, how often it occurs and its average and p90 sojourn time.
+    icon: Timer
+    shape: table
+    route: /kpis
+  - id: bottlenecks
+    title: Bottlenecks
+    description: Activities ranked by their share of the total time spent.
+    icon: Hourglass
+    shape: table
+    route: /bottlenecks
+  - id: dfg_performance
+    title: Performance DFG
+    description: Directly-follows graph with the mean time on each edge.
+    icon: Network
+    shape: graph
+    route: /dfg-performance
+  - id: cycle_time_buckets
+    title: Cycle-time distribution
+    description: Cases per cycle-time bucket (bucket_min, bucket_max, count).
+    icon: BarChart3
+    shape: table
+    route: /cycle-time-distribution
+
 frontend:
   panel: ./panel/index.tsx
   log_filter: false

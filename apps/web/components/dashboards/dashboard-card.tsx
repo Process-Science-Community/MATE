@@ -29,6 +29,7 @@ import {
   isElementKind,
   type CardChrome,
   type DashboardItem,
+  type DatasetRef,
   type WidgetConfigSchema,
   type WidgetHelp,
 } from "@/lib/dashboard-queries";
@@ -40,6 +41,8 @@ export interface CardPatch {
   config?: Record<string, unknown>;
   viz_id?: string | null;
   mapping?: Record<string, unknown>;
+  /** Studio only: (re)bind a viz card to a module dataset. */
+  dataset_ref?: DatasetRef | null;
   /** Geometry, set from the inspector's Layout section. Typing an exact size
    * is the only way to make two cards match precisely — dragging can't. */
   x?: number;
@@ -258,7 +261,13 @@ export const DashboardCard = memo(function DashboardCard({
                   <PopoverTitle>Card settings</PopoverTitle>
                 </PopoverHeader>
                 {isViz ? (
-                  <VizSettings item={item} logId={logId} onChange={onUpdate} />
+                  // Unbound viz cards exist only in the Studio: give them its viz list + Data select.
+                  <VizSettings
+                    item={item}
+                    logId={logId}
+                    onChange={onUpdate}
+                    studioModuleId={item.dataset_ref ? undefined : item.module_id}
+                  />
                 ) : isElement ? (
                   <ElementSettings item={item} onChange={onUpdate} />
                 ) : (

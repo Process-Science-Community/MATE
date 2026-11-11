@@ -53,6 +53,46 @@ dependencies:
       - duckdb
     isolation: in_process
 
+# Data for the platform's generic visualizations (Studio catalog, layout.json,
+# dashboards). Each entry reads an existing GET route; the web adapters
+# (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
+datasets:
+  - id: overview
+    title: OCEL overview
+    description: Number of objects, events and activities.
+    icon: Gauge
+    shape: kpi
+    route: /summary
+    log_models: [object_centric]
+  - id: object_types
+    title: Objects per type
+    description: How many objects each object type has.
+    icon: Boxes
+    shape: table
+    route: /summary
+    log_models: [object_centric]
+  - id: activity_object_types
+    title: Activity x object type
+    description: Events and objects per activity and object type.
+    icon: Grid3x3
+    shape: table
+    route: /activity-object-types
+    log_models: [object_centric]
+  - id: object_type_stats
+    title: Object type lifecycles
+    description: Per object type, object count, median and mean lifetime, events per object.
+    icon: Timer
+    shape: table
+    route: /objects-summary
+    log_models: [object_centric]
+  - id: ocdfg_edges
+    title: OC-DFG edges
+    description: Directly-follows edges per object type with counts and mean time.
+    icon: Share2
+    shape: table
+    route: /ocdfg
+    log_models: [object_centric]
+
 frontend:
   panel: ./panel/index.tsx
   widgets:

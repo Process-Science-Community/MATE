@@ -16,6 +16,7 @@ import { drillLabel, resolveDrillHref } from "@/lib/dashboards/drill";
 import type { CardPatch } from "@/components/dashboards/dashboard-card";
 import { VizSettings } from "@/components/dashboards/generic-viz-card";
 import { ElementSettings } from "@/components/module-layout/elements";
+import { vizRegistry } from "@/lib/visualizations/registry";
 import {
   ELEMENT_DEFAULTS,
   isElementKind,
@@ -47,6 +48,7 @@ export function CardInspector({
   onUpdate,
   onRemove,
   onClose,
+  moduleId,
 }: {
   items: DashboardItem[];
   selectedIds: readonly string[];
@@ -55,6 +57,8 @@ export function CardInspector({
   onUpdate: (id: string, patch: CardPatch) => void;
   onRemove: (ids: string[]) => void;
   onClose: () => void;
+  /** The module Studio's module: enables the viz card's Data select. Never set on dashboards. */
+  moduleId?: string;
 }) {
   const selected = items.filter((it) => selectedIds.includes(it.i));
 
@@ -67,6 +71,7 @@ export function CardInspector({
           item={selected[0]}
           catalog={catalog}
           logId={logId}
+          moduleId={moduleId}
           onUpdate={(patch) => onUpdate(selected[0].i, patch)}
           onRemove={() => onRemove([selected[0].i])}
         />
@@ -97,18 +102,21 @@ function SingleCard({
   logId,
   onUpdate,
   onRemove,
+  moduleId,
 }: {
   item: DashboardItem;
   catalog: DashboardCard[] | undefined;
   logId: string | null;
+  moduleId?: string;
   onUpdate: (patch: CardPatch) => void;
   onRemove: () => void;
 }) {
   const meta = catalog?.find(
     (c) => c.module_id === item.module_id && c.widget_id === item.widget_id,
   );
-  const Icon = cardIcon(meta?.icon ?? null);
-  const title = item.title || meta?.title || item.widget_id || "Card";
+  const vizSpec = item.kind === "viz" && item.viz_id ? vizRegistry[item.viz_id] : undefined;
+  const Icon = cardIcon(meta?.icon ?? vizSpec?.icon ?? null);
+  const title = item.title || meta?.title || vizSpec?.title || item.widget_id || "Card";
 
   // Which of the module's views this card renders. A widget declaring several
   // is the mechanism that stops a card being pinned to one hardcoded slice of
@@ -205,7 +213,12 @@ function SingleCard({
 
           {item.kind === "viz" && (
             <Section title="Visualization">
-              <VizSettings item={item} logId={logId} onChange={onUpdate} />
+              <VizSettings
+                item={item}
+                logId={logId}
+                onChange={onUpdate}
+                studioModuleId={moduleId}
+              />
             </Section>
           )}
 

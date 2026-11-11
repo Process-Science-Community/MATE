@@ -151,6 +151,11 @@ export function useSaveModuleLayout(moduleId: string) {
   });
 }
 
+/** Caches derived from a module's manifest (its datasets, widget cards, dev
+ * status). Never includes `["module-layout"]`: the Studio's draft hydrates
+ * from it, so a focus refresh must not touch it. */
+export const MANIFEST_QUERY_KEYS = [["dev"], ["datasets"], ["dashboard-cards"]] as const;
+
 export function useReloadModule(moduleId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -162,7 +167,7 @@ export function useReloadModule(moduleId: string) {
     // A reload can change datasets, widgets and the layout, so drop every
     // cache that is derived from the loaded manifest.
     onSettled: () => {
-      for (const key of [["dev"], ["module-layout"], ["datasets"], ["dashboard-cards"], ["modules"]]) {
+      for (const key of [...MANIFEST_QUERY_KEYS, ["module-layout"], ["modules"]]) {
         void qc.invalidateQueries({ queryKey: key });
       }
     },

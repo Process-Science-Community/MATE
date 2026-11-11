@@ -4,10 +4,15 @@
     mate-module validate [PATH ...]      # default: every module under ./modules
     mate-module list [PATH ...]          # id, version, name, runtime, UI, folder
     mate-module test my_module [--dir modules] [PYTEST_ARGS ...]
+    mate-module widget my_module my-widget [--dir modules] [--title T] [--dataset D]
 
-``validate`` checks ``manifest.yaml``, ``HOW_TO_USE.md`` (``mate.sdk.guide``) and, when
-present, ``layout.json``: its schema, that every card points at one of the module's own
-manifest ``datasets`` / ``frontend.widgets``, that ``controls`` keys are declared
+``widget`` writes ``widgets/MyWidget.tsx`` and adds its ``frontend.widgets`` entry to
+``manifest.yaml`` as text (comments kept); on any failure the manifest is restored.
+
+``validate`` checks ``manifest.yaml`` (incl. that widget entry files exist),
+``HOW_TO_USE.md`` (``mate.sdk.guide``) and, when present, ``layout.json``: its schema,
+that every card points at one of the module's own manifest ``datasets`` /
+``frontend.widgets`` (a viz card without data is a problem), that ``controls`` keys are declared
 (``params_schema`` / ``config_schema``) and that ``action`` routes exist in the source.
 Exit status 0 when all pass, else 1.
 """
@@ -86,13 +91,186 @@ def _new(args: argparse.Namespace) -> int:
     return 0
 
 
+_WIDGET_ID_RE = re.compile(r"[a-z][a-z0-9-]*")
+
+
+def _widget_entry_yaml(manifest: Manifest, widget_id: str, file: str, title: str) -> list[str]:
+    """The manifest list item (unindented lines) for a new widget."""
+    lines = [
+        f"- id: {widget_id}",
+        f"  entry: ./widgets/{file}",
+        f"  title: {json.dumps(title)}",
+        "  description: TODO - one line on what this card shows.",
+        "  icon: BarChart3",
+        "  default_w: 4",
+        "  default_h: 8",
+        "  min_px_w: 280",
+        "  min_px_h: 200",
+    ]
+    if manifest.requirements.event_log.log_model == "object_centric":
+        lines.append("  log_models: [object_centric]")
+    return lines
+
+
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _is_content(line: str) -> bool:
+    s = line.strip()
+    return bool(s) and not s.startswith("#")
+
+
+def _insert_widget(text: str, item: list[str]) -> str:
+    """*text* with *item* appended to ``frontend.widgets``, edited as text so comments and
+    key order survive. Handles: no ``frontend:``, ``frontend:`` without ``widgets:``,
+    and an existing ``widgets:`` list (any key order)."""
+    lines = text.splitlines()
+    top = re.compile(r"frontend:[ \t]*(#.*)?")
+    f = next((i for i, ln in enumerate(lines) if top.fullmatch(ln)), None)
+    if f is None and any(re.match(r"frontend:[ \t]*[^ \t#]", ln) for ln in lines):
+        # Flow style (`frontend: {...}`): appending a block would duplicate the key and
+        # YAML keeps the last one, silently dropping the original frontend.
+        raise ModuleManifestError("`frontend:` is not a block mapping; edit it by hand")
+    if f is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        block = ["", "frontend:", "  widgets:", *(f"    {ln}" for ln in item)]
+        return "\n".join(lines + block) + "\n"
+    end = next(
+        (i for i in range(f + 1, len(lines)) if _is_content(lines[i]) and _indent(lines[i]) == 0),
+        len(lines),
+    )
+    children = [i for i in range(f + 1, end) if _is_content(lines[i])]
+    child = _indent(lines[children[0]]) if children else 2
+    key = re.compile(rf" {{{child}}}widgets:[ \t]*(#.*)?")
+    w = next((i for i in children if key.fullmatch(lines[i])), None)
+    if w is None:
+        block = [f"{' ' * child}widgets:", *(f"{' ' * (child + 2)}{ln}" for ln in item)]
+        return "\n".join(lines[: f + 1] + block + lines[f + 1 :]) + "\n"
+    last, item_indent = w, child + 2
+    for i in range(w + 1, end):
+        if not _is_content(lines[i]):
+            continue
+        ind, s = _indent(lines[i]), lines[i].strip()
+        if last == w:  # first entry: YAML allows `- ` at the key's own indent
+            item_indent = ind if s.startswith("-") else child + 2
+        if ind > child or (ind == child and s.startswith("-")):
+            last = i
+        else:
+            break
+    block = [f"{' ' * item_indent}{ln}" for ln in item]
+    return "\n".join(lines[: last + 1] + block + lines[last + 1 :]) + "\n"
+
+
+def _widget(args: argparse.Namespace) -> int:
+    widget_id: str = args.widget_id
+    if not _WIDGET_ID_RE.fullmatch(widget_id):
+        print(
+            f"error: widget id {widget_id!r} must be lowercase kebab-case "
+            "(a letter first, then letters, digits, dashes).",
+            file=sys.stderr,
+        )
+        return 2
+    folder = Path(args.dir) / args.module_id
+    path = folder / "manifest.yaml"
+    try:
+        manifest = Manifest.load_yaml(path)
+    except (ModuleManifestError, OSError) as exc:
+        print(f"error: cannot load {path}: {exc}", file=sys.stderr)
+        return 1
+    if any(w.id == widget_id for w in manifest.frontend.widgets):
+        print(f"error: {path} already declares widget {widget_id!r}.", file=sys.stderr)
+        return 1
+    component = "".join(p.capitalize() for p in widget_id.split("-"))
+    tsx = folder / "widgets" / f"{component}.tsx"
+    if tsx.exists():
+        print(f"error: {tsx} already exists; refusing to overwrite it.", file=sys.stderr)
+        return 1
+    datasets = {d.id: d for d in manifest.datasets}
+    if args.dataset and args.dataset not in datasets:
+        print(
+            f"error: dataset {args.dataset!r} is not declared "
+            f"(declared: {', '.join(datasets) or 'none'}).",
+            file=sys.stderr,
+        )
+        return 1
+    dataset = datasets.get(args.dataset) if args.dataset else next(iter(datasets.values()), None)
+    title: str = args.title or " ".join(widget_id.split("-")).capitalize()
+    route_note = (
+        f"Reads the `{dataset.id}` dataset's route (manifest `datasets`)."
+        if dataset
+        else "TODO: point this at one of your module's @route.get paths."
+    )
+    values = {
+        "__MODULE_ID__": args.module_id,
+        "__WIDGET_ID__": widget_id,
+        "__COMPONENT__": component,
+        "__ROUTE__": dataset.route if dataset else "/TODO",
+        "__ROUTE_NOTE__": route_note,
+        "__TITLE__": title,
+    }
+    text = resources.files("mate.sdk").joinpath("templates", "widget.tsx.tmpl").read_text("utf-8")
+    for k, v in values.items():
+        text = text.replace(k, v)
+
+    item = _widget_entry_yaml(manifest, widget_id, tsx.name, title)
+    original = path.read_text(encoding="utf-8")
+    try:
+        path.write_text(_insert_widget(original, item), encoding="utf-8")
+        reloaded = Manifest.load_yaml(path)
+        if not any(
+            w.id == widget_id and w.entry == f"./widgets/{tsx.name}"
+            for w in reloaded.frontend.widgets
+        ):
+            raise ModuleManifestError("the new entry did not land under frontend.widgets")
+    except Exception as exc:  # restore whatever went wrong, the manifest is the user's file
+        path.write_text(original, encoding="utf-8")
+        snippet = "\n".join(f"    {ln}" for ln in item)
+        print(
+            f"error: could not add the widget to {path} ({exc}); it is unchanged.\n"
+            f"Add this under `frontend:` -> `widgets:` yourself:\n\n{snippet}",
+            file=sys.stderr,
+        )
+        return 1
+    tsx.parent.mkdir(parents=True, exist_ok=True)
+    tsx.write_text(text, encoding="utf-8")
+    print(
+        f"created {tsx}\nadded widget {widget_id!r} to {path}\n"
+        "next: edit the TSX; in `make lite` it shows up in the Studio palette's module group "
+        "within a few seconds (switch back to the tab or press Reload). "
+        "Then `make validate`."
+    )
+    return 0
+
+
 def check_module(folder: Path) -> list[str]:
     """Every problem with the module in *folder* (empty = valid)."""
     try:
         manifest = Manifest.load_yaml(folder / "manifest.yaml")
     except (ModuleManifestError, OSError) as exc:
         return [f"manifest.yaml is invalid: {exc}"]
-    return check_guide(folder, manifest.name) + _layout_problems(folder, manifest)
+    missing = [
+        f"manifest.yaml: widget {w.id!r} {key} {rel!r} does not exist."
+        for w in manifest.frontend.widgets
+        for key, rel in (("entry", w.entry), ("settings_entry", w.settings_entry))
+        if rel and not (folder / rel).is_file()
+    ]
+    return check_guide(folder, manifest.name) + missing + _layout_problems(folder, manifest)
+
+
+# shortcut: mirrors the first `accepts` shape of the web vizzes (lib/visualizations);
+# unknown ids say "table". Upgrade to a generated list if vizzes keep growing.
+_VIZ_SHAPE = {
+    "kpi-grid": "kpi",
+    "number-tile": "kpi",
+    "gauge": "kpi",
+    "radial-bar": "kpi",
+    "process-map": "graph",
+    "petri-net": "graph",
+    "tree": "tree",
+    "tree-diagram": "tree",
+}
 
 
 def _layout_problems(folder: Path, manifest: Manifest) -> list[str]:
@@ -112,6 +290,12 @@ def _layout_problems(folder: Path, manifest: Manifest) -> list[str]:
         owner = item.dataset_ref.module_id if item.dataset_ref else item.module_id
         if owner not in (None, manifest.id):
             problems.append(f"{where} points at module {owner!r}; use this module's own data.")
+        elif item.kind == "viz" and item.dataset_ref is None:
+            shape = _VIZ_SHAPE.get(item.viz_id or "", "table")
+            problems.append(
+                f"{where} has no data yet; declare a {shape} dataset and bind it "
+                f"(Studio: inspector -> Data)."
+            )
         elif item.dataset_ref and item.dataset_ref.dataset_id not in datasets:
             problems.append(
                 f"{where} uses dataset {item.dataset_ref.dataset_id!r}, which manifest "
@@ -244,6 +428,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     lst = sub.add_parser("list", help="list modules: id, version, runtime, UI")
     lst.add_argument("paths", nargs="*", help="module folders or roots (default: modules)")
     lst.set_defaults(func=_list)
+
+    widget = sub.add_parser("widget", help="scaffold a TSX widget and add it to the manifest")
+    widget.add_argument("module_id")
+    widget.add_argument("widget_id", help="widget id, lowercase kebab-case")
+    widget.add_argument("--dir", default="modules", help="modules root (default: modules)")
+    widget.add_argument("--title", help="card title (default: from the id)")
+    widget.add_argument("--dataset", help="dataset whose route it reads (default: the first)")
+    widget.set_defaults(func=_widget)
 
     test = sub.add_parser("test", help="run a module's tests with this Python (extra args: pytest)")
     test.add_argument("id")

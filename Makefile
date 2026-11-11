@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install checkenv preflight dev api web lite reset e2e new modules validate up down build test jvm typecheck fmt clean codegen docs deploy
+.PHONY: help install checkenv preflight dev api web lite reset e2e new widget modules validate up down build test jvm typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -54,6 +54,10 @@ e2e: ## Playwright check that the Studio matches the module page (scaffolds a th
 new: ## Scaffold modules/<ID>: make new ID=my_module [PANEL=1]
 	@test -n "$(ID)" || { echo "usage: make new ID=my_module [PANEL=1]"; exit 2; }
 	uv run --extra dev mate-module new "$(ID)" $(if $(filter 1 yes true,$(PANEL)),--panel)
+
+widget: ## Scaffold a TSX widget into a module: make widget ID=my_module NAME=my-widget
+	@test -n "$(ID)" -a -n "$(NAME)" || { echo "usage: make widget ID=my_module NAME=my-widget"; exit 2; }
+	uv run --extra dev mate-module widget "$(ID)" "$(NAME)"
 
 modules: ## List every module: id, version, name, runtime, UI
 	uv run --extra dev mate-module list

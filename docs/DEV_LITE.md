@@ -41,6 +41,7 @@ Other targets:
 | --- | --- |
 | `make reset` | Delete `data/lite/` (DB, logs, results). Nothing else is touched. |
 | `make new ID=x [PANEL=1]` | Scaffold `modules/x/` (`mate-module new`) |
+| `make widget ID=x NAME=my-widget` | Add a TSX widget to `modules/x/` (`mate-module widget`, see [Custom widgets](#custom-widgets)) |
 | `make test ID=x` | Run `modules/x/tests` (`mate-module test`) |
 | `make modules` | List every module: id, version, name, runtime (isolation/execution or jvm), UI (panel, layout, widgets, datasets), folder (`mate-module list`) |
 | `make validate` | Check every module's manifest, `HOW_TO_USE.md` and `layout.json` (`mate-module validate`) |
@@ -235,8 +236,12 @@ Checked by `mate.sdk.layout` (load, Studio save) and `make validate`:
 
 - `version` is 1; unknown top-level keys are an error. Card ids and tab ids are
   unique; every `tab` names a declared tab.
-- `viz` needs `dataset_ref` and `viz_id`; `widget` needs `widget_id`; `text`
-  needs `config.markdown`; `controls` and `action` need `module_id`.
+- `viz` needs `viz_id`; `widget` needs `widget_id`; `text` needs
+  `config.markdown`; `controls` and `action` need `module_id`. A `viz` card
+  without `dataset_ref` is a placeholder: the Studio saves it, but `make
+  validate` fails with "card X has no data yet; declare a <shape> dataset and
+  bind it".
+- Every widget's `entry` (and `settings_entry`) file exists.
 - `controls`: `source` is `params` or `config`; each key is declared in a
   dataset's `params_schema` (or `config_schema`), and there is something to
   control at all.
@@ -245,16 +250,80 @@ Checked by `mate.sdk.layout` (load, Studio save) and `make validate`:
   checks that the loaded module has that POST route.
 - Cards stay inside the 12 columns and only point at this module's own data.
 
-Not yet: horizontal bar charts, reference lines on charts, BPMN/Petri net
-visualizations and datasets taken from a route outside the manifest.
+### Visualization catalog
+
+Below the module group and **Elements**, the Studio palette has a
+**Visualizations** section with six groups: Charts, Process models & graphs,
+Matrices, KPIs, Tables & lists, Text & status. Groups start collapsed; a search
+opens them all. Dashboards do not show this section.
+
+- Each row shows the viz, one line on what it is for, and a badge: `→ <dataset>`
+  when the module has a dataset of a shape the viz accepts, else `needs data`.
+- Click (top fit) or drag a row to add it. The card binds the **first**
+  compatible dataset in manifest order (and log model). Pick another one under
+  **Data** in the inspector.
+- Some rows are presets (e.g. Ranked bars, Sparkline, Similarity matrix): a base
+  viz with preset options. Only `viz_id`, `config` and `mapping` are saved, so
+  the inspector's picker lists base vizzes only.
+- Without a compatible dataset the card is a **Needs data** placeholder. In dev
+  it shows what the viz needs plus two snippets to copy: a manifest `datasets:`
+  item and a `@route.get` returning sample data. Save both files; the module
+  reloads, and the Studio refetches when you switch back to the tab.
+
+A dataset is an existing GET route plus a `shape`. The web adapters
+(`apps/web/lib/visualizations/adapters.ts`) turn the route's JSON into that
+shape, so most routes need no change:
+
+| Shape | The route may return |
+|---|---|
+| any | `{"shape": "<shape>", "data": {...}}`, used as is (table columns are inferred when missing) |
+| `table` | the first array of row objects; `{"columns": [...], "rows": [[...]]}`; a dense `matrix` plus `labels` (becomes `row`, `col`, `value`); parallel arrays (a string array plus same-length number arrays) |
+| `kpi` | numeric leaves of an object (`*_s` is a duration, `*_pct` a percent); an `items`/`kpis` list of `{key, value}`; `{value_a, value_b}` as before/after |
+| `graph` | a DFG (`activities`, `edges`, `start_activities`, `end_activities`); a Petri net (`kind: "petri_net"`, invisible transitions become silent); generic `nodes` + `edges` |
+| `tree` | a process tree (`kind: "process_tree"`, operators kept); a prefix tree (`kind: "prefix_tree"`) |
+| `blob` | `value` (text) or `xml` |
+
+Modules with datasets: discovery, conformance, complexity, cv4cdd,
+performance_java, performance, log_evolution, complexity_v2, ocel_discovery
+(OCEL logs) and concept_drift_explainer. `apps/web/e2e/fixtures/e2e_viz` has one
+sample route per shape and rule.
+
+Not yet: BPMN viewer, sankey, gantt, boxplot, dual axis, calendar heatmap,
+process-map compare mode, split panes, facets, automatic DFG thresholds,
+clicks that set page params, platform vizzes importable from module TSX, a
+`path` selector on datasets, image blobs, and the same adapters in Python (MCP).
+
+### Custom widgets
+
+When the catalog has nothing that fits, write a TSX widget:
+
+```bash
+make widget ID=my_module NAME=my-widget
+```
+
+1. It writes `modules/my_module/widgets/MyWidget.tsx` and adds a
+   `frontend.widgets` entry to `manifest.yaml` (comments and key order kept; on
+   any error the manifest is left unchanged and the entry is printed to paste).
+2. The widget fetches the module's first dataset route (`--dataset D` picks
+   another; without datasets it points at a TODO route) and draws a bar chart.
+   Imports must come from `apps/web/lib/runtime-externals.json`.
+3. In `make lite` it appears in the Studio palette's module group within a few
+   seconds; switch back to the tab or press **Reload module**. Then `make validate`.
+
+Direct use: `uv run mate-module widget <module> <widget-id> [--title T] [--dataset D] [--dir modules]`.
+Widget ids are kebab-case (`^[a-z][a-z0-9-]*$`); an existing id or file is
+refused.
 
 ### E2E check
 
-`make e2e` scaffolds a throwaway `modules/e2e_studio`, starts the lite
-stack on ports 8777/3777 with a temporary data dir (your `data/lite` is not
-touched), checks with Playwright that the Studio's cards sit exactly where the
-module page puts them (1600x1000 and 1280x800), then stops the stack and
-deletes the folder and data dir. It downloads no browser itself.
+`make e2e` scaffolds a throwaway `modules/e2e_studio`, copies the fixture module
+`apps/web/e2e/fixtures/e2e_viz` to `modules/e2e_viz`, starts the lite stack with
+both on ports 8777/3777 with a temporary data dir (your `data/lite` is not
+touched) and runs two Playwright specs: `studio-parity.spec.ts` checks that the
+Studio's cards sit exactly where the module page puts them (1600x1000 and
+1280x800); `studio-catalog.spec.ts` checks the catalog groups, the footer,
+catalog cards that bind data and render, placeholders and the inspector. Then it
+stops the stack and deletes both folders and the data dir. It downloads no browser itself.
 `@playwright/test` is pinned to 1.58.2 (Chromium r1208); if Playwright says no
 browser is available on your machine, run once
 `pnpm --filter web exec playwright install chromium`.

@@ -67,6 +67,17 @@ dependencies:
       - scipy
     isolation: in_process
 
+# Data for the platform's generic visualizations (Studio catalog, layout.json,
+# dashboards). Each entry reads an existing GET route; the web adapters
+# (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
+datasets:
+  - id: transition_matrix
+    title: Transition matrix
+    description: Directly-follows probabilities between activities (row, col, value).
+    icon: Grid3x3
+    shape: table
+    route: /transition-matrix
+
 frontend:
   panel: ./panel/index.tsx
   widgets:

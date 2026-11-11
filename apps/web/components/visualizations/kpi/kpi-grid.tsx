@@ -1,29 +1,36 @@
 "use client";
 
-import type { KpiData, VizComponentProps } from "@/lib/visualizations/types";
+import type { VizComponentProps } from "@/lib/visualizations/types";
+import { KpiGrid, KpiTile } from "@/components/dashboards/kit/kpi";
 import { VizEmpty } from "@/components/visualizations/viz-shell";
-import { formatMeasure } from "@/components/visualizations/charts/chart-common";
+import {
+  formatMeasure,
+  kpiItems,
+  listOption,
+  pickMeasures,
+} from "@/components/visualizations/charts/chart-common";
 
-/** Grid of headline measures for a `kpi`-shaped dataset (complexity metrics,
- * conformance score, ...). */
+/** Headline measures for a `kpi`-shaped dataset (complexity metrics,
+ * conformance score, ...). `measures` picks and orders them; `layout` is a
+ * wrapping grid or a single horizontal strip. */
 export function KpiGridViz({ dataset, options }: VizComponentProps) {
-  const data = dataset.shape === "kpi" ? (dataset.data as KpiData) : { items: [] };
-  if (data.items.length === 0) {
+  const items = pickMeasures(kpiItems(dataset), listOption(options, "measures"));
+  if (items.length === 0) {
     return <VizEmpty message={dataset.meta?.note} />;
   }
-  return (
-    <div className="grid h-full auto-rows-min grid-cols-2 gap-2 overflow-auto sm:grid-cols-3">
-      {data.items.map((m) => (
-        <div key={m.key} className="rounded-lg border border-border bg-muted/20 p-2.5">
-          <p className="truncate text-[11px] text-muted-foreground" title={m.label}>
-            {m.label}
-          </p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums">
-            {formatMeasure(m, options)}
-            {m.unit && <span className="ml-0.5 text-xs font-normal text-muted-foreground">{m.unit}</span>}
-          </p>
-        </div>
-      ))}
-    </div>
+  const tiles = items.map((m) => (
+    <KpiTile
+      key={m.key}
+      label={m.label}
+      value={`${formatMeasure(m, options)}${m.unit ? ` ${m.unit}` : ""}`}
+      className={options.layout === "strip" ? "min-w-[120px] flex-1" : undefined}
+    />
+  ));
+  return options.layout === "strip" ? (
+    <div className="flex h-full items-start gap-2 overflow-x-auto">{tiles}</div>
+  ) : (
+    <KpiGrid minTileWidth={130} className="h-full auto-rows-min overflow-auto">
+      {tiles}
+    </KpiGrid>
   );
 }

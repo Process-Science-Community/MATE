@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# make e2e: Playwright check that the Studio shows a module's page 1:1.
-# Scaffolds the git-ignored modules/e2e_studio, starts the lite stack with only
-# that module on spare ports, runs apps/web/e2e, then stops the stack and
-# removes the module. Extra arguments go to `playwright test`.
+# make e2e: Playwright checks of the module Studio (page parity + viz catalog).
+# Scaffolds the git-ignored modules/e2e_studio, copies the fixture module
+# apps/web/e2e/fixtures/e2e_viz to modules/e2e_viz, starts the lite stack with only
+# those two on spare ports, runs apps/web/e2e, then stops the stack and removes
+# both modules. Extra arguments go to `playwright test`.
 #
 #   scripts/e2e-studio.sh
 #   E2E_API_PORT=8778 E2E_WEB_PORT=3778 scripts/e2e-studio.sh --headed
@@ -14,6 +15,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 MOD=e2e_studio
+VIZ=e2e_viz
 PORT="${E2E_API_PORT:-8777}"
 WEB_PORT="${E2E_WEB_PORT:-3777}"
 STACK_LOG="$(mktemp "${TMPDIR:-/tmp}/mate-e2e-stack.XXXXXX")"
@@ -21,7 +23,9 @@ DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mate-e2e-data.XXXXXX")"
 
 die() { echo "e2e-studio: $*" >&2; exit 1; }
 
-[ -e "modules/$MOD" ] && die "modules/$MOD already exists (left over from a killed run?). Remove it and retry."
+for m in "$MOD" "$VIZ"; do
+  [ -e "modules/$m" ] && die "modules/$m already exists (left over from a killed run?). Remove it and retry."
+done
 
 STACK_PID=""
 cleanup() {
@@ -31,16 +35,18 @@ cleanup() {
     kill -TERM "$STACK_PID" 2>/dev/null || true
     wait "$STACK_PID" 2>/dev/null || true
   fi
-  rm -rf "modules/$MOD" "$DATA_DIR"
+  rm -rf "modules/$MOD" "modules/$VIZ" "$DATA_DIR"
   echo "e2e-studio: stack log kept at $STACK_LOG"
 }
 trap cleanup INT TERM EXIT
 
 echo "e2e-studio: scaffolding modules/$MOD"
 uv run --extra dev mate-module new "$MOD"
+echo "e2e-studio: copying the fixture module to modules/$VIZ"
+cp -R "apps/web/e2e/fixtures/$VIZ" "modules/$VIZ"
 
 echo "e2e-studio: starting the lite stack (API :$PORT, web :$WEB_PORT)"
-LITE_DIR="$DATA_DIR" MODULES="$MOD" PORT="$PORT" WEB_PORT="$WEB_PORT" DEBUGPY_PORT=0 bash scripts/lite.sh >"$STACK_LOG" 2>&1 &
+LITE_DIR="$DATA_DIR" MODULES="$MOD,$VIZ" PORT="$PORT" WEB_PORT="$WEB_PORT" DEBUGPY_PORT=0 bash scripts/lite.sh >"$STACK_LOG" 2>&1 &
 STACK_PID=$!
 
 # lite.sh prints its banner once /health answers (module deps may install first).
@@ -54,4 +60,5 @@ grep -q "MATE lite is up" "$STACK_LOG" || { tail -40 "$STACK_LOG" >&2; die "the 
 E2E_WEB_URL="http://localhost:$WEB_PORT" \
   E2E_API_URL="http://127.0.0.1:$PORT" \
   E2E_MODULE="$MOD" \
+  E2E_VIZ_MODULE="$VIZ" \
   pnpm --dir apps/web exec playwright test "$@"

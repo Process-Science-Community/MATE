@@ -1,137 +1,178 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { MarkerType, Position, type Edge, type Node } from "@xyflow/react";
-import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
+import { useMemo } from "react";
+import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
-import { formatNumber } from "@/lib/format";
-import type { GraphData, VizComponentProps } from "@/lib/visualizations/types";
+import { formatDurationShort, formatNumber } from "@/lib/format";
+import type { GraphData, GraphEdge, VizComponentProps } from "@/lib/visualizations/types";
 import { VizEmpty } from "@/components/visualizations/viz-shell";
-import { CanvasShell } from "@/components/visualizations/canvases/shared/canvas-shell";
+import { sequentialScale } from "@/components/dashboards/kit/palette";
+import { optBool, optNum, optStr } from "@/components/visualizations/tables/cells";
+import { ElkCanvas, type FlowDirection } from "./elk-canvas";
+import { filterGraph } from "./graph-filter";
 
-const elk = new ELK();
-const NODE_W = 160;
+const NODE_W = 130;
 const NODE_H = 40;
 const PLACE = 22;
+const START = "__start__";
+const END = "__end__";
 
-const LAYOUT_OPTIONS = {
-  "elk.algorithm": "layered",
-  "elk.direction": "RIGHT",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "60",
-  "elk.spacing.nodeNode": "28",
-  "elk.edgeRouting": "ORTHOGONAL",
-  "elk.layered.nodePlacement.strategy": "BRANDES_KOEPF",
-} as const;
+interface MapOptions {
+  metric: "frequency" | "performance";
+  edgeLabel: string;
+  edgeWidth: string;
+  nodePct: number;
+  edgePct: number;
+  showTerminals: boolean;
+  hideSelfLoops: boolean;
+  direction: FlowDirection;
+}
 
-async function layout(g: GraphData): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  const children: ElkNode[] = g.nodes.map((n) => ({
-    id: n.id,
-    width: n.kind === "place" ? PLACE : NODE_W,
-    height: n.kind === "place" ? PLACE : NODE_H,
-  }));
-  const elkEdges: ElkExtendedEdge[] = g.edges.map((e) => ({
-    id: e.id,
-    sources: [e.source],
-    targets: [e.target],
-  }));
-  const res = await elk.layout({ id: "root", layoutOptions: LAYOUT_OPTIONS, children, edges: elkEdges });
-  const pos = new Map<string, { x: number; y: number }>();
-  for (const c of res.children ?? []) {
-    if (typeof c.x === "number" && typeof c.y === "number") pos.set(c.id, { x: c.x, y: c.y });
-  }
+function readOptions(o: Record<string, unknown>): MapOptions {
+  return {
+    metric: optStr(o, "metric") === "performance" ? "performance" : "frequency",
+    edgeLabel: optStr(o, "edge_label", "metric"),
+    edgeWidth: optStr(o, "edge_width", "linear"),
+    nodePct: optNum(o, "node_pct", 100),
+    edgePct: optNum(o, "edge_pct", 100),
+    showTerminals: optBool(o, "show_terminals", true),
+    hideSelfLoops: optBool(o, "hide_self_loops", false),
+    direction: optStr(o, "direction") === "TB" ? "TB" : "LR",
+  };
+}
 
-  const maxFreq = Math.max(1, ...g.nodes.map((n) => n.value ?? 0));
-  const nodes: Node[] = g.nodes.map((n) => {
+const perf = (e: GraphEdge) => e.performanceSeconds;
+
+function edgeText(e: GraphEdge, o: MapOptions): string | undefined {
+  const kind = o.edgeLabel === "metric" ? o.metric : o.edgeLabel;
+  if (kind === "frequency" && e.value != null) return formatNumber(e.value);
+  if (kind === "performance" && perf(e) != null) return formatDurationShort(perf(e)!);
+  return undefined;
+}
+
+function terminal(id: string, label: string): Node {
+  return {
+    id,
+    position: { x: 0, y: 0 },
+    data: { label },
+    draggable: false,
+    selectable: false,
+    style: {
+      width: 56,
+      height: 24,
+      borderRadius: 999,
+      border: "1px solid var(--border)",
+      background: "var(--muted)",
+      fontSize: 10,
+      fontWeight: 600,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+    },
+  };
+}
+
+/** Pure graph → styled React Flow nodes/edges for the process map. */
+function build(g: GraphData, o: MapOptions): { nodes: Node[]; edges: Edge[] } {
+  const f = filterGraph(g, o.nodePct / 100, o.edgePct / 100, o.hideSelfLoops);
+  const maxFreq = Math.max(1, ...f.nodes.map((n) => n.value ?? 0));
+  const nodes: Node[] = f.nodes.map((n) => {
     const isPlace = n.kind === "place";
     const t = (n.value ?? 0) / maxFreq;
     return {
       id: n.id,
-      position: pos.get(n.id) ?? { x: 0, y: 0 },
-      data: { label: n.label },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-      // Read-only frequency map: CanvasShell enables drag/select by default, so
-      // opt each node out to preserve the static, click-through feel.
+      position: { x: 0, y: 0 },
+      data: {
+        label: (
+          <div className="min-w-0 leading-tight">
+            <div className="truncate">{n.label}</div>
+            {!isPlace && n.value != null && (
+              <div className="text-[9px] text-muted-foreground">{formatNumber(n.value)}</div>
+            )}
+          </div>
+        ),
+      },
+      // Read-only map: CanvasShell enables drag/select by default.
       draggable: false,
       selectable: false,
       style: isPlace
-        ? {
-            width: PLACE,
-            height: PLACE,
-            borderRadius: "50%",
-            background: "var(--muted)",
-            border: "1px solid var(--border)",
-          }
+        ? { width: PLACE, height: PLACE, borderRadius: "50%", background: "var(--muted)", border: "1px solid var(--border)", padding: 0 }
         : {
             width: NODE_W,
             height: NODE_H,
             borderRadius: 8,
             border: "1px solid var(--border)",
-            background: `rgba(99,102,241,${0.06 + t * 0.5})`,
+            background: `color-mix(in oklab, var(--ff-seq-550) ${Math.round(6 + t * 50)}%, var(--card))`,
+            color: "var(--foreground)",
             fontSize: 11,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             padding: "0 8px",
             textAlign: "center" as const,
-            lineHeight: 1.1,
           },
     };
   });
 
-  const maxEdge = Math.max(1, ...g.edges.map((e) => e.value ?? 0));
-  const edges: Edge[] = g.edges.map((e) => ({
+  const weight = (e: GraphEdge) => (o.metric === "performance" ? (perf(e) ?? 0) : (e.value ?? 0));
+  const maxW = Math.max(1e-9, ...f.edges.map(weight));
+  const width = (e: GraphEdge) => {
+    if (o.edgeWidth === "off") return 1.5;
+    const t = o.edgeWidth === "log" ? Math.log1p(weight(e)) / Math.log1p(maxW) : weight(e) / maxW;
+    return 1 + 3 * (Number.isFinite(t) ? t : 0);
+  };
+  const arrow = g.directed === false ? undefined : { type: MarkerType.ArrowClosed, width: 14, height: 14 };
+  const edges: Edge[] = f.edges.map((e) => ({
     id: e.id,
     source: e.source,
     target: e.target,
     selectable: false,
-    label: e.value != null ? formatNumber(e.value) : undefined,
-    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-    style: { strokeWidth: 1 + 3 * ((e.value ?? 0) / maxEdge), stroke: "var(--muted-foreground)" },
+    label: edgeText(e, o),
+    markerEnd: arrow,
+    style: {
+      strokeWidth: width(e),
+      stroke:
+        o.metric === "performance" && perf(e) != null
+          ? sequentialScale(weight(e) / maxW, { ordinal: true })
+          : "var(--muted-foreground)",
+    },
     labelStyle: { fontSize: 9, fill: "var(--muted-foreground)" },
     labelBgStyle: { fill: "var(--card)", fillOpacity: 0.85 },
   }));
+
+  if (o.showTerminals) {
+    const visible = new Set(f.nodes.map((n) => n.id));
+    const starts = (g.start ?? []).filter((id) => visible.has(id));
+    const ends = (g.end ?? []).filter((id) => visible.has(id));
+    const dashed = { stroke: "var(--muted-foreground)", strokeDasharray: "4 3", strokeWidth: 1 };
+    if (starts.length) {
+      nodes.unshift(terminal(START, "Start"));
+      for (const id of starts) edges.push({ id: `${START}->${id}`, source: START, target: id, selectable: false, markerEnd: arrow, style: dashed });
+    }
+    if (ends.length) {
+      nodes.push(terminal(END, "End"));
+      for (const id of ends) edges.push({ id: `${id}->${END}`, source: id, target: END, selectable: false, markerEnd: arrow, style: dashed });
+    }
+  }
   return { nodes, edges };
 }
 
 /** Read-only node-link process map for a `graph`-shaped dataset (DFG, heuristics
- * net, Petri net), laid out with ELK and rendered with React Flow. Node shade =
- * frequency, edge width = transition frequency. */
-export function ProcessMapViz({ dataset }: VizComponentProps) {
+ * net, relation graph), laid out with ELK. Node shade = frequency; edge width,
+ * colour and label follow the chosen metric. Rank sliders keep the top N % of
+ * nodes/edges (the most frequent connections always stay so nothing floats). */
+export function ProcessMapViz({ dataset, options }: VizComponentProps) {
   const graph = dataset.shape === "graph" ? (dataset.data as GraphData) : null;
-  // `dataset` is memoized per fetch by the card, so `graph` is a stable ref and
-  // the layout effect runs once per data change (not every render).
-  const [state, setState] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
+  const o = readOptions(options ?? {});
+  const key = JSON.stringify(o);
+  // `dataset` is memoized per fetch by the card, so this rebuilds only when
+  // the data or an option value changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const built = useMemo(() => (graph ? build(graph, o) : null), [graph, key]);
 
-  useEffect(() => {
-    let alive = true;
-    if (!graph || graph.nodes.length === 0) {
-      setState(null);
-      return;
-    }
-    layout(graph)
-      .then((r) => alive && setState(r))
-      .catch(() => alive && setState(null));
-    return () => {
-      alive = false;
-    };
-  }, [graph]);
-
-  if (!graph || graph.nodes.length === 0) {
+  if (!graph || graph.nodes.length === 0 || !built) {
     return <VizEmpty message={dataset.meta?.note ?? "No process model."} />;
   }
-  if (!state) return <VizEmpty message="Laying out…" />;
-
-  // Standard canvas shell: fit / zoom / fullscreen toolbar, idle-fade minimap
-  // and dotted grid, all shared with every other graph canvas. The map is
-  // read-only (nodes/edges opt out of drag + select in `layout`). No border/card
-  // here — the viz card already frames it, so fill it edge-to-edge.
-  return (
-    <CanvasShell
-      nodes={state.nodes}
-      edges={state.edges}
-      className="h-full w-full overflow-hidden"
-      fitViewKey={state.nodes.length}
-    />
-  );
+  return <ElkCanvas nodes={built.nodes} edges={built.edges} direction={o.direction} />;
 }

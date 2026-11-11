@@ -38,6 +38,7 @@ modules/*/node_modules/
 modules/*/.installed-hash
 # Throwaway module `make e2e` scaffolds and removes.
 modules/e2e_studio/
+modules/e2e_viz/
 
 # The JVM example module's runnable fat jar is a COMMITTED artefact - the api
 # image is JRE-only and modules/ is bind-mounted, so the platform can't build

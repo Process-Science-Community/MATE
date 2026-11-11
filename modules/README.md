@@ -529,9 +529,11 @@ A module page does not need React. `modules/<folder>/layout.json` describes it a
 
 The schema is `mate.sdk.ModuleLayout` / `LayoutItem` (items mirror a dashboard card). Without a panel, the module page renders the layout read-only; with both, the page shows **Panel** and **Layout** tabs. Build it visually in the dev-only Studio (`/dev/studio/<id>` under `make lite`, see [`docs/DEV_LITE.md`](../docs/DEV_LITE.md)) instead of writing it by hand; `mate-module validate` checks that every card points at a declared dataset or widget.
 
+The Studio palette lists the platform's visualization catalog (Charts, Process models & graphs, Matrices, KPIs, Tables & lists, Text & status). A catalog card binds your first dataset of a shape it accepts; without one it is a "Needs data" placeholder that shows the manifest and route snippets to add, and `mate-module validate` fails until it is bound. Which route responses each shape accepts: [`docs/DEV_LITE.md` → Visualization catalog](../docs/DEV_LITE.md#visualization-catalog).
+
 ### Widgets
 
-A widget is your module's card on a dashboard. Declare it in `manifest.frontend.widgets`.
+A widget is your module's card on a dashboard. Declare it in `manifest.frontend.widgets`, or let `make widget ID=<module> NAME=my-widget` write `widgets/MyWidget.tsx` and the manifest entry for you ([`docs/DEV_LITE.md` → Custom widgets](../docs/DEV_LITE.md#custom-widgets)); `mate-module validate` checks that every `entry` file exists.
 
 ```yaml
 widgets:

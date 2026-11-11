@@ -173,21 +173,43 @@ type FreeResize = {
  * card bound to a module dataset, or a layout-only element (module Studio). */
 export type AddRequest =
   | { kind: "widget"; card: CatalogCard }
-  | { kind: "viz"; dataset: DatasetCatalogEntry }
+  | {
+      kind: "viz";
+      /** The bound dataset; null places an unbound "Needs data" card (Studio only). */
+      dataset: DatasetCatalogEntry | null;
+      /** A Studio catalog entry: the viz and its preset options/mapping. */
+      vizId?: string;
+      options?: Record<string, unknown>;
+      mapping?: Record<string, unknown>;
+      title?: string;
+      moduleId?: string;
+    }
   | { kind: "element"; element: ElementKind; moduleId: string };
+
+/** The viz a viz add request places: the catalog's pick, else the dataset shape's default. */
+function addVizId(req: Extract<AddRequest, { kind: "viz" }>): string {
+  return req.vizId ?? defaultVizForShape(req.dataset?.shape ?? "table");
+}
+
+function addTitle(req: AddRequest): string {
+  if (req.kind === "widget") return req.card.title;
+  if (req.kind === "element") return ELEMENT_DEFAULTS[req.element].title;
+  return req.title ?? req.dataset?.title ?? vizRegistry[addVizId(req)]?.title ?? "Visualization";
+}
 
 /** Synchronously begins a palette→canvas add at the pointer's position. The
  * canvas hands one of these to the palette (via a ref) so the palette's
  * `pointerdown` attaches the drag listeners in the same tick — identical to the
  * canvas's own free-drag, not deferred through React state + an effect. */
-export type AddStarter = (req: AddRequest, e: React.PointerEvent) => void;
+/** `e` null = keyboard add: place at the top fit without a drag. */
+export type AddStarter = (req: AddRequest, e: React.PointerEvent | null) => void;
 
 /** Drop size for an add request: the widget's declared size, or the default
  * viz's default geometry for a dataset (sized by its shape's default viz). */
 function addGeometry(req: AddRequest): { w: number; h: number } {
   if (req.kind === "widget") return { w: req.card.default_w, h: req.card.default_h };
   if (req.kind === "element") return ELEMENT_DEFAULTS[req.element];
-  const d = vizRegistry[defaultVizForShape(req.dataset.shape)]?.defaults;
+  const d = vizRegistry[addVizId(req)]?.defaults;
   return { w: d?.w ?? 6, h: d?.h ?? 8 };
 }
 
@@ -226,20 +248,21 @@ function buildAddItem(req: AddRequest, i: string, x: number, y: number): Dashboa
     };
   }
   const ds = req.dataset;
-  const vizId = defaultVizForShape(ds.shape);
+  const vizId = addVizId(req);
   const g = vizRegistry[vizId]?.defaults;
   return {
     i,
     kind: "viz",
-    dataset_ref: { module_id: ds.module_id, dataset_id: ds.dataset_id },
+    ...(req.moduleId ? { module_id: req.moduleId } : {}),
+    ...(ds ? { dataset_ref: { module_id: ds.module_id, dataset_id: ds.dataset_id } } : {}),
     viz_id: vizId,
-    mapping: {},
-    title: ds.title,
+    mapping: structuredClone(req.mapping ?? {}),
+    title: addTitle(req),
     x,
     y,
     w: g?.w ?? 6,
     h: g?.h ?? 8,
-    config: {},
+    config: structuredClone(req.options ?? {}),
   };
 }
 
@@ -450,7 +473,9 @@ export function DashboardCanvas({
     return (it: DashboardItem): string | null => {
       if (it.kind === "viz") {
         const ref = it.dataset_ref;
-        return (ref ? datasets.get(`${ref.module_id}:${ref.dataset_id}`) : null) ?? null;
+        // Bound cards describe their data only; the viz blurb is for Studio placeholders.
+        if (ref) return datasets.get(`${ref.module_id}:${ref.dataset_id}`) ?? null;
+        return (it.viz_id ? vizRegistry[it.viz_id]?.description : null) ?? null;
       }
       return widgets.get(`${it.module_id}:${it.widget_id}`) ?? null;
     };
@@ -988,8 +1013,14 @@ export function DashboardCanvas({
   // preview a ghost, then on release drop at the hovered cell — or, if it was a
   // click with no real movement, append at the bottom so a plain click still adds.
   const startAdd = useCallback(
-    (req: AddRequest, e: React.PointerEvent) => {
+    (req: AddRequest, e: React.PointerEvent | null) => {
       if (!editing) return;
+      if (!e) {
+        const { w, h } = addGeometry(req);
+        const { x, y } = findTopFit(itemsRef.current, w, h, cols);
+        commitAdd(req, x, y);
+        return;
+      }
       const startX = e.clientX;
       const startY = e.clientY;
       const { w, h } = addGeometry(req);
@@ -1290,11 +1321,7 @@ export function DashboardCanvas({
             className="pointer-events-none fixed z-50 max-w-[16rem] truncate rounded-md border border-border bg-card px-2 py-1 text-xs font-medium shadow-lg animate-in fade-in-0 zoom-in-95 duration-150"
             style={{ left: addPointer.x + 12, top: addPointer.y + 12 }}
           >
-            {addReq.kind === "widget"
-              ? addReq.card.title
-              : addReq.kind === "element"
-                ? ELEMENT_DEFAULTS[addReq.element].title
-                : addReq.dataset.title}
+            {addTitle(addReq)}
           </div>,
           document.body,
         )}

@@ -1,0 +1,122 @@
+id: e2e_viz
+name: E2E viz fixture
+version: 0.1.0
+category: other
+description: Static sample data in every dataset shape, for the Studio catalog e2e test.
+license: MIT
+
+requirements:
+  event_log:
+    log_model: case_centric
+    required_columns:
+      - case_id
+      - activity
+      - timestamp
+    min_events: 1
+    min_cases: 1
+
+dependencies:
+  python:
+    packages: []
+    isolation: in_process
+
+# Order matters: a catalog viz binds the FIRST dataset of a shape it accepts, so the
+# first table, graph, tree and kpi datasets are the ones the e2e spec's cards render.
+datasets:
+  - id: rows
+    title: Sample rows
+    description: Category x group rows with numbers, a duration, a percent, a date and tags.
+    icon: Table
+    shape: table
+    route: /data/rows
+  - id: petri
+    title: Sample Petri net
+    description: Places, transitions (one silent) and arcs.
+    icon: Workflow
+    shape: graph
+    route: /data/petri
+  - id: ptree
+    title: Sample process tree
+    description: Sequence, choice, parallel and loop operators.
+    icon: ListTree
+    shape: tree
+    route: /data/ptree
+  - id: kpis
+    title: Sample KPIs
+    description: Counts, a duration, a percent and a before/after pair.
+    icon: Gauge
+    shape: kpi
+    route: /data/kpis
+  - id: series
+    title: Sample series
+    description: Parallel arrays per period.
+    icon: LineChart
+    shape: table
+    route: /data/series
+  - id: matrix
+    title: Sample dense grid
+    description: A labelled number grid, expanded to row, col, value.
+    icon: Grid3x3
+    shape: table
+    route: /data/matrix
+  - id: grid
+    title: Sample columns and rows
+    description: Column names plus array rows.
+    icon: Table2
+    shape: table
+    route: /data/grid
+  - id: bins
+    title: Sample buckets
+    description: Pre-binned counts (bin_start, bin_end, count).
+    icon: BarChart3
+    shape: table
+    route: /data/bins
+  - id: kpi_items
+    title: Sample KPI items
+    description: A list of key and value items.
+    icon: Hash
+    shape: kpi
+    route: /data/kpi_items
+  - id: dfg
+    title: Sample DFG
+    description: Activities and directly-follows edges.
+    icon: Network
+    shape: graph
+    route: /data/dfg
+  - id: envelope_graph
+    title: Sample envelope graph
+    description: A route that returns shape and data itself.
+    icon: Share2
+    shape: graph
+    route: /data/envelope_graph
+  - id: envelope_table
+    title: Sample envelope table
+    description: Envelope rows without a schema.
+    icon: Rows3
+    shape: table
+    route: /data/envelope_table
+  - id: prefix
+    title: Sample prefix tree
+    description: Flat nodes with parent ids.
+    icon: GitBranch
+    shape: tree
+    route: /data/prefix
+  - id: note
+    title: Sample note
+    description: Plain text.
+    icon: FileText
+    shape: blob
+    route: /data/note
+
+frontend:
+  widgets:
+    # Written by `mate-module widget e2e_viz sample-bars` (the scaffold template).
+    - id: sample-bars
+      entry: ./widgets/SampleBars.tsx
+      title: "Sample bars"
+      description: The widget scaffold, unchanged.
+      icon: BarChart3
+      default_w: 4
+      default_h: 8
+      min_px_w: 280
+      min_px_h: 200

@@ -126,3 +126,78 @@ export function formatDuration(seconds: number | null | undefined): string {
   const mo = Math.round((abs % SECONDS_PER_YEAR) / SECONDS_PER_MONTH);
   return mo ? `${sign}~${y} y ${mo} mo` : `${sign}~${y} y`;
 }
+
+/** Seconds as the two largest units: "1d 2h", "3h 4m", "12m", "40s". */
+export function formatDurationShort(seconds: number): string {
+  if (!Number.isFinite(seconds)) return "—";
+  const sign = seconds < 0 ? "-" : "";
+  const s = Math.round(Math.abs(seconds));
+  const d = Math.floor(s / 86_400);
+  const h = Math.floor((s % 86_400) / 3_600);
+  const m = Math.floor((s % 3_600) / 60);
+  if (d) return `${sign}${d}d${h ? ` ${h}h` : ""}`;
+  if (h) return `${sign}${h}h${m ? ` ${m}m` : ""}`;
+  if (m) return `${sign}${m}m`;
+  return `${sign}${s}s`;
+}
+
+/** The shared `value_format` option of every generic viz. `percent` is a 0-1
+ * share, `percent100` is already 0-100, `duration` is seconds. */
+export type ValueFormat =
+  | "number"
+  | "integer"
+  | "percent"
+  | "percent100"
+  | "duration"
+  | "datetime"
+  | "text";
+
+export const VALUE_FORMATS: ValueFormat[] = [
+  "number",
+  "integer",
+  "percent",
+  "percent100",
+  "duration",
+  "datetime",
+  "text",
+];
+
+/** One value as text in `fmt` (default: numbers grouped, everything else as-is).
+ * Any other `fmt` formats as a plain number. `decimals` fixes the fraction
+ * digits of number/percent formats. */
+export function formatValue(v: unknown, fmt?: ValueFormat | unknown, decimals?: number): string {
+  if (v === null || v === undefined || v === "") return "—";
+  if (fmt === "text") return String(v);
+  if (fmt === "datetime") {
+    const d = new Date(typeof v === "number" ? v : String(v));
+    return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+  }
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return String(v);
+  switch (fmt) {
+    case "integer":
+      return formatNumber(Math.round(n));
+    case "percent":
+      return `${(n * 100).toFixed(decimals ?? 1)}%`;
+    case "percent100":
+      return `${n.toFixed(decimals ?? 1)}%`;
+    case "duration":
+      return formatDurationShort(n);
+    default:
+      return decimals == null
+        ? formatNumber(n)
+        : new Intl.NumberFormat(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+          }).format(n);
+  }
+}
+
+/** Format implied by a key name: `_s`/`_seconds` → duration, `_pct`/`_percent`
+ * → percent100. Undefined when the name says nothing. */
+export function inferFormat(key: string): ValueFormat | undefined {
+  const k = key.toLowerCase();
+  if (/(_s|_sec|_secs|_seconds)$/.test(k)) return "duration";
+  if (/(_pct|_percent)$/.test(k)) return "percent100";
+  return undefined;
+}

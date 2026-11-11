@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Eye, Pencil, RotateCw, Save, Undo2, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,8 +27,10 @@ import { PageParamsProvider } from "@/lib/module-layout/page-params";
 import { useEventLogs, useModules } from "@/lib/queries";
 import { useCardCatalog } from "@/lib/dashboard-queries";
 import {
+  MANIFEST_QUERY_KEYS,
   useDevStatus,
   useModuleLayout,
+  useOnDevFocus,
   useReloadModule,
   useSaveModuleLayout,
   type ModuleLayout,
@@ -79,6 +82,12 @@ export default function StudioPage() {
   const { data: catalog } = useCardCatalog();
   const save = useSaveModuleLayout(moduleId);
   const reload = useReloadModule(moduleId);
+  // Back from the editor: pick up new datasets and widgets (e.g. after
+  // `make widget`). The layout query is left alone so unsaved edits survive.
+  const qc = useQueryClient();
+  useOnDevFocus(() => {
+    for (const key of MANIFEST_QUERY_KEYS) void qc.invalidateQueries({ queryKey: key });
+  });
 
   const [draft, setDraft] = useState<ModuleLayout>(EMPTY_LAYOUT);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -348,6 +357,7 @@ export default function StudioPage() {
               selectedIds={selectedIds}
               catalog={catalog}
               logId={logId}
+              moduleId={moduleId}
               onUpdate={(id, patch) =>
                 setDraft((d) => ({
                   ...d,
