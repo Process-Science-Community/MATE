@@ -325,6 +325,10 @@ check_redirector
 
 # ── 4. Users ─────────────────────────────────────────────────────────────────
 declare -A IDS=()
+# kcadm errors of the password call (its stdin carries the password, so it is
+# not wrapped in a command substitution like the others).
+SCRATCH_ERR="$(mktemp)"
+trap 'rm -f "$SCRATCH_ERR"' EXIT
 n=0
 while read -r name; do
   n=$((n + 1))
@@ -332,15 +336,17 @@ while read -r name; do
   created=0
   if [ -n "$uid" ]; then
     echo "→ Updating user '$name' ($uid)"
-    user_json "$name" "$n" | kc_pipe update "users/$uid" -r "$REALM" -f - >/dev/null 2>&1
+    out="$(user_json "$name" "$n" | kc_pipe update "users/$uid" -r "$REALM" -f - 2>&1)" \
+      || { echo "✗ updating '$name' failed – Keycloak said: $out" >&2; exit 1; }
   else
     echo "→ Creating user '$name'"
-    user_json "$name" "$n" | kc_pipe create users -r "$REALM" -f - >/dev/null 2>&1
+    out="$(user_json "$name" "$n" | kc_pipe create users -r "$REALM" -f - 2>&1)" \
+      || { echo "✗ creating '$name' failed – Keycloak said: $out" >&2; exit 1; }
     uid="$(user_id_of "$name")"
     created=1
   fi
   if [ -z "$uid" ]; then
-    echo "✗ user '$name' not found after create – aborting." >&2
+    echo "✗ user '$name' not found after create – aborting. kcadm said: ${out:-(nothing)}" >&2
     exit 1
   fi
   IDS[$name]="$uid"
@@ -351,7 +357,8 @@ while read -r name; do
     pw="$(gen_password)"
     # Through stdin, so the password never shows up in a process list.
     PW="$pw" python3 -c "import json,os;print(json.dumps({'type':'password','value':os.environ['PW'],'temporary':False}))" \
-      | kc_pipe update "users/$uid/reset-password" -r "$REALM" -f - -n >/dev/null 2>&1
+      | kc_pipe update "users/$uid/reset-password" -r "$REALM" -f - -n >/dev/null 2>"$SCRATCH_ERR" \
+      || { echo "✗ setting the password of '$name' failed – Keycloak said: $(cat "$SCRATCH_ERR")" >&2; exit 1; }
     store_password "$name" "$pw"
     echo "  password set (stored in $cred_abs)"
   fi
