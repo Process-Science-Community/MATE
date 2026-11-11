@@ -11,7 +11,7 @@ disabled from **15 Dec 2026**.
 | | |
 |---|---|
 | Login URL | **<https://mate.uni-muenster.de/login/start?local=1>** |
-| Usernames | `reviewer1`, `reviewer2`, `reviewer3`, `reviewer4`, `reviewer5` |
+| Usernames | `reviewer1` … `reviewer5`. If the realm has **Email as username** on (the uni VM does), Keycloak stores the placeholder address instead, so reviewers log in as `reviewer1@reviewers.invalid` … `reviewer5@reviewers.invalid`. The script's summary and the credentials file show the exact login name. |
 | Passwords | one per account. They are not in this repository; see [Where the passwords are](#where-the-passwords-are) |
 | Preloaded | 3 sample logs (Helpdesk ticketing: samples A and B, plus a simulated one) and an *Example dashboard* (process overview of sample A) |
 

@@ -157,9 +157,24 @@ check_redirector() {  # warn (or, with CLEAR_IDP_REDIRECTOR=1, fix) a forced IdP
 }
 REDIRECTOR_BLOCKS=0
 
-user_id_of() {  # username -> internal id ('' if absent); exact match only
-  kc get users -r "$REALM" -q username="$1" -q exact=true --fields id,username 2>/dev/null \
-    | U="$1" python3 -c "import sys,json,os;rows=[r for r in json.load(sys.stdin) if r.get('username')==os.environ['U']];print(rows[0]['id'] if rows else '')"
+placeholder_email() { echo "$1@reviewers.invalid"; }
+
+user_id_of() {  # name -> internal id ('' if absent); exact match only
+  # By username, else by the placeholder email: with the realm's "Email as
+  # username" on, Keycloak stores the email as the username.
+  local id
+  id="$(kc get users -r "$REALM" -q username="$1" -q exact=true --fields id,username 2>/dev/null \
+    | U="$1" python3 -c "import sys,json,os;rows=[r for r in json.load(sys.stdin) if r.get('username')==os.environ['U']];print(rows[0]['id'] if rows else '')")"
+  if [ -z "$id" ]; then
+    id="$(kc get users -r "$REALM" -q email="$(placeholder_email "$1")" -q exact=true --fields id,email 2>/dev/null \
+      | E="$(placeholder_email "$1")" python3 -c "import sys,json,os;rows=[r for r in json.load(sys.stdin) if (r.get('email') or '').lower()==os.environ['E']];print(rows[0]['id'] if rows else '')")"
+  fi
+  echo "$id"
+}
+
+login_name_of() {  # internal id -> the username Keycloak stored (what goes into the login form)
+  kc get "users/$1" -r "$REALM" --fields username 2>/dev/null \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['username'])"
 }
 
 # ── 1. Authenticate kcadm ────────────────────────────────────────────────────
@@ -188,7 +203,7 @@ if [ "$CMD" != "create" ]; then
           | python3 -c "import sys,json;print(json.load(sys.stdin).get('enabled'))")"
         roles="$(kc get "users/$uid/role-mappings/realm" -r "$REALM" 2>/dev/null \
           | python3 -c "import sys,json;print(','.join(sorted(r['name'] for r in json.load(sys.stdin))))")"
-        echo "  $name: enabled=$enabled id=$uid roles=$roles"
+        echo "  $name: login=$(login_name_of "$uid") enabled=$enabled id=$uid roles=$roles"
         ;;
       disable)
         kc update "users/$uid" -r "$REALM" -s enabled=false >/dev/null 2>&1
@@ -274,6 +289,15 @@ raise SystemExit(0 if req is not None and (not req.get('roles') or 'user' in req
     ;;
   *) echo "✗ REVIEWER_EMAIL_MODE must be auto, none or placeholder." >&2; exit 1 ;;
 esac
+# "Email as username" makes Keycloak replace the username with the email (and
+# reject a user without one): the login name is then the placeholder address.
+EMAIL_AS_USERNAME="$(kc get "realms/$REALM" --fields registrationEmailAsUsername 2>/dev/null \
+  | python3 -c "import sys,json;print('1' if json.load(sys.stdin).get('registrationEmailAsUsername') else '0')")"
+if [ "$EMAIL_AS_USERNAME" = "1" ]; then
+  use_placeholder_email=1
+  echo "  ! the realm has 'Email as username' on – reviewers log in with"
+  echo "    <user>@reviewers.invalid (printed below and in the credentials file)"
+fi
 
 gen_password() {  # 4x5 groups of letters/digits, joined by '-': ~119 bits, every class present
   python3 - <<'PY'
@@ -292,12 +316,12 @@ stored_password() {  # username -> password from the credentials file ('' if abs
   awk -v u="$1" '$1 == u { p = $2 } END { print p }' "$cred_abs"
 }
 
-store_password() {  # username password -> credentials file (replaces the user's line)
-  U="$1" P="$2" F="$cred_abs" python3 - <<'PY'
+store_password() {  # name password login -> credentials file (replaces the name's line)
+  U="$1" P="$2" L="$3" F="$cred_abs" python3 - <<'PY'
 import os
-path, user, pw = os.environ["F"], os.environ["U"], os.environ["P"]
+path, user, pw, login = os.environ["F"], os.environ["U"], os.environ["P"], os.environ["L"]
 lines = [l for l in open(path, encoding="utf-8").read().splitlines() if l.split()[:1] != [user]]
-lines.append(f"{user} {pw}")
+lines.append(f"{user} {pw}" + (f"   login: {login}" if login != user else ""))
 with open(path, "w", encoding="utf-8") as fh:
     fh.write("\n".join(lines) + "\n")
 PY
@@ -314,7 +338,7 @@ rep = {
     "requiredActions": [],
 }
 if os.environ["E"] == "1":
-    rep["email"] = f"{os.environ['U']}@reviewers.invalid"
+    rep["email"] = f"{os.environ['U']}@reviewers.invalid"  # = placeholder_email
     rep["emailVerified"] = True
 print(json.dumps(rep))
 PY
@@ -359,7 +383,7 @@ while read -r name; do
     PW="$pw" python3 -c "import json,os;print(json.dumps({'type':'password','value':os.environ['PW'],'temporary':False}))" \
       | kc_pipe update "users/$uid/reset-password" -r "$REALM" -f - -n >/dev/null 2>"$SCRATCH_ERR" \
       || { echo "✗ setting the password of '$name' failed – Keycloak said: $(cat "$SCRATCH_ERR")" >&2; exit 1; }
-    store_password "$name" "$pw"
+    store_password "$name" "$pw" "$(login_name_of "$uid")"
     echo "  password set (stored in $cred_abs)"
   fi
 
@@ -429,7 +453,9 @@ PY
 chmod 644 "$SAMPLE_DIR/manifest.json"
 
 echo
-echo "✓ Done. ${REVIEWER_COUNT} reviewer accounts ready: $(usernames | paste -sd' ')"
+logins=""
+for name in $(usernames); do logins+="$(login_name_of "${IDS[$name]}") "; done
+echo "✓ Done. ${REVIEWER_COUNT} reviewer accounts ready. Log in as: ${logins% }"
 echo "  Passwords:  $cred_abs (mode 600, outside the repository)"
 echo "  Login URL:  $PUBLIC_URL/login/start?local=1"
 if [ "$REDIRECTOR_BLOCKS" = "1" ]; then
