@@ -404,7 +404,15 @@ echo "→ Writing sample content to $SAMPLE_DIR"
 # public sample logs + account ids (no secrets). The credentials file above was
 # created under umask 077.
 umask 022
-mkdir -p "$SAMPLE_DIR"
+if ! mkdir -p "$SAMPLE_DIR" 2>/dev/null || [ ! -w "$SAMPLE_DIR" ]; then
+  # data/ is written by the api container (root): hand this one folder to the
+  # operator instead of running the whole script as root (which would look for
+  # the credentials file in /root and re-generate every password).
+  echo "✗ $SAMPLE_DIR is not writable for $(id -un). The accounts are fine; run once:" >&2
+  echo "    sudo mkdir -p $SAMPLE_DIR && sudo chown -R $(id -un): $(dirname "$SAMPLE_DIR")" >&2
+  echo "  then re-run this script (passwords are kept)." >&2
+  exit 1
+fi
 chmod 755 "$(dirname "$SAMPLE_DIR")" "$SAMPLE_DIR"
 for f in test_preprocessed.csv train_preprocessed.csv simulated_log_0.csv; do
   if [ ! -f "$SAMPLE_SRC/$f" ]; then
