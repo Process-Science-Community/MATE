@@ -11,9 +11,13 @@ class __CLASS__(Module):
     id = "__ID__"
 
     @route.get("/summary")
-    async def summary(self, ctx: ModuleContext) -> dict[str, Any]:
-        """Events and cases per activity. Backs the `summary` dataset (a table)."""
-        return {"rows": await self._activity_counts(ctx)}
+    async def summary(self, ctx: ModuleContext, top: int = 10) -> dict[str, Any]:
+        """The `top` busiest activities. Backs the `summary` dataset (a table); `top` is
+        its `params_schema` param, set by the `controls` card in layout.json. Computed
+        live: the platform clears no cache on filter or log edits for a module without
+        precompute, so reading /recount's cache here would serve stale counts."""
+        rows = await self._activity_counts(ctx)
+        return {"rows": rows[:top]}
 
     @route.post("/recount")
     @job(progress=True, title=__JOB_TITLE__)

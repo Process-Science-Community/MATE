@@ -2,6 +2,47 @@
   "version": 1,
   "items": [
     {
+      "i": "intro",
+      "kind": "text",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 3,
+      "config": {
+        "markdown": "## Activity summary\nEvents and cases per activity. Pick how many activities to show, or recount on the job queue."
+      }
+    },
+    {
+      "i": "params",
+      "kind": "controls",
+      "module_id": "__ID__",
+      "title": "Parameters",
+      "x": 0,
+      "y": 3,
+      "w": 9,
+      "h": 4,
+      "config": {
+        "source": "params",
+        "keys": [
+          "top"
+        ]
+      }
+    },
+    {
+      "i": "recount",
+      "kind": "action",
+      "module_id": "__ID__",
+      "title": "Recount",
+      "x": 9,
+      "y": 3,
+      "w": 3,
+      "h": 4,
+      "config": {
+        "route": "/recount",
+        "label": "Recount"
+      }
+    },
+    {
       "i": "summary-table",
       "kind": "viz",
       "module_id": "__ID__",
@@ -13,9 +54,9 @@
       "mapping": {},
       "title": "Activity summary",
       "x": 0,
-      "y": 0,
+      "y": 7,
       "w": 12,
-      "h": 8,
+      "h": 16,
       "config": {}
     }
   ]

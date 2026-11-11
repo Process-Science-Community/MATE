@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Boxes, ChevronDown, Search } from "lucide-react";
+import { Boxes, ChevronDown, Play, Search, SlidersHorizontal, Type, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Input } from "@/components/ui/input";
@@ -10,10 +10,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cardIcon } from "@/components/dashboards/card-icon";
 import type { AddRequest } from "@/components/dashboards/dashboard-canvas";
 import {
+  ELEMENT_DEFAULTS,
+  ELEMENT_KINDS,
   useCardCatalog,
   useDatasetCatalog,
   type DashboardCard,
   type DatasetCatalogEntry,
+  type ElementKind,
   type LogModel,
 } from "@/lib/dashboard-queries";
 
@@ -21,6 +24,14 @@ const MODEL_LABELS: Record<LogModel, string> = {
   case_centric: "case-centric",
   object_centric: "object-centric (OCEL)",
 };
+
+/** Layout-only building blocks, offered only in the module Studio. */
+const ELEMENT_META: Record<ElementKind, { icon: LucideIcon; description: string }> = {
+  text: { icon: Type, description: "Heading and markdown copy." },
+  controls: { icon: SlidersHorizontal, description: "Page parameters or module settings." },
+  action: { icon: Play, description: "A button that runs a module POST route." },
+};
+const ELEMENTS_GROUP = "__elements__";
 
 /** A palette row: a module-authored widget card, or a module dataset rendered
  * through the generic-viz layer. `applicable` is false when the entry's
@@ -37,6 +48,7 @@ type Entry = (
       shape: DatasetCatalogEntry["shape"];
       dataset: DatasetCatalogEntry;
     }
+  | { type: "element"; key: string; title: string; description: string | null; icon: null; element: ElementKind }
 ) & { applicable: boolean; logModels: LogModel[] };
 
 /**
@@ -115,7 +127,24 @@ export function CardPalette({
     for (const g of byModule.values()) {
       g.entries.sort((a, b) => Number(b.applicable) - Number(a.applicable));
     }
-    return [...byModule.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = [...byModule.values()].sort((a, b) => a.name.localeCompare(b.name));
+    // Elements only exist in module layouts, so dashboards (no `moduleId`) never see them.
+    if (!moduleId) return sorted;
+    const elements: Entry[] = ELEMENT_KINDS.filter((k) =>
+      matches(ELEMENT_DEFAULTS[k].title, "Elements", ELEMENT_META[k].description),
+    ).map((k) => ({
+      type: "element",
+      key: `e:${k}`,
+      title: ELEMENT_DEFAULTS[k].title,
+      description: ELEMENT_META[k].description,
+      icon: null,
+      element: k,
+      applicable: true,
+      logModels: [],
+    }));
+    return elements.length
+      ? [{ id: ELEMENTS_GROUP, name: "Elements", entries: elements }, ...sorted]
+      : sorted;
   }, [cards, datasets, query, logModel, moduleId]);
 
   const searching = query.trim().length > 0;
@@ -130,7 +159,9 @@ export function CardPalette({
   const requestFor = (entry: Entry): AddRequest =>
     entry.type === "widget"
       ? { kind: "widget", card: entry.card }
-      : { kind: "viz", dataset: entry.dataset };
+      : entry.type === "element"
+        ? { kind: "element", element: entry.element, moduleId: moduleId ?? "" }
+        : { kind: "viz", dataset: entry.dataset };
 
   return (
     <div className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-muted/20">
@@ -189,7 +220,10 @@ export function CardPalette({
                 {open && (
                   <div className="space-y-1 p-1.5">
                     {group.entries.map((entry) => {
-                      const Icon = cardIcon(entry.icon);
+                      const Icon =
+                        entry.type === "element"
+                          ? ELEMENT_META[entry.element].icon
+                          : cardIcon(entry.icon);
                       const row = (
                         <div
                           key={entry.key}

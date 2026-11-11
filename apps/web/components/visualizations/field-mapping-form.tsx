@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Field } from "@/components/dashboards/card-config-form";
+import { DURATION_OPTION, numericCols } from "@/components/visualizations/charts/chart-common";
 import { vizzesForShape } from "@/lib/visualizations/registry";
 import type { DashboardItem } from "@/lib/dashboard-queries";
 import type {
@@ -17,6 +18,7 @@ import type {
   DatasetEnvelope,
   DatasetShape,
   FieldMapping,
+  KpiData,
   VizFieldDef,
 } from "@/lib/visualizations/types";
 
@@ -106,6 +108,16 @@ export function FieldMappingForm({
   const setConfig = (key: string, value: unknown) =>
     onChange({ config: { ...(item.config ?? {}), [key]: value } });
 
+  // Numeric columns (table) or measures (KPI vizzes) that can be shown as a duration.
+  const durationChoices =
+    spec?.id === "table"
+      ? numericCols(columns).filter((c) => c.type !== "duration")
+      : spec?.group === "kpi" && dataset?.shape === "kpi"
+        ? (dataset.data as KpiData).items
+            .filter((m) => typeof m.value === "number" && m.format !== "duration")
+            .map((m) => ({ id: m.key, label: m.label }))
+        : [];
+
   return (
     <div className="space-y-3.5">
       <div className="space-y-1.5">
@@ -148,6 +160,24 @@ export function FieldMappingForm({
               onChange={(v) => setMapping(f.key, v)}
             />
           ))}
+        </div>
+      )}
+
+      {durationChoices.length > 0 && (
+        <div className="border-t border-border/60 pt-3">
+          <Field
+            fieldKey={DURATION_OPTION}
+            prop={{
+              type: "array",
+              title: "Show as duration",
+              description: "Values in seconds, shown as 3h 4m.",
+              enum: durationChoices.map((c) => c.id),
+              enumLabels: durationChoices.map((c) => c.label),
+              ui: { widget: "multiselect" },
+            }}
+            value={(item.config ?? {})[DURATION_OPTION]}
+            onChange={(v) => setConfig(DURATION_OPTION, v)}
+          />
         </div>
       )}
 

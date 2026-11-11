@@ -12,11 +12,25 @@ import type { DashboardItem } from "@/lib/dashboard-queries";
  * "not dev" signal rather than an error.
  */
 
+export interface LayoutTab {
+  id: string;
+  title: string;
+}
+
 /** A module's declarative page (`modules/<id>/layout.json`). The items are the
- * same shape a dashboard stores, so the dashboard canvas renders them as-is. */
+ * same shape a dashboard stores, so the dashboard canvas renders them as-is.
+ * `tabs` absent means one page; an item without `tab` sits on the first tab. */
 export interface ModuleLayout {
   version: 1;
+  tabs?: LayoutTab[];
   items: DashboardItem[];
+}
+
+/** A route the loaded module registered; `path` is relative to the module. */
+export interface DevRoute {
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  path: string;
+  job: boolean;
 }
 
 export interface DevModuleStatus {
@@ -30,6 +44,8 @@ export interface DevModuleStatus {
   isolation: string;
   execution: string;
   load_error: string | null;
+  /** Empty for a module that failed to load. */
+  routes: DevRoute[];
 }
 
 export interface DevStatus {
@@ -120,14 +136,17 @@ export function useModuleLayout(moduleId: string) {
 export function useSaveModuleLayout(moduleId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (items: DashboardItem[]) =>
+    // The whole layout: page-level fields (`tabs`) must survive a save.
+    mutationFn: (layout: ModuleLayout) =>
       api<{ layout: ModuleLayout }>(
         `/api/v1/dev/modules/${encodeURIComponent(moduleId)}/layout`,
-        { method: "PUT", json: { version: 1, items } satisfies ModuleLayout },
+        { method: "PUT", json: layout },
       ),
     onSuccess: (res) => {
       qc.setQueryData(devKeys.layout(moduleId), res.layout);
       void qc.invalidateQueries({ queryKey: devKeys.status() });
+      // `supports_log_filter` turns on once layout.json exists on disk.
+      void qc.invalidateQueries({ queryKey: ["modules"] });
     },
   });
 }

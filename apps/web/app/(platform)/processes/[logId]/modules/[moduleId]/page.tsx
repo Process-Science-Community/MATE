@@ -6,17 +6,13 @@ import { useParams } from "next/navigation";
 import { FileBox } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { PageContainer } from "@/components/page";
 import { PanelSkeleton } from "@/components/skeletons";
-import { DashboardCanvas } from "@/components/dashboards/dashboard-canvas";
+import { ModuleLayoutPage } from "@/components/module-layout/module-layout-page";
 import { useModules } from "@/lib/queries";
-import { getModulePanel, prefetchModulePanel } from "@/lib/module-panels";
-import { DEFAULT_CANVAS_SETTINGS, type DashboardItem } from "@/lib/dashboard-queries";
-import { useIsDev, useModuleLayout } from "@/lib/dev-queries";
-import { LogFilterProvider } from "@/components/processes/log-filter";
-import { ModuleRunGate } from "@/components/processes/module-run-gate";
+import { prefetchModulePanel } from "@/lib/module-panels";
+import { useModuleLayout } from "@/lib/dev-queries";
 
 export default function ModulePage() {
   const params = useParams<{ logId: string; moduleId: string }>();
@@ -36,7 +32,6 @@ export default function ModulePage() {
   // Fetched in parallel with the module list. A failed fetch (e.g. an API
   // without the endpoint) counts as "no layout", not as an error.
   const layoutQuery = useModuleLayout(moduleId);
-  const layoutItems = layoutQuery.data?.items ?? null;
 
   const mod = modules?.find((m) => m.id === moduleId);
 
@@ -71,125 +66,7 @@ export default function ModulePage() {
 
   return (
     <PageContainer>
-      {/* Deep links can reach a module the grid renders grayed-out (disabled,
-          or the log doesn't meet its manifest requirements). Mounting the
-          panel would just fail on its first query – explain instead. */}
-      {mod.enabled === false ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-          <p className="text-sm font-medium">This module is disabled</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Enable it on the{" "}
-            <Link href={`/modules/${mod.id}`} className="underline underline-offset-2">
-              Modules
-            </Link>{" "}
-            page to open it.
-          </p>
-        </div>
-      ) : (mod.availability?.status ?? "available") === "unavailable" ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-          <p className="text-sm font-medium">Not available for this process</p>
-          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-            {(mod.availability?.reasons ?? ["This process doesn't meet the module's requirements."]).map(
-              (r, i) => (
-                <li key={i}>{r}</li>
-              ),
-            )}
-          </ul>
-        </div>
-      ) : (
-        // Modules compute lazily: opening one starts its job if the log has no
-        // results for it yet (or the data changed since), shows live progress, and
-        // mounts the panel only once they exist - so the panel never fetches into
-        // an empty cache. It sits *outside* the filter provider on purpose: the
-        // provider owns the panel's isolated QueryClient, which is therefore
-        // created fresh after each run instead of carrying a stale miss.
-        <ModuleRunGate logId={logId} moduleId={mod.id} deps={mod.precompute_deps ?? []}>
-          {/* Log-scoped global filter: sets the active log's ephemeral event filter
-              and re-scopes this (and every other) module view for the log. Wraps
-              the panel so its data queries pick up the `X-FF-Event-Filter` header.
-              Modules opt out via the manifest (`frontend.log_filter: false`) and
-              mount without the bar or the header. */}
-          <LogFilterProvider logId={logId} enabled={mod.supports_log_filter}>
-            <ModulePanelSlot
-              logId={logId}
-              moduleId={mod.id}
-              hasFrontend={mod.has_frontend}
-              layoutItems={layoutItems}
-            />
-          </LogFilterProvider>
-        </ModuleRunGate>
-      )}
+      <ModuleLayoutPage logId={logId} mod={mod} layout={layoutQuery.data ?? null} />
     </PageContainer>
-  );
-}
-
-const NOOP_ADD_REF = { current: null };
-const NOOP = () => {};
-
-/** A module's `layout.json`, rendered read-only with the dashboard canvas. */
-function ModuleLayoutView({ logId, items }: { logId: string; items: DashboardItem[] }) {
-  return (
-    <DashboardCanvas
-      items={items}
-      logId={logId}
-      editing={false}
-      startAddRef={NOOP_ADD_REF}
-      settings={DEFAULT_CANVAS_SETTINGS}
-      onItemsChange={NOOP}
-    />
-  );
-}
-
-function ModulePanelSlot({
-  logId,
-  moduleId,
-  hasFrontend,
-  layoutItems,
-}: {
-  logId: string;
-  moduleId: string;
-  hasFrontend: boolean;
-  layoutItems: DashboardItem[] | null;
-}) {
-  const isDev = useIsDev();
-  const Panel = getModulePanel(moduleId, { hasFrontend });
-  if (Panel && layoutItems) {
-    return (
-      <Tabs defaultValue="panel">
-        <TabsList>
-          <TabsTrigger value="panel">Panel</TabsTrigger>
-          <TabsTrigger value="layout">Layout</TabsTrigger>
-        </TabsList>
-        <TabsContent value="panel">
-          <Panel logId={logId} moduleId={moduleId} />
-        </TabsContent>
-        <TabsContent value="layout">
-          <ModuleLayoutView logId={logId} items={layoutItems} />
-        </TabsContent>
-      </Tabs>
-    );
-  }
-  if (Panel) {
-    return <Panel logId={logId} moduleId={moduleId} />;
-  }
-  if (layoutItems) {
-    return <ModuleLayoutView logId={logId} items={layoutItems} />;
-  }
-  return (
-    <div className="rounded-xl border border-dashed border-border bg-card/40 px-6 py-16 text-center">
-      <p className="text-sm text-muted-foreground">
-        This module has no frontend panel or layout yet. The platform mounts its API at{" "}
-        <code className="rounded bg-muted px-1 text-[11px]">/api/v1/modules/{moduleId}/…</code>.
-      </p>
-      {isDev && (
-        <Button asChild size="sm" variant="outline" className="mt-4">
-          <Link
-            href={`/dev/studio/${encodeURIComponent(moduleId)}?log=${encodeURIComponent(logId)}`}
-          >
-            Build a layout in the Studio
-          </Link>
-        </Button>
-      )}
-    </div>
   );
 }

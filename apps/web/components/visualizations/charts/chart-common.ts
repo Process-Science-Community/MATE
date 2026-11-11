@@ -1,10 +1,46 @@
+import { formatNumber } from "@/lib/format";
 import type {
   ColumnSpec,
   ColumnType,
   DatasetEnvelope,
   FieldMapping,
+  KpiMeasure,
   TableData,
 } from "@/lib/visualizations/types";
+
+/** Viz option (table + KPI vizzes): column ids / measure keys whose seconds
+ * value is shown as a duration. Picked per column in the viz settings. */
+export const DURATION_OPTION = "duration_columns";
+
+export function durationKeys(options: Record<string, unknown> | undefined): string[] {
+  const v = options?.[DURATION_OPTION];
+  return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string") : [];
+}
+
+/** Seconds as the two largest units: "1d 2h", "3h 4m", "12m", "40s". */
+export function formatDurationShort(seconds: number): string {
+  if (!Number.isFinite(seconds)) return "—";
+  const sign = seconds < 0 ? "-" : "";
+  const s = Math.round(Math.abs(seconds));
+  const d = Math.floor(s / 86_400);
+  const h = Math.floor((s % 86_400) / 3_600);
+  const m = Math.floor((s % 3_600) / 60);
+  if (d) return `${sign}${d}d${h ? ` ${h}h` : ""}`;
+  if (h) return `${sign}${h}h${m ? ` ${m}m` : ""}`;
+  if (m) return `${sign}${m}m`;
+  return `${sign}${s}s`;
+}
+
+/** One KPI measure as text, honouring its `format` and the duration option. */
+export function formatMeasure(m: KpiMeasure, options?: Record<string, unknown>): string {
+  if (m.value == null) return "—";
+  if (typeof m.value === "string") return m.value;
+  const v = m.value;
+  if (m.format === "duration" || durationKeys(options).includes(m.key)) return formatDurationShort(v);
+  if (m.format === "percent") return `${(v * 100).toFixed(1)}%`;
+  if (m.format === "integer") return formatNumber(Math.round(v));
+  return formatNumber(v);
+}
 
 /** Categorical palette for series/cells. Kept explicit (not theme tokens) so
  * recharts `fill`/`stroke` get a concrete color without a CSS-var round-trip. */

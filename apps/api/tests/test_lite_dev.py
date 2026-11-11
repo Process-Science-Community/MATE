@@ -175,6 +175,45 @@ async def test_dev_put_layout_validates_and_guards(tmp_path: Path) -> None:
         assert not (upload / "layout.json").exists()
 
 
+async def test_dev_layout_with_tabs_elements_and_action_routes(tmp_path: Path) -> None:
+    """A scaffolded module (layout.json only, a `/recount` job) next to sample_mod."""
+    from mate.sdk.cli import main
+
+    assert main(["new", "scaf", "--dir", str(tmp_path / "modules")]) == 0
+    async with _dev_client(tmp_path) as c:
+        status = (await c.get("/api/v1/dev/status")).json()
+        routes = {m["id"]: m["routes"] for m in status["modules"]}
+        assert {"method": "POST", "path": "/recount", "job": True} in routes["scaf"]
+        assert {"method": "GET", "path": "/summary", "job": False} in routes["scaf"]
+
+        # No panel, only layout.json: the module page still gets the filter bar.
+        mods = {m["id"]: m for m in (await c.get("/api/v1/modules")).json()}
+        assert mods["scaf"]["has_frontend"] is False
+        assert mods["scaf"]["supports_log_filter"] is True
+        assert mods["sample_mod"]["supports_log_filter"] is False
+
+        layout = (await c.get("/api/v1/modules/scaf/layout")).json()["layout"]
+        layout["tabs"] = [{"id": "main", "title": "Main"}, {"id": "more", "title": "More"}]
+        layout["items"][-1]["tab"] = "more"
+        r = await c.put("/api/v1/dev/modules/scaf/layout", json=layout)
+        assert r.status_code == 200, r.text
+        assert r.json()["layout"] == layout
+        assert (await c.get("/api/v1/modules/scaf/layout")).json()["layout"]["tabs"][1] == {
+            "id": "more",
+            "title": "More",
+        }
+
+        action = next(it for it in layout["items"] if it["kind"] == "action")
+        action["config"]["route"] = "/summary"  # a GET route, not a POST one
+        r = await c.put("/api/v1/dev/modules/scaf/layout", json=layout)
+        assert r.status_code == 422
+        assert "no POST route '/summary' (has: /recount)" in r.json()["detail"]
+
+        # Unknown top-level keys are rejected, not silently dropped.
+        r = await c.put("/api/v1/dev/modules/scaf/layout", json={"version": 1, "x": 1})
+        assert r.status_code == 422
+
+
 async def test_dev_reload_endpoint(tmp_path: Path) -> None:
     async with _dev_client(tmp_path) as c:
         r = await c.post("/api/v1/dev/modules/sample_mod/reload")

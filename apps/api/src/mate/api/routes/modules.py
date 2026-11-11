@@ -48,6 +48,7 @@ from mate.api.modules.installs import (
 from mate.api.modules.uninstall import uninstall_for_user
 from mate.api.policy import SCOPE_CARD, resolve
 from mate.api.schemas.event_logs import LogModel
+from mate.sdk.layout import LAYOUT_FILENAME
 from mate.sdk.layout import ModuleLayout as FileModuleLayout
 from mate.sdk.manifest import Artifact, Source
 
@@ -82,6 +83,12 @@ def _module_folder(loader: ModuleLoader, module_id: str) -> Path | None:
     """
     folder = getattr(getattr(loader.loaded.get(module_id), "discovered", None), "folder", None)
     return folder if isinstance(folder, Path) else None
+
+
+def _has_page(loader: ModuleLoader, module_id: str, has_panel: bool) -> bool:
+    """A TSX panel or a declarative ``layout.json`` renders the module page."""
+    folder = _module_folder(loader, module_id)
+    return has_panel or (folder is not None and (folder / LAYOUT_FILENAME).is_file())
 
 
 def _has_guide(loader: ModuleLoader, module_id: str) -> bool:
@@ -158,8 +165,8 @@ class ModuleSummary(BaseModel):
     # installed before the rule - `GET /modules/{id}/guide` serves the text.
     has_guide: bool = False
     # Whether the module page renders the platform's log-scoped filter bar above
-    # the panel (manifest `frontend.log_filter`). Folds in `has_frontend`: with
-    # no panel there is no surface to filter.
+    # the panel (manifest `frontend.log_filter`). Folds in whether there is a page
+    # at all (a panel or a `layout.json`): with neither there is nothing to filter.
     supports_log_filter: bool = True
     enabled: bool = True
     is_confidential_safe: bool = False
@@ -244,7 +251,8 @@ async def list_modules(
             consumes=list(m.consumes),
             has_frontend=bool(m.frontend.panel),
             has_guide=_has_guide(loader, m.id),
-            supports_log_filter=bool(m.frontend.panel) and m.frontend.log_filter,
+            supports_log_filter=_has_page(loader, m.id, bool(m.frontend.panel))
+            and m.frontend.log_filter,
             enabled=enabled_map.get(m.id, m.default_enabled),
             is_confidential_safe=m.is_confidential_safe,
             availability=avail_map.get(m.id),

@@ -13,6 +13,7 @@ import {
   readWidgetFilter,
 } from "@/components/dashboards/widget-filter";
 import { useDatasetCatalog, type DashboardItem } from "@/lib/dashboard-queries";
+import { usePageParamsOptional, withQuery } from "@/lib/module-layout/page-params";
 import { normalize } from "@/lib/visualizations/adapters";
 import type { DatasetEnvelope, DatasetShape } from "@/lib/visualizations/types";
 
@@ -42,6 +43,10 @@ export interface DatasetDataResult {
  * the card's own per-widget filter (stored in `item.config`) emitted as a
  * per-request header. The widget filter's identity is in the query key so
  * editing it refetches; global toggles refetch via the provider's resetQueries.
+ *
+ * On a module layout page, the page params (`controls` cards) that the
+ * dataset's `params_schema.properties` declares are sent as query params and
+ * keyed on, so a control change refetches while the previous data stays shown.
  */
 export function useDatasetData(item: DashboardItem, logId: string | null): DatasetDataResult {
   const ref = item.dataset_ref ?? null;
@@ -66,15 +71,31 @@ export function useDatasetData(item: DashboardItem, logId: string | null): Datas
     ? encodeFilterHeader([...widgetFilter.timeFilters, ...widgetFilter.columnFilters])
     : null;
 
+  const pageValues = usePageParamsOptional()?.values;
+  const declared = entry?.params_schema?.properties;
+  const params = useMemo(() => {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(declared ?? {})) {
+      if (pageValues?.[k] !== undefined) out[k] = pageValues[k];
+    }
+    return out;
+  }, [declared, pageValues]);
+
   const q = useQuery({
-    queryKey: ["dataset-data", ref?.module_id, ref?.dataset_id, logId, widgetKey],
+    queryKey: ["dataset-data", ref?.module_id, ref?.dataset_id, logId, widgetKey, params],
     queryFn: () =>
       api<unknown>(
-        `/api/v1/modules/${ref!.module_id}${route}?log_id=${logId}`,
+        withQuery(`/api/v1/modules/${ref!.module_id}${route}`, { log_id: logId, ...params }),
         filterHeader ? { headers: { [EVENT_FILTER_HEADER]: filterHeader } } : undefined,
       ),
     enabled,
     staleTime: 30_000,
+    // Keep showing the old rows only while the same dataset+log refetches (a
+    // param or filter change), never data of another dataset or log.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey.slice(1, 4).join("|") === [ref?.module_id, ref?.dataset_id, logId].join("|")
+        ? prev
+        : undefined,
   });
 
   const envelope = useMemo(

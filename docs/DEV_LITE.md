@@ -116,21 +116,23 @@ make lite MODULES=my_module,other_module
 
 1. **New.** `make module-new ID=my_module` writes `modules/my_module/` with a
    `manifest.yaml` (`in_process`, inherits pandas and duckdb, one `summary` table
-   dataset), a `module.py` (route `GET /summary` with activity counts plus one
-   `@job`), a `HOW_TO_USE.md` that passes the guide check, a `layout.json` with
-   one table bound to `summary`, and `tests/test_my_module.py` (named after the
-   id so several modules' tests can run together). `PANEL=1` adds
+   dataset with a `top` param), a `module.py` (route `GET /summary?top=` with
+   activity counts plus a `POST /recount` `@job` example that caches them), a
+   `HOW_TO_USE.md` that passes the guide check, a `layout.json` that shows every
+   card kind (an intro text, a `top` slider, a **Recount** button and the
+   `summary` table), and `tests/test_my_module.py` (named after the id so several
+   modules' tests can run together). `PANEL=1` adds
    `panel/index.tsx` and sets `frontend.panel`. It refuses an existing folder and
    ids that are not snake_case. A new folder under `modules/` also needs a manual
    page: run `make docs` (and commit `landing/docs/site/`) before
    `apps/api/tests/test_module_guides.py` passes again.
 2. **Run.** `make lite MODULES=my_module`, open the sample log, then the module.
-   Without a panel, the module page renders `layout.json` read-only. With both,
-   you get **Panel** and **Layout** tabs.
+   The module page renders `layout.json` (with the log filter bar). With a panel
+   too, the layout's tabs come first and the panel is the last tab, **Panel**.
 3. **Build the UI.** Open **Dev** in the sidebar (`/dev`): it lists the loaded
    modules with load errors, datasets, widgets and debug info. **Studio**
-   (`/dev/studio/<id>`) edits the module's layout on the dashboard canvas, with a
-   palette limited to that module's datasets and widgets. **Save** writes
+   (`/dev/studio/<id>`) edits the module's page as it will look (see
+   [Studio](#studio-building-a-page-without-tsx)). **Save** writes
    `modules/<id>/layout.json`; **Reload module** reloads it like hot reload does.
    Write a `panel/` instead when the page needs custom interaction; the layout is
    the no-code alternative.
@@ -138,12 +140,123 @@ make lite MODULES=my_module,other_module
    (`sample_log`, `build_test_context`, `load_module`, see
    [modules/README.md §10](../modules/README.md#10-testing)). To debug a test,
    open a file of the module in VS Code and run **Python: module tests**.
-5. **Validate.** `make module-validate` checks the manifest, the guide, and that
-   every card in `layout.json` points at a dataset or widget the manifest declares.
-   Exit code 1 on any problem.
+5. **Validate.** `make module-validate` checks the manifest, the guide and
+   `layout.json` (rules under [Validation](#validation)). Exit code 1 on any
+   problem.
 6. **Ship.** Either commit the folder (it becomes a bundled default for everyone)
    or zip it and upload it under **Modules → Install a module** (`/modules/import`) (see
    [modules/README.md §11](../modules/README.md#11-distribution)).
+
+## Studio: building a page without TSX
+
+`layout.json` is a 12-column grid of cards, the same grid dashboards use. The
+Studio draws it inside the real module page (filter bar, tabs, page padding), so
+what you edit is what the module page shows.
+
+- **Edit** shows the palette and inspector as overlays. The grid is laid out at
+  the module page's width and scaled down to fit, so it stays editable on small
+  windows; the toolbar shows the zoom.
+- **Preview** (`?mode=preview`) renders the unsaved draft exactly as the module
+  page does. The **Edit** pill goes back.
+- Clicking an **action** card runs the real route on the selected log.
+
+### Card kinds
+
+Every card has `i`, `kind`, `x`, `y`, `w`, `h`, optional `title`, `config`, `tab`.
+
+| Kind | What it shows | Shape |
+|---|---|---|
+| `viz` | a generic visualization of a manifest dataset | `"dataset_ref": {"module_id": "m", "dataset_id": "summary"}, "viz_id": "table"` |
+| `widget` | one of `frontend.widgets` (TSX) | `"module_id": "m", "widget_id": "kpi"` |
+| `text` | markdown; frameless on the page | `"config": {"markdown": "## Heading\nIntro."}` |
+| `controls` | a form over page params or the module config | `"module_id": "m", "config": {"source": "params", "keys": ["top"]}` |
+| `action` | a button that POSTs a module route | `"module_id": "m", "config": {"route": "/recount", "label": "Recount"}` |
+
+`text`, `controls` and `action` exist only in `layout.json`; dashboards never
+offer them. A viz card's chart and field mapping are set in the inspector.
+
+Table viz: click a column header to sort. "Show as duration" in the viz
+settings shows seconds as 1d 2h / 3h 4m for table columns and for KPI grid,
+number and gauge measures; a KPI with `format: duration` gets this
+automatically.
+
+### Tabs
+
+```json
+{"version": 1,
+ "tabs": [{"id": "overview", "title": "Overview"}, {"id": "details", "title": "Details"}],
+ "items": [{"i": "a", "kind": "text", "x": 0, "y": 0, "w": 12, "h": 3,
+            "config": {"markdown": "Details"}, "tab": "details"}]}
+```
+
+A card without `tab` belongs to the first tab. Without `tabs`, no card may set
+`tab`. Tab ids are lowercase slugs. In the Studio, **Page** adds, renames and
+deletes tabs; deleting one moves its cards to the first remaining tab.
+
+### Params: controls -> datasets
+
+1. Declare the params on the dataset (same dialect as `config_schema`;
+   `ui.widget` picks the control):
+
+   ```yaml
+   datasets:
+     - id: summary
+       route: /summary
+       params_schema:
+         properties:
+           top: {type: integer, title: Top activities, default: 10, minimum: 1, maximum: 50, ui: {widget: slider}}
+   ```
+
+2. Accept them as handler arguments: `async def summary(self, ctx, top: int = 10)`.
+   An array param (a `multiselect`) must be marked as a query param, or FastAPI
+   reads it from the body and the handler gets `None`:
+   `activities: Annotated[list[str] | None, Query()] = None`.
+3. Add a `controls` card with `source: "params"` (`keys: []` means every param
+   of every dataset of the module).
+
+Param values live on the page, shared by all tabs, and are not saved in the URL.
+Only values the user changed are sent; otherwise the route's Python default
+applies. Each viz card sends only the params its own dataset declares.
+`source: "config"` edits the module config (`config_schema`) instead and saves
+it with a **Save** button.
+
+### Actions and jobs
+
+An `action` card POSTs `/api/v1/modules/<id><route>?log_id=...&<page params>`.
+A `@job` route returns a `job_id`; the card shows its progress and, when it
+finishes, refetches the module's cards. A plain POST route refetches right away.
+Handler arguments named like a page param receive its value; other params are
+ignored.
+
+### Validation
+
+Checked by `mate.sdk.layout` (load, Studio save) and `make module-validate`:
+
+- `version` is 1; unknown top-level keys are an error. Card ids and tab ids are
+  unique; every `tab` names a declared tab.
+- `viz` needs `dataset_ref` and `viz_id`; `widget` needs `widget_id`; `text`
+  needs `config.markdown`; `controls` and `action` need `module_id`.
+- `controls`: `source` is `params` or `config`; each key is declared in a
+  dataset's `params_schema` (or `config_schema`), and there is something to
+  control at all.
+- `action`: `route` starts with `/` and has no `?`. `validate` checks that the
+  route string appears in the module's `.py` files; the Studio save (422)
+  checks that the loaded module has that POST route.
+- Cards stay inside the 12 columns and only point at this module's own data.
+
+Not yet: horizontal bar charts, reference lines on charts, BPMN/Petri net
+visualizations and datasets taken from a route outside the manifest.
+
+### E2E check
+
+`make e2e-studio` scaffolds a throwaway `modules/e2e_studio`, starts the lite
+stack on ports 8777/3777 with a temporary data dir (your `data/lite` is not
+touched), checks with Playwright that the Studio's cards sit exactly where the
+module page puts them (1600x1000 and 1280x800), then stops the stack and
+deletes the folder and data dir. It downloads no browser itself.
+`@playwright/test` is pinned to 1.58.2 (Chromium r1208); if Playwright says no
+browser is available on your machine, run once
+`pnpm --filter web exec playwright install chromium`.
 
 ## Debugging
 

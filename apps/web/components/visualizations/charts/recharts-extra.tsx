@@ -30,6 +30,7 @@ import {
   asTable,
   categoryCols,
   CHART_COLORS,
+  formatMeasure,
   labelOf,
   numericCols,
   resolveValue,
@@ -42,27 +43,20 @@ function kpiItems(dataset: VizComponentProps["dataset"]): KpiMeasure[] {
   return dataset.shape === "kpi" ? (dataset.data as KpiData).items : [];
 }
 
-function fmtMeasure(m: KpiMeasure): string {
-  if (m.value == null) return "—";
-  if (typeof m.value === "string") return m.value;
-  if (m.format === "percent") return `${(m.value * 100).toFixed(1)}%`;
-  return formatNumber(m.value);
-}
-
 /** Single headline number (the first KPI measure). */
-export function NumberTileViz({ dataset }: VizComponentProps) {
+export function NumberTileViz({ dataset, options }: VizComponentProps) {
   const m = kpiItems(dataset)[0];
   if (!m) return <VizEmpty message={dataset.meta?.note} />;
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <p className="text-xs text-muted-foreground">{m.label}</p>
-      <p className="mt-1 text-4xl font-bold tabular-nums">{fmtMeasure(m)}</p>
+      <p className="mt-1 text-4xl font-bold tabular-nums">{formatMeasure(m, options)}</p>
     </div>
   );
 }
 
 /** Radial gauge for the first KPI measure (best for percent measures). */
-export function GaugeViz({ dataset }: VizComponentProps) {
+export function GaugeViz({ dataset, options }: VizComponentProps) {
   const items = kpiItems(dataset);
   const m = items[0];
   if (!m || typeof m.value !== "number") {
@@ -80,7 +74,7 @@ export function GaugeViz({ dataset }: VizComponentProps) {
         <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
         <RadialBar dataKey="value" background cornerRadius={8} />
         <text x="50%" y="48%" textAnchor="middle" dominantBaseline="middle" className="fill-foreground text-xl font-bold">
-          {fmtMeasure(m)}
+          {formatMeasure(m, options)}
         </text>
         <text x="50%" y="62%" textAnchor="middle" className="fill-muted-foreground text-[10px]">
           {m.label}

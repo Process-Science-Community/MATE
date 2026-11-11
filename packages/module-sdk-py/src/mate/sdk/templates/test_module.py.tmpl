@@ -21,6 +21,16 @@ def test_summary_counts_every_event() -> None:
     asyncio.run(check())
 
 
+def test_summary_top_limits_rows() -> None:
+    async def check() -> None:
+        ctx = await build_test_context(module_id="__ID__")
+        out = await MODULE.summary(ctx, top=2)  # type: ignore[attr-defined]
+        assert len(out["rows"]) == 2
+        assert out["rows"][0]["events"] >= out["rows"][1]["events"]
+
+    asyncio.run(check())
+
+
 def test_recount_job_caches_the_summary() -> None:
     async def check() -> None:
         ctx = await build_test_context(module_id="__ID__")

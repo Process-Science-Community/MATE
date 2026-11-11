@@ -15,7 +15,9 @@ import {
 import { DashboardCard } from "@/components/dashboards/dashboard-card";
 import {
   configDefaults,
+  ELEMENT_DEFAULTS,
   GRID,
+  isElementKind,
   rowsForPx,
   STACK_BELOW_PX,
   useCardCatalog,
@@ -24,6 +26,7 @@ import {
   type DashboardCard as CatalogCard,
   type DashboardItem,
   type DatasetCatalogEntry,
+  type ElementKind,
   type WidgetConfigSchema,
 } from "@/lib/dashboard-queries";
 import type { CardPatch } from "@/components/dashboards/dashboard-card";
@@ -166,11 +169,12 @@ type FreeResize = {
   snapshot: DashboardItem[];
 };
 
-/** A palette item being added: a module-authored widget card, or a generic-viz
- * card bound to a module dataset. */
+/** A palette item being added: a module-authored widget card, a generic-viz
+ * card bound to a module dataset, or a layout-only element (module Studio). */
 export type AddRequest =
   | { kind: "widget"; card: CatalogCard }
-  | { kind: "viz"; dataset: DatasetCatalogEntry };
+  | { kind: "viz"; dataset: DatasetCatalogEntry }
+  | { kind: "element"; element: ElementKind; moduleId: string };
 
 /** Synchronously begins a palette→canvas add at the pointer's position. The
  * canvas hands one of these to the palette (via a ref) so the palette's
@@ -182,6 +186,7 @@ export type AddStarter = (req: AddRequest, e: React.PointerEvent) => void;
  * viz's default geometry for a dataset (sized by its shape's default viz). */
 function addGeometry(req: AddRequest): { w: number; h: number } {
   if (req.kind === "widget") return { w: req.card.default_w, h: req.card.default_h };
+  if (req.kind === "element") return ELEMENT_DEFAULTS[req.element];
   const d = vizRegistry[defaultVizForShape(req.dataset.shape)]?.defaults;
   return { w: d?.w ?? 6, h: d?.h ?? 8 };
 }
@@ -203,6 +208,21 @@ function buildAddItem(req: AddRequest, i: string, x: number, y: number): Dashboa
       w: c.default_w,
       h: c.default_h,
       config: configDefaults(c.config_schema),
+    };
+  }
+  if (req.kind === "element") {
+    const d = ELEMENT_DEFAULTS[req.element];
+    return {
+      i,
+      kind: req.element,
+      // A text block belongs to no module; controls/actions talk to one.
+      ...(req.element === "text" ? {} : { module_id: req.moduleId }),
+      title: d.title,
+      x,
+      y,
+      w: d.w,
+      h: d.h,
+      config: structuredClone(d.config),
     };
   }
   const ds = req.dataset;
@@ -334,7 +354,11 @@ export function DashboardCanvas({
   // no gesture may start (see `stacked` below).
   const wrapRef = useRef<HTMLDivElement>(null);
   const containerWidth = useContainerWidth(wrapRef);
-  const stacked = containerWidth > 0 && containerWidth < STACK_BELOW_PX;
+  // The grid's width in layout px. Zoomed out (the Studio, fit-to-view), the
+  // grid is wider than it looks, so stacking and column math use the unscaled
+  // width. Zoom >= 1 keeps the measured width, exactly as before.
+  const layoutWidth = zoom < 1 ? containerWidth / zoom : containerWidth;
+  const stacked = containerWidth > 0 && layoutWidth < STACK_BELOW_PX;
   const freeReflow = editing && !stacked;
   // Gestures read the zoom through a ref so a mid-gesture zoom change (ctrl+
   // wheel while dragging) can't leave a stale factor in the closures.
@@ -407,7 +431,7 @@ export function DashboardCanvas({
   // the header renders a disabled affordance rather than a dead link.
   const drillHrefFor = useCallback(
     (it: DashboardItem): string | null => {
-      if (it.kind === "viz" || !it.module_id) return null;
+      if ((it.kind && it.kind !== "widget") || !it.module_id) return null;
       return resolveDrillHref({
         moduleId: it.module_id,
         logId,
@@ -453,7 +477,7 @@ export function DashboardCanvas({
     // pads by `margin` on both sides and gaps by `margin` between columns.
     const [marginX] = GRID.margin;
     const colWidth =
-      containerWidth > 0 ? (containerWidth - marginX * (cols + 1)) / cols : 0;
+      layoutWidth > 0 ? (layoutWidth - marginX * (cols + 1)) / cols : 0;
     /** Absolute pixel width -> the smallest column count that covers it. */
     const colsForPx = (px: number) =>
       colWidth > 0 && px > 0 ? Math.ceil((px + marginX) / (colWidth + marginX)) : 0;
@@ -484,9 +508,13 @@ export function DashboardCanvas({
             }
           : FALLBACK;
       }
+      if (isElementKind(it.kind)) {
+        const d = ELEMENT_DEFAULTS[it.kind];
+        return { resizable: true, minW: d.minW, minH: d.minH, fixedW: d.w, fixedH: d.h };
+      }
       return map.get(`${it.module_id}:${it.widget_id}`) ?? FALLBACK;
     };
-  }, [catalog, cols, containerWidth]);
+  }, [catalog, cols, layoutWidth]);
 
   // Live free-mode drag state. `liveItems` overrides the rendered layout while a
   // drag is in flight; `draggingId` marks the card whose transition is killed so
@@ -1262,7 +1290,11 @@ export function DashboardCanvas({
             className="pointer-events-none fixed z-50 max-w-[16rem] truncate rounded-md border border-border bg-card px-2 py-1 text-xs font-medium shadow-lg animate-in fade-in-0 zoom-in-95 duration-150"
             style={{ left: addPointer.x + 12, top: addPointer.y + 12 }}
           >
-            {addReq.kind === "widget" ? addReq.card.title : addReq.dataset.title}
+            {addReq.kind === "widget"
+              ? addReq.card.title
+              : addReq.kind === "element"
+                ? ELEMENT_DEFAULTS[addReq.element].title
+                : addReq.dataset.title}
           </div>,
           document.body,
         )}

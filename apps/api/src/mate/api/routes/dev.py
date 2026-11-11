@@ -18,6 +18,7 @@ from mate.api.config import get_settings
 from mate.api.modules import ModuleLoader, get_module_loader
 from mate.api.modules.discovery import DiscoveredModule
 from mate.api.routes.modules import read_module_file_layout
+from mate.sdk.decorators import get_job_spec, get_route_spec
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.layout import LAYOUT_FILENAME, ModuleLayout
 from mate.sdk.manifest import Manifest
@@ -37,7 +38,24 @@ def _entries(loader: ModuleLoader) -> dict[str, tuple[DiscoveredModule, str | No
     return out
 
 
-def _status(d: DiscoveredModule, load_error: str | None) -> dict[str, Any]:
+def _routes(loader: ModuleLoader, module_id: str) -> list[dict[str, Any]]:
+    """The loaded module's ``@route`` handlers (paths relative to the module);
+    ``[]`` for a module that failed to load. Same scan as ``ModuleLoader._bind``."""
+    lm = loader.loaded.get(module_id)
+    if lm is None:
+        return []
+    out: list[dict[str, Any]] = []
+    for attr_name in dir(type(lm.instance)):
+        fn = getattr(type(lm.instance), attr_name, None)
+        spec = get_route_spec(fn)
+        if spec is not None:
+            out.append(
+                {"method": spec.method, "path": spec.path, "job": get_job_spec(fn) is not None}
+            )
+    return sorted(out, key=lambda r: (r["path"], r["method"]))
+
+
+def _status(loader: ModuleLoader, d: DiscoveredModule, load_error: str | None) -> dict[str, Any]:
     m = d.manifest
     return {
         "id": m.id,
@@ -50,6 +68,7 @@ def _status(d: DiscoveredModule, load_error: str | None) -> dict[str, Any]:
         "isolation": m.dependencies.python.isolation,
         "execution": m.dependencies.python.execution,
         "load_error": load_error,
+        "routes": _routes(loader, m.id),
     }
 
 
@@ -69,7 +88,7 @@ async def dev_status(user: CurrentUserDep) -> dict[str, Any]:
         "modules_only": sorted(settings.modules_only_ids),
         "debugpy_port": settings.debugpy_port,
         "dev_force_thread": settings.dev_force_thread,
-        "modules": [_status(d, err) for _mid, (d, err) in sorted(_entries(loader).items())],
+        "modules": [_status(loader, d, err) for _mid, (d, err) in sorted(_entries(loader).items())],
     }
 
 
@@ -77,12 +96,24 @@ async def dev_status(user: CurrentUserDep) -> dict[str, Any]:
 async def put_layout(module_id: str, layout: ModuleLayout, user: CurrentUserDep) -> dict[str, Any]:
     """Write ``modules/<id>/layout.json``. Only repo modules under ``modules_dir``;
     an upload's folder is never written."""
-    d, _err = _entry_or_404(get_module_loader(), module_id)
+    loader = get_module_loader()
+    d, _err = _entry_or_404(loader, module_id)
     folder = Path(d.folder).resolve()
     if not folder.is_relative_to(get_settings().modules_dir.resolve()):
         raise HTTPException(
             status_code=403, detail=f"Module {module_id!r} is not under the modules dir."
         )
+    # Only checkable for a loaded module; a failed load has no routes to compare.
+    if module_id in loader.loaded:
+        posts = sorted(r["path"] for r in _routes(loader, module_id) if r["method"] == "POST")
+        for item in layout.items:
+            route = item.config.get("route")
+            if item.kind == "action" and route not in posts:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"action card {item.i!r}: module has no POST route {route!r} "
+                    f"(has: {', '.join(posts) or 'none'})",
+                )
     layout.dump(folder)
     return {"layout": read_module_file_layout(folder)}
 
@@ -103,4 +134,4 @@ async def reload_module(module_id: str, user: CurrentUserDep) -> dict[str, Any]:
         except Exception:
             # Also recorded in loader.load_errors and returned below.
             log.exception("modules.dev.reload_failed", module_id=module_id)
-    return _status(*_entry_or_404(loader, manifest.id))
+    return _status(loader, *_entry_or_404(loader, manifest.id))

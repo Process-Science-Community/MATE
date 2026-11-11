@@ -32,4 +32,14 @@ datasets:
     icon: Table
     shape: table
     route: /summary
+    # Query params the route accepts; a `controls` card in layout.json edits them.
+    params_schema:
+      properties:
+        top:
+          type: integer
+          title: Top activities
+          default: 10
+          minimum: 1
+          maximum: 50
+          ui: {widget: slider}
 __FRONTEND__

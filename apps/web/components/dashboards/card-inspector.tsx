@@ -14,7 +14,14 @@ import { WidgetHelpBody, hasHelp } from "@/components/dashboards/kit/help";
 import { cardIcon } from "@/components/dashboards/card-icon";
 import { drillLabel, resolveDrillHref } from "@/lib/dashboards/drill";
 import type { CardPatch } from "@/components/dashboards/dashboard-card";
-import type { DashboardCard, DashboardItem } from "@/lib/dashboard-queries";
+import { VizSettings } from "@/components/dashboards/generic-viz-card";
+import { ElementSettings } from "@/components/module-layout/elements";
+import {
+  ELEMENT_DEFAULTS,
+  isElementKind,
+  type DashboardCard,
+  type DashboardItem,
+} from "@/lib/dashboard-queries";
 
 /** Config key holding the KPI subset a placement shows. Read by widgets that
  * declare `kpis:` in their manifest. */
@@ -118,8 +125,14 @@ function SingleCard({
     ? (item.config[KPIS_CONFIG_KEY] as string[])
     : kpis.filter((k) => k.default !== false).map((k) => k.id);
 
+  const defaultSize = meta
+    ? { w: meta.default_w, h: meta.default_h }
+    : isElementKind(item.kind)
+      ? ELEMENT_DEFAULTS[item.kind]
+      : null;
+
   const drillHref =
-    item.kind === "viz" || !item.module_id
+    (item.kind && item.kind !== "widget") || !item.module_id
       ? null
       : resolveDrillHref({ moduleId: item.module_id, logId, manifestDrill: meta?.drill });
 
@@ -147,45 +160,60 @@ function SingleCard({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-3">
-          <Section title="Card">
-            <div className="space-y-1.5">
-              <Label htmlFor="inspector-title" className="text-xs">
-                Title
-              </Label>
-              <Input
-                id="inspector-title"
-                value={item.title ?? ""}
-                onChange={(e) => onUpdate({ title: e.target.value })}
-                placeholder={meta?.title ?? item.widget_id}
-                className="h-8 text-xs"
-              />
-            </div>
-
-            {views.length > 1 && (
+          {/* Element kinds edit their title in ElementSettings below. */}
+          {!isElementKind(item.kind) && (
+            <Section title="Card">
               <div className="space-y-1.5">
-                <Label className="text-xs">View</Label>
-                <div className="flex flex-wrap gap-1">
-                  {views.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      aria-pressed={v.id === activeViewId}
-                      onClick={() => setConfig("view", v.id)}
-                      title={v.description ?? undefined}
-                      className={cn(
-                        "rounded-md border px-2 py-1 text-xs transition-colors",
-                        v.id === activeViewId
-                          ? "border-primary/40 bg-primary/10 text-foreground"
-                          : "border-border text-muted-foreground hover:bg-muted/50",
-                      )}
-                    >
-                      {v.title}
-                    </button>
-                  ))}
-                </div>
+                <Label htmlFor="inspector-title" className="text-xs">
+                  Title
+                </Label>
+                <Input
+                  id="inspector-title"
+                  value={item.title ?? ""}
+                  onChange={(e) => onUpdate({ title: e.target.value })}
+                  placeholder={meta?.title ?? item.widget_id}
+                  className="h-8 text-xs"
+                />
               </div>
-            )}
-          </Section>
+
+              {views.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">View</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {views.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        aria-pressed={v.id === activeViewId}
+                        onClick={() => setConfig("view", v.id)}
+                        title={v.description ?? undefined}
+                        className={cn(
+                          "rounded-md border px-2 py-1 text-xs transition-colors",
+                          v.id === activeViewId
+                            ? "border-primary/40 bg-primary/10 text-foreground"
+                            : "border-border text-muted-foreground hover:bg-muted/50",
+                        )}
+                      >
+                        {v.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Section>
+          )}
+
+          {item.kind === "viz" && (
+            <Section title="Visualization">
+              <VizSettings item={item} logId={logId} onChange={onUpdate} />
+            </Section>
+          )}
+
+          {isElementKind(item.kind) && (
+            <Section title="Element">
+              <ElementSettings item={item} onChange={onUpdate} />
+            </Section>
+          )}
 
           {kpis.length > 0 && (
             <Section
@@ -247,15 +275,13 @@ function SingleCard({
               <NumberField label="W" value={item.w} onChange={(w) => onUpdate({ w } as CardPatch)} />
               <NumberField label="H" value={item.h} onChange={(h) => onUpdate({ h } as CardPatch)} />
             </div>
-            {meta && (
+            {defaultSize && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() =>
-                  onUpdate({ w: meta.default_w, h: meta.default_h } as CardPatch)
-                }
+                onClick={() => onUpdate({ w: defaultSize.w, h: defaultSize.h })}
               >
                 Reset to default size
               </Button>

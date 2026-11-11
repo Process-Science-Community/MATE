@@ -86,7 +86,7 @@ const TONES: Record<CalloutTone, { label: string; icon: LucideIcon; className: s
   },
 };
 
-function Markdown({ text }: { text: string }) {
+export function Markdown({ text }: { text: string }) {
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
       {text}

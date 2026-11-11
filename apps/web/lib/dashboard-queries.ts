@@ -29,11 +29,28 @@ export interface DatasetRef {
   dataset_id: string;
 }
 
+/** Layout-only card kinds (module `layout.json`, never dashboards): a markdown
+ * block, page controls, and a run button for a module POST route. */
+export type ElementKind = "text" | "controls" | "action";
+export const ELEMENT_KINDS: readonly ElementKind[] = ["text", "controls", "action"];
+export const isElementKind = (k: unknown): k is ElementKind =>
+  ELEMENT_KINDS.includes(k as ElementKind);
+export const ELEMENT_DEFAULTS: Record<
+  ElementKind,
+  { title: string; w: number; h: number; minW: number; minH: number; config: Record<string, unknown> }
+> = {
+  text: { title: "Text", w: 12, h: 3, minW: 2, minH: 1, config: { markdown: "## Heading\nDescribe what this page shows." } },
+  controls: { title: "Controls", w: 12, h: 4, minW: 3, minH: 3, config: { source: "params", keys: [] } },
+  action: { title: "Run", w: 3, h: 4, minW: 2, minH: 3, config: { route: "", label: "Run" } },
+};
+
 export interface DashboardItem {
   i: string;
   /** Discriminates the card type. Absent on legacy items (they predate the
-   * field) ⇒ treated as "widget". */
-  kind?: "widget" | "viz";
+   * field) ⇒ treated as "widget". Element kinds only occur in module layouts. */
+  kind?: "widget" | "viz" | ElementKind;
+  /** Module layouts with `tabs`: the tab this card sits on (absent ⇒ first tab). */
+  tab?: string;
   /** widget cards: present when kind is "widget" (or legacy). */
   module_id?: string;
   widget_id?: string;

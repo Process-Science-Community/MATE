@@ -78,7 +78,9 @@ export default async function PlatformLayout({
         <Suspense>
           <Topbar />
         </Suspense>
-        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+        {/* Stable gutter: content width never depends on whether this scrolls,
+            so the Studio (never scrolls main) lays out at the module page's width. */}
+        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">{children}</main>
       </div>
       <MateAiSidebar />
       <ModuleGuidePanel />

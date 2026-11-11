@@ -17,7 +17,7 @@ cd "$ROOT"
 PORT="${PORT:-8000}"
 WEB_PORT="${WEB_PORT:-3000}"
 MODULES="${MODULES:-}"
-LITE_DIR="$ROOT/data/lite"
+LITE_DIR="${LITE_DIR:-$ROOT/data/lite}"
 
 usage() {
   sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'

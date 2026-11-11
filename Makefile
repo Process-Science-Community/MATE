@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install check-env preflight dev dev-api dev-web lite lite-reset module-new module-validate module-test up up-dev down build test typecheck fmt clean codegen docs deploy
+.PHONY: help install check-env preflight dev dev-api dev-web lite lite-reset e2e-studio module-new module-validate module-test up up-dev down build test typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -48,9 +48,12 @@ lite: ## Low-memory native stack, no .env needed: make lite [MODULES=a,b] [PORT=
 lite-reset: ## Wipe the lite stack's data (data/lite only)
 	rm -rf data/lite
 
+e2e-studio: ## Playwright check that the Studio matches the module page (scaffolds a throwaway module)
+	bash scripts/e2e-studio.sh
+
 module-new: ## Scaffold modules/<ID>: make module-new ID=my_module [PANEL=1]
 	@test -n "$(ID)" || { echo "usage: make module-new ID=my_module [PANEL=1]"; exit 2; }
-	uv run --extra dev mate-module new "$(ID)" $(if $(PANEL),--panel)
+	uv run --extra dev mate-module new "$(ID)" $(if $(filter 1 yes true,$(PANEL)),--panel)
 
 module-validate: ## Validate every module (manifest, HOW_TO_USE, layout.json)
 	uv run --extra dev mate-module validate

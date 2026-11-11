@@ -151,6 +151,10 @@ function apiErrorMessage(status: number, detail: unknown): string {
   }
   if (typeof inner === "string" && inner) return `API ${status}: ${inner}`;
   if (inner == null || inner === "") return `API ${status}`;
+  // FastAPI request validation: [{loc, msg, type}, ...] -> "msg; msg".
+  if (Array.isArray(inner) && inner.length && inner.every((e) => typeof e?.msg === "string")) {
+    return `API ${status}: ${inner.map((e: { msg: string }) => e.msg).join("; ")}`;
+  }
   return `API ${status}: ${JSON.stringify(inner)}`;
 }
 

@@ -5,8 +5,10 @@
     mate-module test my_module [--dir modules] [PYTEST_ARGS ...]
 
 ``validate`` checks ``manifest.yaml``, ``HOW_TO_USE.md`` (``mate.sdk.guide``) and, when
-present, ``layout.json``: its schema, and that every card points at one of the module's
-own manifest ``datasets`` / ``frontend.widgets``. Exit status 0 when all pass, else 1.
+present, ``layout.json``: its schema, that every card points at one of the module's own
+manifest ``datasets`` / ``frontend.widgets``, that ``controls`` keys are declared
+(``params_schema`` / ``config_schema``) and that ``action`` routes exist in the source.
+Exit status 0 when all pass, else 1.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import sys
 from collections.abc import Sequence
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.guide import _module_dirs, check_guide  # pyright: ignore[reportPrivateUsage]
@@ -100,6 +103,8 @@ def _layout_problems(folder: Path, manifest: Manifest) -> list[str]:
         return []
     datasets = {d.id for d in manifest.datasets}
     widgets = {w.id for w in manifest.frontend.widgets}
+    params = {k for d in manifest.datasets for k in _properties(d.params_schema)}
+    config_keys = set(_properties(manifest.config_schema))
     problems: list[str] = []
     for item in layout.items:
         where = f"{LAYOUT_FILENAME}: card {item.i!r}"
@@ -116,7 +121,43 @@ def _layout_problems(folder: Path, manifest: Manifest) -> list[str]:
                 f"{where} uses widget {item.widget_id!r}, which `frontend.widgets` does not "
                 f"declare (declared: {', '.join(sorted(widgets)) or 'none'})."
             )
+        elif item.kind == "controls":
+            config_source = item.config.get("source", "params") == "config"
+            known = config_keys if config_source else params
+            schema = "`config_schema`" if config_source else "a dataset's `params_schema`"
+            keys: list[str] = item.config.get("keys", [])
+            if not known:
+                problems.append(f"{where} has nothing to control; declare {schema}.")
+            problems += [
+                f"{where} controls {key!r}, which {schema} does not declare "
+                f"(declared: {', '.join(sorted(known))})."
+                for key in keys
+                if known and key not in known
+            ]
+        elif item.kind == "action":
+            route: str = item.config["route"]
+            # shortcut: static source scan, upgrade to importing the class if routes are
+            # built dynamically. Only the module's own source (not .venv, tests) and only
+            # the quoted literal count.
+            literals = (f'"{route}"', f"'{route}'")
+            if not any(
+                any(lit in p.read_text(encoding="utf-8", errors="replace") for lit in literals)
+                for p in folder.rglob("*.py")
+                if not _SCAN_SKIP.intersection(p.relative_to(folder).parts[:-1])
+            ):
+                problems.append(
+                    f"{where} runs route {route!r}, which no .py file in the module mentions; "
+                    f"add `@route.post({route!r})`."
+                )
     return problems
+
+
+_SCAN_SKIP = {".venv", "venv", ".dist", "node_modules", "__pycache__", "tests"}
+
+
+def _properties(schema: dict[str, Any] | None) -> dict[str, Any]:
+    props = (schema or {}).get("properties")
+    return props if isinstance(props, dict) else {}
 
 
 def _validate(args: argparse.Namespace) -> int:

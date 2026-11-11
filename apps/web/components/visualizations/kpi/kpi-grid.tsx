@@ -1,21 +1,12 @@
 "use client";
 
-import { formatNumber } from "@/lib/format";
-import type { KpiData, KpiMeasure, VizComponentProps } from "@/lib/visualizations/types";
+import type { KpiData, VizComponentProps } from "@/lib/visualizations/types";
 import { VizEmpty } from "@/components/visualizations/viz-shell";
-
-function format(m: KpiMeasure): string {
-  if (m.value == null) return "—";
-  if (typeof m.value === "string") return m.value;
-  const v = m.value;
-  if (m.format === "percent") return `${(v * 100).toFixed(1)}%`;
-  if (m.format === "integer") return formatNumber(Math.round(v));
-  return formatNumber(v);
-}
+import { formatMeasure } from "@/components/visualizations/charts/chart-common";
 
 /** Grid of headline measures for a `kpi`-shaped dataset (complexity metrics,
  * conformance score, ...). */
-export function KpiGridViz({ dataset }: VizComponentProps) {
+export function KpiGridViz({ dataset, options }: VizComponentProps) {
   const data = dataset.shape === "kpi" ? (dataset.data as KpiData) : { items: [] };
   if (data.items.length === 0) {
     return <VizEmpty message={dataset.meta?.note} />;
@@ -28,7 +19,7 @@ export function KpiGridViz({ dataset }: VizComponentProps) {
             {m.label}
           </p>
           <p className="mt-0.5 text-lg font-semibold tabular-nums">
-            {format(m)}
+            {formatMeasure(m, options)}
             {m.unit && <span className="ml-0.5 text-xs font-normal text-muted-foreground">{m.unit}</span>}
           </p>
         </div>

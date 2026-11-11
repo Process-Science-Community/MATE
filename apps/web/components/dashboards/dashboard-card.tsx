@@ -22,9 +22,11 @@ import { GenericVizBody, VizSettings } from "@/components/dashboards/generic-viz
 import { WidgetHelpBody, hasHelp } from "@/components/dashboards/kit/help";
 import { CardRunGate } from "@/components/dashboards/card-run-gate";
 import { useDashboardFilterOptional } from "@/components/dashboards/dashboard-filter";
+import { ElementBody, ElementSettings } from "@/components/module-layout/elements";
 import type { DrillHandler } from "@/lib/dashboards/drill";
 import {
   DEFAULT_CARD_CHROME,
+  isElementKind,
   type CardChrome,
   type DashboardItem,
   type WidgetConfigSchema,
@@ -50,6 +52,7 @@ export interface CardPatch {
  * One placed card on the dashboard grid. Dispatches on `item.kind`:
  *   - "widget" (default/legacy): a module-authored bundle via `useWidget`.
  *   - "viz": a generic visualization bound to a module dataset.
+ *   - "text" | "controls" | "action": layout-only elements (module layouts).
  * The header chrome (drag handle, settings popover, remove) is shared; only the
  * body and the settings form differ.
  */
@@ -92,16 +95,47 @@ export const DashboardCard = memo(function DashboardCard({
   onRemove: () => void;
 }) {
   const isViz = item.kind === "viz";
+  const isElement = isElementKind(item.kind);
   const title = item.title || (isViz ? "Visualization" : item.widget_id) || "Card";
   const showHelp = hasHelp(help, description);
   // `Optional` because a card also renders in the palette preview and in tests,
   // outside a filter provider.
   const refetching = useDashboardFilterOptional()?.isRefetching ?? false;
-  // A viz card renders a platform visualization of a dataset, so there is no
-  // module view behind it to open — the canvas passes a null href for those.
-  const canDrill = !isViz;
+  // Only a widget card has a module view behind it to open; viz cards and
+  // layout elements get a null href from the canvas, so hide the button.
+  const canDrill = !item.kind || item.kind === "widget";
   // Don't let a drag begin when the user interacts with header controls.
   const stopDrag = (e: React.MouseEvent | React.PointerEvent) => e.stopPropagation();
+
+  // A text block reads as page copy, not a card: no frame or header. In edit
+  // mode the whole block is the drag handle (a header would push the copy down
+  // and clip it, so the Studio would no longer show what the page shows).
+  if (item.kind === "text") {
+    if (!editing) {
+      return (
+        <div className="h-full overflow-hidden">
+          <ElementBody item={item} logId={logId} editing={false} />
+        </div>
+      );
+    }
+    return (
+      <div className="dashboard-card-root dashboard-drag-handle group/text relative h-full overflow-hidden rounded-lg ring-1 ring-border/60 transition-[box-shadow,outline-color] duration-150 hover:ring-border">
+        <ElementBody item={item} logId={logId} editing />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove ${item.title || "text"}`}
+          className="absolute right-1 top-1 h-5 w-5 bg-card/80 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover/text:opacity-100"
+          onMouseDown={stopDrag}
+          onPointerDown={stopDrag}
+          onClick={onRemove}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -207,7 +241,7 @@ export const DashboardCard = memo(function DashboardCard({
                   variant="ghost"
                   size="icon"
                   aria-label={`Configure ${title}`}
-                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                  className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
                   onMouseDown={stopDrag}
                   onPointerDown={stopDrag}
                 >
@@ -225,6 +259,8 @@ export const DashboardCard = memo(function DashboardCard({
                 </PopoverHeader>
                 {isViz ? (
                   <VizSettings item={item} logId={logId} onChange={onUpdate} />
+                ) : isElement ? (
+                  <ElementSettings item={item} onChange={onUpdate} />
                 ) : (
                   <CardConfigForm item={item} schema={schema} onChange={onUpdate} />
                 )}
@@ -235,7 +271,7 @@ export const DashboardCard = memo(function DashboardCard({
               variant="ghost"
               size="icon"
               aria-label={`Remove ${title}`}
-              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+              className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
               onMouseDown={stopDrag}
               onPointerDown={stopDrag}
               onClick={onRemove}
@@ -264,11 +300,16 @@ export const DashboardCard = memo(function DashboardCard({
             its body mounts. The module is the widget's, or the viz card's dataset. */}
         <CardRunGate
           logId={logId}
-          moduleId={isViz ? item.dataset_ref?.module_id : item.module_id}
+          // Elements are never gated: an action card is how a run gets started.
+          moduleId={
+            isElement ? undefined : isViz ? item.dataset_ref?.module_id : item.module_id
+          }
           isOwner={isOwner}
         >
           {isViz ? (
             <GenericVizBody item={item} logId={logId} />
+          ) : isElement ? (
+            <ElementBody item={item} logId={logId} editing={editing} />
           ) : (
             // Scoped so a widget that mounts its module's settings provider gets
             // THIS card's bucket rather than the panel's — that is what lets one
