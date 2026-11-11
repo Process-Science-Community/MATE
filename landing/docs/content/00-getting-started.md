@@ -131,7 +131,7 @@ The API health check deliberately allows ten minutes for this. Later boots hash 
 | Command | What you get |
 | --- | --- |
 | `make up` | Base compose file: production-style images, detached. The default. |
-| `make up-dev` | Base plus `compose.dev.yml`: hot reload inside Docker. |
+| `make up DEV=1` | Base plus `compose.dev.yml`: hot reload inside Docker. |
 | `make dev` | Host dev servers (API + web) with the fastest reload. Needs `uv`, `pnpm`, Python 3.12. |
 | Prod overlay | `docker-compose.prod.yml`: Caddy with TLS, one public origin, no public app ports. See [Deployment](deployment.html). |
 

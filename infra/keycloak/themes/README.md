@@ -75,7 +75,7 @@ to point at Profile -> Sign-in methods. Why it does not link instead:
 ## Working on it
 
 Run Keycloak with the dev overlay, which turns theme caching off, so an edit shows
-on a browser reload (`make up-dev` starts it too, with the rest of the stack):
+on a browser reload (`make up DEV=1` starts it too, with the rest of the stack):
 
 ```
 docker compose -f docker-compose.yml -f compose.dev.yml up -d keycloak

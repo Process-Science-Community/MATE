@@ -64,7 +64,7 @@ build it. Source lives in
 rebuild with
 
 ```bash
-make sdk-jvm   # needs a JDK 17+ on the dev machine
+make jvm   # needs a JDK 17+ on the dev machine
 ```
 
 which recompiles the SDK + example and copies the fat jar back here. The

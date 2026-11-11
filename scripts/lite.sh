@@ -149,7 +149,7 @@ if curl -fsS "$API/health" >/dev/null 2>&1; then
   Studio       http://localhost:$WEB_PORT/dev
   API          http://localhost:$PORT   (docs: /docs)
   Debugger     debugpy on 127.0.0.1:$DEBUGPY_PORT  (0 = off; VS Code: "Attach: MATE API (lite)")
-  Data dir     $LITE_DIR   (wipe: make lite-reset)
+  Data dir     $LITE_DIR   (wipe: make reset)
   MODULES      ${MODULES:-all}
   Loaded       ${loaded:-?}
   ---------------------------------------------------------------

@@ -3,7 +3,7 @@ import path from "node:path";
 import { defineConfig } from "@playwright/test";
 
 /**
- * Browser checks against a running lite stack (`make e2e-studio` starts one).
+ * Browser checks against a running lite stack (`make e2e` starts one).
  * @playwright/test is pinned to 1.58.2, whose Chromium (r1208) is already in
  * the local Playwright cache; elsewhere run `pnpm --filter web exec playwright
  * install chromium` once.

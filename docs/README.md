@@ -6,7 +6,7 @@ Every markdown doc in the repo, what it covers, and when to read it.
 
 | File | What it is |
 | --- | --- |
-| [`/README.md`](../README.md) | Entry point: quick start, running modes (`make dev` / `up` / `up-dev` / prod overlay), bundled modules, configuration, data layout. Read first. |
+| [`/README.md`](../README.md) | Entry point: quick start, running modes (`make dev` / `up` / `up DEV=1` / prod overlay), bundled modules, configuration, data layout. Read first. |
 | [`/CLAUDE.md`](../CLAUDE.md) | Orientation for Claude Code (claude.ai/code): commands, architecture summary, conventions. Kept in root because the tool loads it from there. |
 | [`/PRODUCT.md`](../PRODUCT.md) | Product definition for design tooling (users, brand personality, design principles, accessibility targets). Read by the `impeccable` design skill's context script — must stay in root. |
 

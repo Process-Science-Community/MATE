@@ -16,7 +16,7 @@ The transport is **streamable HTTP** at `/mcp`. Every call acts as exactly one a
 
 3. First calls: `get_server_info` → `list_processes` → pick a `log_id` → `get_process_overview(log_id)`.
 
-Local dev: `MCP_ENABLED=1` in `.env`, restart the API (`make dev-api`), endpoint `http://localhost:8000/mcp`.
+Local dev: `MCP_ENABLED=1` in `.env`, restart the API (`make api`), endpoint `http://localhost:8000/mcp`.
 
 ## Endpoint & availability
 

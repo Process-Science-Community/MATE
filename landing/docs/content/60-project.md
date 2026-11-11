@@ -39,8 +39,8 @@ make dev           # alembic upgrade head, then uvicorn --reload and next dev
 
 | Task | Command |
 | --- | --- |
-| Both servers with reload | `make dev` (or `make dev-api`, `make dev-web`) |
-| Both servers in containers with reload | `make up-dev` |
+| Both servers with reload | `make dev` (or `make api`, `make web`) |
+| Both servers in containers with reload | `make up DEV=1` |
 | API tests | `make test` |
 | One test | `uv run --extra dev pytest apps/api/tests/test_x.py::test_y -v` |
 | One module's tests | `uv run pytest modules/<folder>/tests` |

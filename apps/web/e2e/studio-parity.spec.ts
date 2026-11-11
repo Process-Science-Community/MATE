@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * The Studio must show a module's page 1:1: Preview renders the same tree at the
  * same place, Edit renders the same grid scaled by `data-zoom`. Needs a lite
- * stack with the scaffolded module loaded (`make e2e-studio` sets that up).
+ * stack with the scaffolded module loaded (`make e2e` sets that up).
  */
 
 const API = process.env.E2E_API_URL ?? "http://127.0.0.1:8777";

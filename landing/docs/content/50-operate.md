@@ -11,7 +11,7 @@ Two deployments are supported: a local stack on one machine, and a production de
 | Command | Compose files | Use |
 | --- | --- | --- |
 | `make up` | `docker-compose.yml` | Local preview, workshops, single-user installations. |
-| `make up-dev` | `+ compose.dev.yml` | Development with hot reload inside containers. |
+| `make up DEV=1` | `+ compose.dev.yml` | Development with hot reload inside containers. |
 | `make dev` | none | Host dev servers, fastest reload. |
 | Production | `+ docker-compose.prod.yml` | A VM behind an edge proxy, with TLS and resource caps. |
 

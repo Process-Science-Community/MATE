@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install check-env preflight dev dev-api dev-web lite lite-reset e2e-studio module-new module-list module-validate module-test up up-dev down build test typecheck fmt clean codegen docs deploy
+.PHONY: help install checkenv preflight dev api web lite reset e2e new modules validate up down build test jvm typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -10,13 +10,13 @@ WEB_PORT ?= 3000
 MODULES ?=
 
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*##"; printf "\nMate – common tasks\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nMate – common tasks\n\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 install: ## Resolve all deps (uv + pnpm)
 	uv sync --extra dev
 	pnpm install
 
-check-env: ## Validate the root environment file before starting Docker
+checkenv: ## Validate the root environment file before starting Docker
 	@sh ./scripts/check-local-env.sh true
 
 preflight: ## Validate local env, free $(PORT), and reap stale workers
@@ -35,41 +35,38 @@ dev: preflight ## Run the API and the web dev server together (no docker)
 	(cd apps/web && pnpm dev) & \
 	wait
 
-dev-api: preflight ## Run only the API (with --reload)
+api: preflight ## Run only the API (with --reload)
 	uv run alembic -c apps/api/alembic.ini upgrade head
 	uv run uvicorn mate.api.main:app --reload --reload-dir apps/api/src --reload-dir packages/module-sdk-py/src --app-dir apps/api/src --host 127.0.0.1 --port $(PORT) --timeout-graceful-shutdown 3
 
-dev-web: preflight ## Run only the web dev server
+web: preflight ## Run only the web dev server
 	set -a; . ./.env; set +a; cd apps/web && pnpm dev
 
 lite: ## Low-memory native stack, no .env needed: make lite [MODULES=a,b] [PORT=] [WEB_PORT=]
 	@MODULES="$(MODULES)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" bash ./scripts/lite.sh
 
-lite-reset: ## Wipe the lite stack's data (data/lite only)
+reset: ## Wipe the lite stack's data (data/lite only)
 	rm -rf data/lite
 
-e2e-studio: ## Playwright check that the Studio matches the module page (scaffolds a throwaway module)
+e2e: ## Playwright check that the Studio matches the module page (scaffolds a throwaway module)
 	bash scripts/e2e-studio.sh
 
-module-new: ## Scaffold modules/<ID>: make module-new ID=my_module [PANEL=1]
-	@test -n "$(ID)" || { echo "usage: make module-new ID=my_module [PANEL=1]"; exit 2; }
+new: ## Scaffold modules/<ID>: make new ID=my_module [PANEL=1]
+	@test -n "$(ID)" || { echo "usage: make new ID=my_module [PANEL=1]"; exit 2; }
 	uv run --extra dev mate-module new "$(ID)" $(if $(filter 1 yes true,$(PANEL)),--panel)
 
-module-list: ## List every module: id, version, name, runtime, UI
+modules: ## List every module: id, version, name, runtime, UI
 	uv run --extra dev mate-module list
 
-module-validate: ## Validate every module (manifest, HOW_TO_USE, layout.json)
+validate: ## Validate every module (manifest, HOW_TO_USE, layout.json)
 	uv run --extra dev mate-module validate
 
-module-test: ## Run one module's tests: make module-test ID=my_module
-	@test -n "$(ID)" || { echo "usage: make module-test ID=my_module"; exit 2; }
-	uv run --extra dev mate-module test "$(ID)"
-
-up: check-env ## docker compose up (production-style images)
-	docker compose up -d --build
-
-up-dev: check-env ## docker compose with the dev overlay (uvicorn --reload + next dev)
+up: checkenv ## docker compose up (production-style images); DEV=1 adds the dev overlay (--reload, next dev)
+ifneq ($(filter 1 yes true,$(DEV)),)
 	docker compose -f docker-compose.yml -f compose.dev.yml up --build
+else
+	docker compose up -d --build
+endif
 
 down: ## Stop the compose stack
 	docker compose down
@@ -77,10 +74,14 @@ down: ## Stop the compose stack
 build: ## Build both Docker images
 	docker compose build
 
-test: ## Run the Python test suite
+test: ## Run the Python test suite; make test ID=my_module runs one module's tests
+ifneq ($(ID),)
+	uv run --extra dev mate-module test "$(ID)"
+else
 	uv run --extra dev pytest apps/api/tests -v
+endif
 
-sdk-jvm: ## Build the JVM module SDK + example + conformance jars (needs JDK 17+)
+jvm: ## Build the JVM module SDK + example + conformance jars (needs JDK 17+)
 	cd packages/module-sdk-jvm && ./gradlew build shadowJar :examples:performance-metrics:copyExampleJar
 
 typecheck: ## Type-check the web app

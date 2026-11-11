@@ -80,8 +80,8 @@ def _new(args: argparse.Namespace) -> int:
         out.write_text(text, encoding="utf-8")
     print(
         f"created {target}\n"
-        f"next: fill in the TODOs, then `make module-test ID={module_id}` and "
-        f"`make module-validate`."
+        f"next: fill in the TODOs, then `make test ID={module_id}` and "
+        f"`make validate`."
     )
     return 0
 

@@ -25,8 +25,8 @@ Two toolchains: **uv** (Python workspace) and **pnpm** (JS workspace). The `Make
 make install        # uv sync --extra dev  +  pnpm install
 make dev            # run API (uvicorn --reload) + web (next dev) together, no Docker
 make lite           # low-memory native stack, no .env: MODULES=a,b, demo login, data/lite/, debugpy :5678 (docs/DEV_LITE.md)
-make dev-api        # API only – runs alembic upgrade head first, then uvicorn
-make dev-web        # web only
+make api        # API only – runs alembic upgrade head first, then uvicorn
+make web        # web only
 make test           # uv run --extra dev pytest apps/api/tests -v
 make typecheck      # cd apps/web && pnpm typecheck (tsc --noEmit)
 make fmt            # ruff check --fix . && ruff format .
@@ -35,9 +35,9 @@ make up / up-dev    # docker compose (prod-style / dev overlay with hot reload)
 ```
 
 - **Run a single Python test:** `uv run --extra dev pytest apps/api/tests/test_foo.py::test_bar -v`
-- **Modules:** `make module-new ID=x [PANEL=1]` scaffolds, `make module-test ID=x` runs `modules/x/tests`, `make module-validate` checks manifest + `HOW_TO_USE.md` + `layout.json` (all via the SDK's `mate-module` CLI). Debugging recipes per execution mode: [`docs/DEV_LITE.md`](./docs/DEV_LITE.md).
+- **Modules:** `make new ID=x [PANEL=1]` scaffolds, `make test ID=x` runs `modules/x/tests`, `make validate` checks manifest + `HOW_TO_USE.md` + `layout.json` (all via the SDK's `mate-module` CLI). Debugging recipes per execution mode: [`docs/DEV_LITE.md`](./docs/DEV_LITE.md).
 - **Type-check Python:** `uv run pyright` (strict mode, `apps/api/src` + `packages/module-sdk-py/src`).
-- **DB migration:** add a file under `apps/api/alembic/versions/`; `make dev-api` and the api container both run `alembic upgrade head` on boot.
+- **DB migration:** add a file under `apps/api/alembic/versions/`; `make api` and the api container both run `alembic upgrade head` on boot.
 - After changing API route signatures or Pydantic schemas, run `make codegen` (API must be running on `:8000`) so the web app's generated types stay in sync.
 
 ## Architecture
@@ -47,7 +47,7 @@ make up / up-dev    # docker compose (prod-style / dev overlay with hot reload)
 - `apps/web/` – Next.js 15 (App Router, React 19, Tailwind, shadcn-style UI in `components/ui/`).
 - `packages/module-sdk-py/` – Python SDK module authors subclass (`mate.sdk`).
 - `packages/module-sdk-ts/` – TS SDK for module frontends (`@mate/module-sdk-ts`).
-- `packages/module-sdk-jvm/` – Java SDK for JVM modules (Gradle; `make sdk-jvm`).
+- `packages/module-sdk-jvm/` – Java SDK for JVM modules (Gradle; `make jvm`).
 - `packages/shared-types/` – generated TS types from OpenAPI.
 - `modules/` – bundled module packages, discovered at startup (see below).
 - `data/` – bind-mounted: `metadata.db` (SQLite), per-user Parquet under `users/{user_id}/`, uploaded modules, cached uv runtimes. `make clean` wipes it.
@@ -61,7 +61,7 @@ Modules are the extension mechanism – process-discovery, performance, complexi
 - A module is a `Module` subclass (`module.py`) instantiated **once per process**. Handlers receive a `ModuleContext` (`packages/module-sdk-py/src/mate/sdk/context.py`) exposing the event log (DuckDB/pandas/polars/pm4py), per-`(log_id, module_id)` cache, config, progress reporter, bus, and capability registry. All as typed Protocols – depend on the Protocol, not the impl.
 - Modules talk to each other two ways: the **event bus** (fire-and-forget, must declare `provides:`/`consumes:` in the manifest) and the **capability registry** (typed request/response RPC).
 - `isolation: subprocess` in a manifest runs the module in a long-lived worker on its own venv Python, proxied over Unix-socket JSON-RPC (`subprocess_host.py` / `subprocess_worker.py`) – for a **different Python version** than the platform or a hard native-lib conflict. Supports `@route`/`@job`/`@on_event`; DataFrames (`event_log.pandas()/polars()/pm4py()`) cross via a Parquet handoff on the shared filesystem.
-- **Modules don't have to be Python.** A manifest `runtime:` block (`kind: jvm`, self-contained fat jar, JRE baked into the api image) mounts the module through the same bridge; the wire contract is `modules/PROTOCOL.md`, per-runtime materialise/launch lives in `modules/runtimes/`, and `modules/performance_java` is the reference. Node/R kinds are design-reserved (rejected today). Worker crashes auto-respawn with backoff (`test_bridge_respawn.py`); cross-runtime conformance in `test_worker_conformance.py` (JVM cases need `make sdk-jvm` + a JDK, else they skip).
+- **Modules don't have to be Python.** A manifest `runtime:` block (`kind: jvm`, self-contained fat jar, JRE baked into the api image) mounts the module through the same bridge; the wire contract is `modules/PROTOCOL.md`, per-runtime materialise/launch lives in `modules/runtimes/`, and `modules/performance_java` is the reference. Node/R kinds are design-reserved (rejected today). Worker crashes auto-respawn with backoff (`test_bridge_respawn.py`); cross-runtime conformance in `test_worker_conformance.py` (JVM cases need `make jvm` + a JDK, else they skip).
 - **Per-user ownership** is reference-counted via the `module_installs` table – modules are shared in-process code but each user owns their install (gates list/upload/delete). Don't assume a module is globally enabled.
 - **Frontend panels** are bundled separately by `apps/web/scripts/bundle-modules.mjs` (runs on `predev`/`build` and watches in dev), NOT by the Next build. Panels may only import `@/` paths listed in `apps/web/lib/runtime-externals.json` – other imports break the esbuild bundle.
 - **Every module ships `HOW_TO_USE.md`** (fixed format, validated by `mate.sdk.guide`; spec in `modules/README.md` §2). One file feeds the topbar **How to use** panel (`GET /api/v1/modules/{id}/guide`, `has_guide` on `ModuleSummary`) and the manual's *Module guides* group. Upload rejects a missing/invalid guide; boot and hot reload only warn. Check with `uv run python -m mate.sdk.guide modules`, rebuild the manual with `make docs`. Changing a module's controls, defaults or limits means updating its guide in the same change.

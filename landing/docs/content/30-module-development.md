@@ -649,7 +649,7 @@ public static void main(String[] argv) {
 }
 ```
 
-The context offers `eventLog()` (with `duckdbFetch` running host-side and `materialize()` returning a Parquet path), `cache()`, `bus()`, `registry()`, `progress()`, `logger()`, `config()`, `workdir()`, and `checkCancelled()`. Build with `make sdk-jvm`; `modules/performance_java` is the reference. There is no server-side Maven or Gradle resolution — the jar must bundle everything but the JRE.
+The context offers `eventLog()` (with `duckdbFetch` running host-side and `materialize()` returning a Parquet path), `cache()`, `bus()`, `registry()`, `progress()`, `logger()`, `config()`, `workdir()`, and `checkCancelled()`. Build with `make jvm`; `modules/performance_java` is the reference. There is no server-side Maven or Gradle resolution — the jar must bundle everything but the JRE.
 
 **Sidecar services** (a graph database, a search engine, a solver) follow a fixed contract: declared under an optional compose profile the operator starts, bound to loopback, addressed through a config → environment → default chain, probed with a health check that produces an actionable error, wiped before and after each run, and never treated as a store — results go to `ctx.cache`. Full rules: [`modules/SIDECAR_SERVICES.md`](https://github.com/Process-Science-Community/MATE/blob/main/modules/SIDECAR_SERVICES.md).
 

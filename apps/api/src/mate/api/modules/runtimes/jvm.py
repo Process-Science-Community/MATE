@@ -82,7 +82,7 @@ class JvmRuntime(ModuleRuntime):
         if not jar_path.is_file():
             raise ModuleInstallError(
                 f"Module {manifest.id!r} declares runtime.jar {rt.jar!r} but the file does not "
-                "exist. Build it (for the bundled example: `make sdk-jvm`) or include it in the "
+                "exist. Build it (for the bundled example: `make jvm`) or include it in the "
                 "uploaded archive."
             )
         if _jar_main_class(jar_path) is None:

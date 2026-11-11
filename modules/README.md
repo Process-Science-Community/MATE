@@ -790,7 +790,7 @@ def test_summary() -> None:
 Run them from the repo root:
 
 ```
-make module-test ID=my_module        # = uv run --extra dev mate-module test my_module
+make test ID=my_module        # = uv run --extra dev mate-module test my_module
 ```
 
 ---
@@ -803,7 +803,7 @@ A module ships in one of three ways:
 2. **Archive upload** – zip or tar.gz the folder (without `.venv/`, `.dist/`, `node_modules/`) and import it at *Modules → Install a module* (`/modules/import`) (`POST /api/v1/modules/install`). The archive must contain a valid `manifest.yaml` and `HOW_TO_USE.md` (see §2). The install job unpacks into `data/uploaded_modules/<id>/` – never into `modules/` – installs the dependencies, loads the module and records the uploading user as its owner. A failed install deletes the half-installed folder. Another user's module with the same id is rejected unless the upload is byte-identical.
 3. **Python package** – publish a package exposing a `mate.modules` entry point whose value is the package name; the package folder must hold `manifest.yaml` next to `__init__.py`. The platform discovers it without copying files into `modules/`. A folder under `modules/` with the same id wins. Entry-point modules are not hot-reloaded.
 
-Run `make module-validate` before shipping.
+Run `make validate` before shipping.
 
 ---
 
@@ -811,7 +811,7 @@ Run `make module-validate` before shipping.
 
 Before submitting a module:
 
-- [ ] `make module-validate` passes: the manifest loads, `HOW_TO_USE.md` passes the guide check (also `uv run python -m mate.sdk.guide modules/<folder>`), and every `layout.json` card points at a declared dataset or widget.
+- [ ] `make validate` passes: the manifest loads, `HOW_TO_USE.md` passes the guide check (also `uv run python -m mate.sdk.guide modules/<folder>`), and every `layout.json` card points at a declared dataset or widget.
 - [ ] Every label, default and limit in `HOW_TO_USE.md` was checked against the panel and the code (§2).
 - [ ] `README.md`, if you keep one, holds developer notes only; what users need to know lives in the guide.
 - [ ] `requirements.event_log.log_model` is set to the model the module targets (`case_centric` or `object_centric`).
@@ -875,7 +875,7 @@ Mate module is exactly the intended use.
 
 ### The Java SDK
 
-`packages/module-sdk-jvm` (Gradle; build with `make sdk-jvm`, needs JDK 17+)
+`packages/module-sdk-jvm` (Gradle; build with `make jvm`, needs JDK 17+)
 ships `mate-sdk-jvm-<v>-all.jar` – the only compile-time dependency you need
 (Jackson is bundled + relocated, so your own Jackson can't conflict).
 

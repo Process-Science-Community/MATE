@@ -16,7 +16,7 @@ about: >-
 license: MIT
 
 # The whole module backend is one fat jar (built from
-# packages/module-sdk-jvm/examples/performance-metrics via `make sdk-jvm`). The
+# packages/module-sdk-jvm/examples/performance-metrics via `make jvm`). The
 # platform only needs a JRE (bundled in the api image); there is no server-side
 # dependency resolution.
 runtime:

@@ -2,14 +2,14 @@
 
 Run the whole platform natively (no Docker), load only the modules you work on,
 and debug module code with breakpoints, full tracebacks, live logs and hot reload.
-`make lite` is the inner loop for module authors; `make dev` and `make up-dev`
+`make lite` is the inner loop for module authors; `make dev` and `make up DEV=1`
 still exist for platform work against your own `.env`.
 
 ## Quick start
 
 ```bash
 make install                     # uv sync --extra dev + pnpm install (once)
-make module-new ID=my_module     # optional: scaffold a module to work on
+make new ID=my_module     # optional: scaffold a module to work on
 make lite MODULES=my_module      # API + bundler + web; Ctrl-C stops all three
 ```
 
@@ -39,11 +39,11 @@ Other targets:
 
 | Command | What it does |
 | --- | --- |
-| `make lite-reset` | Delete `data/lite/` (DB, logs, results). Nothing else is touched. |
-| `make module-new ID=x [PANEL=1]` | Scaffold `modules/x/` (`mate-module new`) |
-| `make module-test ID=x` | Run `modules/x/tests` (`mate-module test`) |
-| `make module-list` | List every module: id, version, name, runtime (isolation/execution or jvm), UI (panel, layout, widgets, datasets), folder (`mate-module list`) |
-| `make module-validate` | Check every module's manifest, `HOW_TO_USE.md` and `layout.json` (`mate-module validate`) |
+| `make reset` | Delete `data/lite/` (DB, logs, results). Nothing else is touched. |
+| `make new ID=x [PANEL=1]` | Scaffold `modules/x/` (`mate-module new`) |
+| `make test ID=x` | Run `modules/x/tests` (`mate-module test`) |
+| `make modules` | List every module: id, version, name, runtime (isolation/execution or jvm), UI (panel, layout, widgets, datasets), folder (`mate-module list`) |
+| `make validate` | Check every module's manifest, `HOW_TO_USE.md` and `layout.json` (`mate-module validate`) |
 
 ## Why no Docker
 
@@ -115,7 +115,7 @@ make lite MODULES=my_module,other_module
 
 ## Creating a module: new, run, build UI, test, validate, ship
 
-1. **New.** `make module-new ID=my_module` writes `modules/my_module/` with a
+1. **New.** `make new ID=my_module` writes `modules/my_module/` with a
    `manifest.yaml` (`in_process`, inherits pandas and duckdb, one `summary` table
    dataset with a `top` param), a `module.py` (route `GET /summary?top=` with
    activity counts plus a `POST /recount` `@job` example that caches them), a
@@ -137,11 +137,11 @@ make lite MODULES=my_module,other_module
    `modules/<id>/layout.json`; **Reload module** reloads it like hot reload does.
    Write a `panel/` instead when the page needs custom interaction; the layout is
    the no-code alternative.
-4. **Test.** `make module-test ID=my_module`. Tests use `mate.sdk.testing`
+4. **Test.** `make test ID=my_module`. Tests use `mate.sdk.testing`
    (`sample_log`, `build_test_context`, `load_module`, see
    [modules/README.md §10](../modules/README.md#10-testing)). To debug a test,
    open a file of the module in VS Code and run **Python: module tests**.
-5. **Validate.** `make module-validate` checks the manifest, the guide and
+5. **Validate.** `make validate` checks the manifest, the guide and
    `layout.json` (rules under [Validation](#validation)). Exit code 1 on any
    problem.
 6. **Ship.** Either commit the folder (it becomes a bundled default for everyone)
@@ -231,7 +231,7 @@ ignored.
 
 ### Validation
 
-Checked by `mate.sdk.layout` (load, Studio save) and `make module-validate`:
+Checked by `mate.sdk.layout` (load, Studio save) and `make validate`:
 
 - `version` is 1; unknown top-level keys are an error. Card ids and tab ids are
   unique; every `tab` names a declared tab.
@@ -250,7 +250,7 @@ visualizations and datasets taken from a route outside the manifest.
 
 ### E2E check
 
-`make e2e-studio` scaffolds a throwaway `modules/e2e_studio`, starts the lite
+`make e2e` scaffolds a throwaway `modules/e2e_studio`, starts the lite
 stack on ports 8777/3777 with a temporary data dir (your `data/lite` is not
 touched), checks with Playwright that the Studio's cards sit exactly where the
 module page puts them (1600x1000 and 1280x800), then stops the stack and
@@ -302,8 +302,8 @@ a warning and carries on (`make install` installs it with the dev extra).
 | `apps/web/node_modules missing` | `make install` |
 | My module is not in the list | Check `MODULES=` (typo, or not listed). Open `/dev` to see load errors. Folders starting with `_` or `.` are skipped. |
 | An edit has no effect | Check the terminal for a reload error. Changing a route's query parameters needs an API restart. A change in `pyproject.toml` is not watched; declare dependencies in `manifest.yaml`. |
-| Old results after a code change | They should go stale in dev. If not, press **Reload module** in Studio, or `make lite-reset`. |
+| Old results after a code change | They should go stale in dev. If not, press **Reload module** in Studio, or `make reset`. |
 | The panel shows old code | Refocus the browser window; in dev the panel bundle is checked again. Check the bundler output for build errors. |
 | Debugger does not connect | Is the banner showing the debugger port, and is `DEBUGPY_PORT` not `0`? After a platform code edit uvicorn restarts the API: attach again. |
 | First start hangs on "waiting for the API" | Modules with their own packages build a venv on first load; that can take minutes. Use `MODULES=` to load fewer. |
-| Start from scratch | `make lite-reset` (only `data/lite/`) |
+| Start from scratch | `make reset` (only `data/lite/`) |

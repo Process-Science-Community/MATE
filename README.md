@@ -48,10 +48,10 @@ To add additional users, sign in to the Keycloak admin console at
 | `make lite` | No Docker, no `.env` – low-memory stack for module work: demo login, SQLite under `data/lite/`, only the modules you list (`MODULES=a,b`), debugger on `:5678`, sample log seeded. See [`docs/DEV_LITE.md`](./docs/DEV_LITE.md). |
 | `make dev` | No Docker – runs the API + web dev servers directly with hot reload (needs `uv` + `pnpm` on the host). Fastest inner loop. |
 | `make up` | Base `docker-compose.yml` only: **prod-style built images**, detached, no reload. The default quick-start – closest to prod, minus TLS/proxy. |
-| `make up-dev` | Base **+ `compose.dev.yml`**: hot reload in Docker (`uvicorn --reload` + `next dev`, source-mounted). The in-container dev mode. |
+| `make up DEV=1` | Base **+ `compose.dev.yml`**: hot reload in Docker (`uvicorn --reload` + `next dev`, source-mounted). The in-container dev mode. |
 | *(prod deploy)* | Base **+ `docker-compose.prod.yml`**: adds Caddy/TLS, collapses everything onto one same-origin, and stops publishing the app ports. Run manually – `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`; there is no `make` target. See [`docs/DEPLOY.md`](./docs/DEPLOY.md). |
 
-In short: **develop modules** with `make lite`, **develop the platform** with `make up-dev` (or `make dev` without Docker), **preview the prod build** locally with `make up`, and **deploy** by adding the `docker-compose.prod.yml` overlay.
+In short: **develop modules** with `make lite`, **develop the platform** with `make up DEV=1` (or `make dev` without Docker), **preview the prod build** locally with `make up`, and **deploy** by adding the `docker-compose.prod.yml` overlay.
 
 ## Advanced setup
 
@@ -85,7 +85,7 @@ In short: **develop modules** with `make lite`, **develop the platform** with `m
 4. **Hot-reload mode (optional, for development).** Use the dev overlay to run `uvicorn --reload` + `next dev` with the source tree mounted:
 
    ```bash
-   make up-dev
+   make up DEV=1
    ```
 
 5. **Stop the stack.**
@@ -133,9 +133,9 @@ local SQLite database; nothing ships off the host. See
 
 | Command | What it does |
 | --- | --- |
-| `make lite` | Native low-memory stack for module work (`MODULES=a,b`, no `.env`); `make lite-reset` wipes its data |
+| `make lite` | Native low-memory stack for module work (`MODULES=a,b`, no `.env`); `make reset` wipes its data |
 | `make up` | Start the prod-style stack (detached) |
-| `make up-dev` | Start with hot reload – `uvicorn --reload` + `next dev`, source-mounted |
+| `make up DEV=1` | Start with hot reload – `uvicorn --reload` + `next dev`, source-mounted |
 | `make down` | Stop the stack |
 | `make build` | Rebuild both images |
 | `make test` | Run the Python test suite (inside Docker) |
@@ -209,17 +209,17 @@ mate/
 ├── data/            # Bind-mounted; SQLite + Parquet + cached runtimes
 ├── docs/            # Design spec, deploy runbook, MCP reference (see docs/README.md)
 ├── docker-compose.yml       # base stack
-├── compose.dev.yml          # dev overlay – hot reload (make up-dev)
+├── compose.dev.yml          # dev overlay – hot reload (make up DEV=1)
 └── docker-compose.prod.yml  # prod overlay – Caddy/TLS (see docs/DEPLOY.md)
 ```
 
 ## Adding a module
 
 ```bash
-make module-new ID=my_mod        # scaffold modules/my_mod/ (PANEL=1 adds a React panel)
+make new ID=my_mod        # scaffold modules/my_mod/ (PANEL=1 adds a React panel)
 make lite MODULES=my_mod         # run it natively with hot reload; Studio at /dev
-make module-test ID=my_mod       # its tests
-make module-validate             # manifest, HOW_TO_USE.md, layout.json
+make test ID=my_mod       # its tests
+make validate             # manifest, HOW_TO_USE.md, layout.json
 ```
 
 The full flow (new, run, build the page in Studio, test, validate, ship) and the

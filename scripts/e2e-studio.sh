@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make e2e-studio: Playwright check that the Studio shows a module's page 1:1.
+# make e2e: Playwright check that the Studio shows a module's page 1:1.
 # Scaffolds the git-ignored modules/e2e_studio, starts the lite stack with only
 # that module on spare ports, runs apps/web/e2e, then stops the stack and
 # removes the module. Extra arguments go to `playwright test`.

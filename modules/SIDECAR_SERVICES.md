@@ -179,7 +179,7 @@ accounts — is enforced by *how the module uses the sidecar*:
 | You changed… | Restart needed |
 |---|---|
 | Started/stopped the **sidecar container** | **No.** The api never depends on it; the module's health route notices and the panel flips by itself. Running jobs against a stopping service fail with the pre-flight/actionable error. |
-| Added a **new module folder** (host dev, `ENV=dev`) | Usually **no** — the modules/ watchdog discovers new manifests and builds the venv live. If it doesn't show up, restart `make dev-api` (seconds). |
+| Added a **new module folder** (host dev, `ENV=dev`) | Usually **no** — the modules/ watchdog discovers new manifests and builds the venv live. If it doesn't show up, restart `make api` (seconds). |
 | Added a **new module folder** (docker/prod) | **Yes, api container once** (`$DC restart api`) — discovery + venv build happen at startup. First boot with new deps takes as long as the deps. |
 | Edited module **code** (dev) | No — hot reload. |
 | Edited module **manifest deps** (dev) | No — watchdog re-runs `uv sync` for that module. |

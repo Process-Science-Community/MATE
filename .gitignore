@@ -36,12 +36,12 @@ modules/*/.venv/
 modules/*/.dist/
 modules/*/node_modules/
 modules/*/.installed-hash
-# Throwaway module `make e2e-studio` scaffolds and removes.
+# Throwaway module `make e2e` scaffolds and removes.
 modules/e2e_studio/
 
 # The JVM example module's runnable fat jar is a COMMITTED artefact - the api
 # image is JRE-only and modules/ is bind-mounted, so the platform can't build
-# it; `make sdk-jvm` regenerates it. Carve it out of the global `dist/` ignore.
+# it; `make jvm` regenerates it. Carve it out of the global `dist/` ignore.
 !modules/performance_java/dist/
 !modules/performance_java/dist/*.jar
 
@@ -67,7 +67,7 @@ data/metadata.db
 data/metadata.db-wal
 data/metadata.db-shm
 data/*.bak
-# Lite dev mode runtime tree (scripts/lite.sh; wipe with `make lite-reset`)
+# Lite dev mode runtime tree (scripts/lite.sh; wipe with `make reset`)
 data/lite/
 # `Settings.data_dir` defaults to the *relative* path `data`, so launching the
 # API from anywhere but the repo root drops a second runtime tree next to the

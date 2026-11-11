@@ -3,7 +3,7 @@
 Drives a REAL `SubprocessBridge` + worker process for every bundled runtime -
 the Python fixture (tests/fixtures/conformance_worker/, run on the platform
 interpreter so no venv build is needed) and the JVM fixture
-(packages/module-sdk-jvm/conformance-fixture, `make sdk-jvm`) - through one
+(packages/module-sdk-jvm/conformance-fixture, `make jvm`) - through one
 shared test matrix: every ctx.* method, soft + hard cancellation, crash &
 auto-respawn, the data wall, cache envelopes, big frames, ping, and the ready
 handshake metadata that the loader mounts from.
@@ -68,7 +68,7 @@ def _launch_for(runtime: str) -> tuple[WorkerLaunchSpec, Path]:
     if java is None:
         pytest.skip("no `java` on PATH - install a JRE 17+ to run JVM conformance")
     if not JVM_JAR.exists():
-        pytest.skip("JVM conformance jar not built - run `make sdk-jvm`")
+        pytest.skip("JVM conformance jar not built - run `make jvm`")
     return WorkerLaunchSpec(argv=(java, "-jar", str(JVM_JAR))), PY_FIXTURE
 
 

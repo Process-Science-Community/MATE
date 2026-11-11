@@ -1,6 +1,6 @@
 // The bundled example JVM module: event-log performance metrics.
 // `copyExampleJar` drops the fat jar into modules/performance_java/dist/ - the
-// committed artefact the platform actually runs (`make sdk-jvm` rebuilds it).
+// committed artefact the platform actually runs (`make jvm` rebuilds it).
 
 plugins {
     java
