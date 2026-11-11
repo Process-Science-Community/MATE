@@ -73,9 +73,10 @@ from mate.api.uuid7 import uuid7_str
 log = structlog.get_logger(__name__)
 
 SEEDED_KEY = "sample_content.seeded"
-# How long one account's imports may take before the run gives up (and retries
-# at the next start). The bundled samples import in seconds.
-IMPORT_TIMEOUT_SECONDS = 600.0
+# Upper bound for one account's imports. Failure is detected from the import job
+# (failed / cancelled), so this only catches a job that hangs: the queue is shared
+# and first-in-first-out, so imports may wait behind other users' long jobs.
+IMPORT_TIMEOUT_SECONDS = 4 * 3600.0
 _POLL_SECONDS = 1.0
 
 
@@ -103,6 +104,11 @@ class SampleManifest(BaseModel):
     logs: list[SampleLog] = Field(default_factory=list)
     dashboard: SampleDashboard | None = None
     tracking_exempt: bool = False
+    # Modules whose precompute is started for every sample log once all accounts
+    # have their logs. ``None`` = the dashboard's modules. Kept short on purpose:
+    # the job queue is first-in-first-out and shared with real users, and heavy
+    # modules (a TensorFlow drift detector, …) still compute on first open.
+    warm_modules: list[str] | None = None
 
 
 def load_manifest(path: Path) -> SampleManifest:
@@ -139,28 +145,41 @@ async def seed_from_settings(
     except Exception:
         log.exception("sample_content.manifest_invalid", path=str(path))
         return
+    # Phase 1 for every account (logs + dashboard), phase 2 (module warm-up)
+    # only afterwards: warm-up jobs queued between two accounts' imports would
+    # hold the later imports back behind them.
+    seeded: list[tuple[SampleUser, list[str]]] = []
     for user in manifest.users:
         try:
-            await seed_user(sessionmaker, runtime, loader, coordinator, manifest, path.parent, user)
+            log_ids = await seed_user(sessionmaker, runtime, loader, manifest, path.parent, user)
         except asyncio.CancelledError:
             raise
         except Exception:
             log.exception("sample_content.seed_failed", user_id=user.id)
+            continue
+        if log_ids is not None:
+            seeded.append((user, log_ids))
+    for user, log_ids in seeded:
+        await warm_modules(sessionmaker, coordinator, manifest, user.id, log_ids)
 
 
 async def seed_user(
     sessionmaker: async_sessionmaker[AsyncSession],
     runtime: JobRuntime,
     loader: ModuleLoader,
-    coordinator: ModuleProcessingCoordinator,
     manifest: SampleManifest,
     root: Path,
     user: SampleUser,
-) -> bool:
-    """Seed one account. Returns False when it was already seeded."""
+) -> list[str] | None:
+    """Import the sample logs and create the dashboard for one account.
+
+    Returns the account's sample log ids, or ``None`` when it was already seeded.
+    The eager modules (discovery) run as part of the import; the rest of the
+    warm-up is :func:`warm_modules`.
+    """
     async with sessionmaker() as session:
         if await session.get(UserSetting, (user.id, SEEDED_KEY)) is not None:
-            return False
+            return None
         if await session.get(User, user.id) is None:
             session.add(User(id=user.id, preferred_username=user.username))
             await session.flush()
@@ -198,20 +217,39 @@ async def seed_user(
         )
         await session.commit()
 
-    # Eager modules (discovery) already ran on import. Warm every other installed
-    # module that has a precompute too (e.g. a lazy one such as complexity), so
-    # module pages and dashboard cards are ready on the first visit. A module with
-    # nothing to precompute returns no runs, which is fine.
+    log.info("sample_content.seeded", user_id=user.id, logs=len(log_ids))
+    return log_ids
+
+
+async def warm_modules(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    coordinator: ModuleProcessingCoordinator,
+    manifest: SampleManifest,
+    user_id: str,
+    log_ids: list[str],
+) -> None:
+    """Start the precompute of the manifest's warm-up modules on every sample log.
+
+    Only queues the runs (the coordinator tracks them); a module the account does
+    not have, or one with nothing to precompute, is skipped.
+    """
+    wanted = set(manifest.warm_modules or [])
+    if manifest.warm_modules is None and manifest.dashboard is not None:
+        template = get_template(manifest.dashboard.template_id)
+        if template is not None:
+            wanted = {it.module_id for it in template.items if it.kind == "widget" and it.module_id}
     async with sessionmaker() as session:
-        module_ids = await user_module_ids(session, user.id)
+        owned = await user_module_ids(session, user_id)
     for log_id in log_ids:
-        for module_id in sorted(module_ids):
+        for module_id in sorted(wanted & owned):
             try:
-                await coordinator.ensure(user.id, log_id, module_id)
+                await coordinator.ensure(user_id, log_id, module_id)
             except LookupError:
                 log.info("sample_content.module_unavailable", module_id=module_id)
-    log.info("sample_content.seeded", user_id=user.id, logs=len(log_ids))
-    return True
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("sample_content.warm_failed", user_id=user_id, module_id=module_id)
 
 
 async def _import_log(

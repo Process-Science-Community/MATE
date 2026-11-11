@@ -442,6 +442,8 @@ mapping = {
 manifest = {
     "tracking_exempt": True,
     "users": users,
+    # Precomputed for every sample log; the other modules compute on first open.
+    "warm_modules": ["discovery", "complexity", "performance"],
     "logs": [
         {"file": "helpdesk-sample-a.csv", "name": "Helpdesk ticketing (sample A)", "csv_mapping": mapping},
         {"file": "helpdesk-sample-b.csv", "name": "Helpdesk ticketing (sample B)", "csv_mapping": mapping},

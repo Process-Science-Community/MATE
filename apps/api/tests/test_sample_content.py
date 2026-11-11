@@ -52,27 +52,71 @@ def _manifest(tmp_path: Path) -> Path:
 
 
 async def _seed_all(manifest_path: Path) -> list[bool]:
+    """Phase 1 for every account (True = seeded now, False = already seeded)."""
     from mate.api.db.engine import get_sessionmaker
     from mate.api.jobs.runtime import get_job_runtime
     from mate.api.modules import get_module_loader
-    from mate.api.modules.processing import get_coordinator
     from mate.api.services.sample_content import load_manifest, seed_user
 
     manifest = load_manifest(manifest_path)
-    coordinator = get_coordinator()
-    assert coordinator is not None
     return [
         await seed_user(
             get_sessionmaker(),
             get_job_runtime(),
             get_module_loader(),
-            coordinator,
             manifest,
             manifest_path.parent,
             user,
         )
+        is not None
         for user in manifest.users
     ]
+
+
+@pytest.mark.asyncio
+async def test_seed_from_settings_runs_both_phases(
+    client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The entry point imports every account first, then warms only the listed
+    modules - in that order, so warm-up jobs never sit in front of an import."""
+    from mate.api import config as cfg
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.jobs.runtime import get_job_runtime
+    from mate.api.modules import get_module_loader
+    from mate.api.modules.processing import get_coordinator
+    from mate.api.services import sample_content
+
+    manifest = _manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["users"] = [{"id": "00000000-0000-7000-8000-0000000000s4", "username": "r4"}]
+    data["warm_modules"] = ["discovery"]
+    manifest.write_text(json.dumps(data))
+
+    calls: list[str] = []
+    real_seed, real_warm = sample_content.seed_user, sample_content.warm_modules
+
+    async def seed(*a: object, **k: object) -> list[str] | None:
+        calls.append("seed")
+        return await real_seed(*a, **k)  # type: ignore[arg-type]
+
+    async def warm(*a: object, **k: object) -> None:
+        calls.append("warm")
+        await real_warm(*a, **k)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sample_content, "seed_user", seed)
+    monkeypatch.setattr(sample_content, "warm_modules", warm)
+    monkeypatch.setenv("SAMPLE_CONTENT_MANIFEST", str(manifest))
+    cfg.get_settings.cache_clear()
+    try:
+        coordinator = get_coordinator()
+        assert coordinator is not None
+        await sample_content.seed_from_settings(
+            get_sessionmaker(), get_job_runtime(), get_module_loader(), coordinator
+        )
+    finally:
+        monkeypatch.delenv("SAMPLE_CONTENT_MANIFEST")
+        cfg.get_settings.cache_clear()
+    assert calls == ["seed", "warm"]
 
 
 @contextlib.asynccontextmanager
