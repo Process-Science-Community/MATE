@@ -8,9 +8,9 @@ still exist for platform work against your own `.env`.
 ## Quick start
 
 ```bash
-make install                     # uv sync --extra dev + pnpm install (once)
-make new ID=my_module     # optional: scaffold a module to work on
-make lite MODULES=my_module      # API + bundler + web; Ctrl-C stops all three
+make install                 # uv sync --extra dev + pnpm install (once)
+make new ID=my_module        # optional: scaffold a module to work on
+make lite MODULES=my_module  # API + bundler + web; Ctrl-C stops all three
 ```
 
 Open <http://localhost:3000>. You are signed in as the demo user (with admin),

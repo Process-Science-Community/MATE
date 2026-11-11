@@ -13,6 +13,10 @@ the module authoring contract, read [`modules/README.md`](./modules/README.md).
 The user manual lives in [`landing/docs/`](./landing/docs/) — rebuild it with
 `make docs` and preview it at `http://localhost:8081/docs/site/introduction.html`.
 
+> **Want to build a module?** Skip Docker and `.env`: see
+> [Developing modules](#developing-modules) below, or go straight to the full
+> guide in [`docs/DEV_LITE.md`](./docs/DEV_LITE.md).
+
 ## Quick start
 
 ```bash
@@ -107,9 +111,9 @@ mounted automatically:
 | `cv4cdd` | Computer-vision concept-drift detection (sudden, gradual, incremental, recurring) |
 | `concept_drift_explainer` | LLM-backed explanations for drifts, grounded in user-uploaded enterprise documents |
 | `agent_simulator` | Agent-based simulation that learns from a log and generates synthetic traces |
-| `demo` | Minimal reference module – useful when authoring your own |
 
-Enable / disable / configure each one on the **Modules** page (`/modules`).
+The table shows a selection; `make modules` lists all of them. Enable / disable /
+configure each one on the **Modules** page (`/modules`).
 
 ## Mate AI
 
@@ -213,17 +217,39 @@ mate/
 └── docker-compose.prod.yml  # prod overlay – Caddy/TLS (see docs/DEPLOY.md)
 ```
 
-## Adding a module
+## Developing modules
+
+Module work runs on the **lite dev stack**: natively, without Docker or `.env`,
+with only the modules you name loaded (about 0.6 GB RAM for one module).
+
+**Prerequisites:** [`uv`](https://docs.astral.sh/uv/), Node 22 (the version the web image uses) with `pnpm`
+(`corepack enable`), and optionally VS Code for the debugger. A JDK 17+ is only
+needed for JVM modules.
 
 ```bash
-make new ID=my_mod        # scaffold modules/my_mod/ (PANEL=1 adds a React panel)
-make lite MODULES=my_mod         # run it natively with hot reload; Studio at /dev
-make test ID=my_mod       # its tests
-make validate             # manifest, HOW_TO_USE.md, layout.json
+git clone <repo-url> mate && cd mate
+make install                  # uv + pnpm deps, once
+make new ID=my_mod            # scaffold modules/my_mod/ (PANEL=1 adds a React panel)
+make lite MODULES=my_mod      # API + web with hot reload; demo login, sample log seeded
 ```
 
-The full flow (new, run, build the page in Studio, test, validate, ship) and the
-debugging recipes are in [`docs/DEV_LITE.md`](./docs/DEV_LITE.md); the module
-contract is [`modules/README.md`](./modules/README.md).
+Then:
 
-Or upload a zip / tar.gz via **Modules → Install a module** (`/modules/import`).
+1. Open <http://localhost:3000/dev> and pick **Open Studio** to build the module
+   page visually. Text, controls, run buttons, charts, tables and tabs are
+   saved to `modules/my_mod/layout.json`; **Preview** shows the exact module page.
+2. Edit `modules/my_mod/module.py`; the module reloads on save.
+3. Set breakpoints and attach VS Code with **Attach: MATE API (lite)** (port 5678).
+4. `make test ID=my_mod`, then `make validate` before you ship.
+
+Several modules at once: `make lite MODULES=a,b`. `make modules` lists every
+module, and `make reset` wipes the lite data.
+
+| Read | For |
+| --- | --- |
+| [`docs/DEV_LITE.md`](./docs/DEV_LITE.md) | Setup details, the full flow (new, run, Studio, test, validate, ship), Studio card kinds, debugging per execution mode, troubleshooting |
+| [`modules/README.md`](./modules/README.md) | The module contract: manifest, `module.py`, context API, frontend, dependencies |
+| [`modules/PROTOCOL.md`](./modules/PROTOCOL.md) | Wire protocol for subprocess and JVM modules |
+
+To ship, commit the folder under `modules/`, or zip it and upload it via
+**Modules → Install a module** (`/modules/import`).
