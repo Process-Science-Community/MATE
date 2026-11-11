@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Position, type Edge, type Node } from "@xyflow/react";
 import ELK from "elkjs/lib/elk.bundled.js";
 
@@ -50,10 +50,16 @@ export function ElkCanvas({
   nodes,
   edges,
   direction = "LR",
+  settings,
+  busy,
 }: {
   nodes: Node[];
   edges: Edge[];
   direction?: FlowDirection;
+  /** Popover body of the canvas control cluster. */
+  settings?: ReactNode;
+  /** A refetch is in flight while the current graph stays on screen. */
+  busy?: boolean;
 }) {
   const [state, setState] = useState<{ nodes: Node[]; edges: Edge[] } | "error" | null>(null);
 
@@ -78,6 +84,8 @@ export function ElkCanvas({
       // A card-sized canvas has no room for the minimap; it would cover the graph.
       miniMap={false}
       fitViewKey={`${state.nodes.length}-${state.edges.length}-${direction}`}
+      settings={settings}
+      busy={busy}
     />
   );
 }

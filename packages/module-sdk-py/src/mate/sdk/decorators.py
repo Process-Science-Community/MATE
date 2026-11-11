@@ -26,6 +26,10 @@ class RouteSpec:
     path: str
     name: str | None = None
     response_model: Any | None = None
+    # A shared dashboard's viewer (`ctx.read_only`) gets 403 on every non-GET route
+    # unless it is marked viewer-safe: it only reads, or only caches a result derived
+    # deterministically from the owner's data and the request - never owner state.
+    viewer_safe: bool = False
 
 
 @dataclass(frozen=True)
@@ -49,8 +53,15 @@ def _route_factory(method: HttpMethod) -> Callable[..., Callable[[Callable], Cal
         *,
         name: str | None = None,
         response_model: Any | None = None,
+        viewer_safe: bool = False,
     ) -> Callable[[Callable], Callable]:
-        spec = RouteSpec(method=method, path=path, name=name, response_model=response_model)
+        spec = RouteSpec(
+            method=method,
+            path=path,
+            name=name,
+            response_model=response_model,
+            viewer_safe=viewer_safe,
+        )
 
         def deco(fn: Callable) -> Callable:
             existing = getattr(fn, _ATTR_ROUTE, None)

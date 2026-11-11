@@ -20,6 +20,7 @@ import {
   type ConfigSchema,
 } from "@/components/modules/module-config-form";
 import { ModuleAboutInfo } from "@/components/modules/module-about";
+import { ModuleVersionsCard } from "@/components/modules/module-versions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,7 +58,7 @@ import {
   type AiModelsManifest,
   type ModelStoreManifest,
 } from "@/lib/queries";
-import type { ManifestArtifact, ManifestSource } from "@/lib/api-types";
+import type { ManifestLink, ManifestSource } from "@/lib/api-types";
 
 interface AiConfigDraft {
   llm: AiModelSelection;
@@ -157,7 +158,7 @@ export function ModuleDetailClient({ moduleId }: { moduleId: string }) {
         description: (manifest.description as string | null) ?? null,
         about: (manifest.about as string | null) ?? null,
         source: (manifest.source as ManifestSource[] | undefined) ?? [],
-        artifacts: (manifest.artifacts as ManifestArtifact[] | undefined) ?? [],
+        links: (manifest.links as ManifestLink[] | undefined) ?? [],
         license: (manifest.license as string | null) ?? null,
         provides: (manifest.provides as string[]) ?? [],
         consumes: (manifest.consumes as string[]) ?? [],
@@ -250,11 +251,16 @@ export function ModuleDetailClient({ moduleId }: { moduleId: string }) {
   }
   if (manifestError || !m) {
     return (
-      <EmptyState
-        icon={FileBox}
-        title={`Module "${moduleId}" not found`}
-        description="It may have been uninstalled or failed to load."
-      />
+      <PageContainer className="space-y-4">
+        <EmptyState
+          icon={FileBox}
+          title={`Module "${moduleId}" not found`}
+          description="It may have been uninstalled or failed to load."
+        />
+        {/* A failed load keeps the previous version: the card offers the rollback
+            (it renders nothing when the module has no versions to show). */}
+        <ModuleVersionsCard moduleId={moduleId} />
+      </PageContainer>
     );
   }
 
@@ -287,7 +293,7 @@ export function ModuleDetailClient({ moduleId }: { moduleId: string }) {
                 description={m.description}
                 about={m.about}
                 sources={m.source}
-                artifacts={m.artifacts}
+                links={m.links}
                 license={m.license}
                 version={m.version}
               />
@@ -457,6 +463,16 @@ export function ModuleDetailClient({ moduleId }: { moduleId: string }) {
                       values={draft}
                       onChange={(key, val) => setDraft((d) => ({ ...d, [key]: val }))}
                       disabled={configLocked}
+                      fieldExtra={(_key, prop) =>
+                        prop.ui?.scope === "dataset" && (
+                          <Badge
+                            variant="outline"
+                            className="whitespace-normal font-normal text-muted-foreground"
+                          >
+                            Default for all logs – can be overridden per log
+                          </Badge>
+                        )
+                      }
                     />
                   </div>
                 )}
@@ -483,6 +499,8 @@ export function ModuleDetailClient({ moduleId }: { moduleId: string }) {
           )}
         </CardContent>
       </Card>
+
+      <ModuleVersionsCard moduleId={m.id} />
 
       <Card>
         <CardHeader>

@@ -16,7 +16,7 @@ make lite MODULES=my_module  # API + bundler + web; Ctrl-C stops all three
 Open <http://localhost:3000>. You are signed in as the demo user (with admin),
 the first-run wizard is skipped, and a sample event log (`scripts/lite/sample_log.csv`,
 an order process with 120 cases and about 1,000 events, enough for every
-case-centric module's minimum; object-centric modules need an OCEL upload) is imported on the first start. Leave out
+case-centric module's minimum; when the first id in `MODULES=` is object-centric, `apps/api/tests/fixtures/sample.jsonocel` is added too) is imported on the first start. Leave out
 `MODULES=` to load every module.
 
 `make lite` needs no `.env`. It sets everything it needs itself (see
@@ -110,9 +110,9 @@ make lite MODULES=my_module,other_module
   `MODULES` (or `MODULES` is empty). The panel bundler picks up new folders too.
 - Platform code (`apps/api/src`, `packages/module-sdk-py/src`) restarts the API
   through uvicorn `--reload`. That also drops an attached debugger; attach again.
-- In dev, the module version used for result staleness includes a fingerprint
-  of the module's code. Editing the code marks earlier results stale, so they
-  recompute the next time you open them.
+- Each run records a fingerprint of the module's code (`.py`, `.jar` and the
+  manifest), in every env. Editing the code marks earlier results stale, so
+  they recompute the next time you open them.
 
 ## Creating a module: new, run, build UI, test, validate, ship
 
@@ -146,8 +146,11 @@ make lite MODULES=my_module,other_module
    `layout.json` (rules under [Validation](#validation)). Exit code 1 on any
    problem.
 6. **Ship.** Either commit the folder (it becomes a bundled default for everyone)
-   or zip it and upload it under **Modules → Install a module** (`/modules/import`) (see
-   [modules/README.md §11](../modules/README.md#11-distribution)).
+   or zip it with `uv run mate-module pack modules/my_module` and upload it under
+   **Modules → Install a module** (`/modules/import`) (see
+   [modules/README.md §11](../modules/README.md#11-distribution)). Bump `version`
+   for the change and run `make versions`; the module's typed outputs (artifacts,
+   `/artifacts`) and flows (`/flows`) are in modules/README.md too.
 
 ## Studio: building a page without TSX
 

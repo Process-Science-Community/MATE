@@ -8,8 +8,8 @@
  */
 
 import type { DatasetCatalogEntry, LogModel } from "@/lib/dashboard-queries";
-import { vizSpecs } from "./registry";
-import type { DatasetShape, FieldMapping, VizGroup, VizSpec } from "./types";
+import { vizAccepts, vizSpecs } from "./registry";
+import type { FieldMapping, VizGroup, VizSpec } from "./types";
 
 /** Palette groups, in palette order. Labels are fixed UI strings (e2e relies on them). */
 export const CATALOG_GROUPS: { id: string; label: string; icon: string; groups: VizGroup[] }[] = [
@@ -49,12 +49,13 @@ export function catalogEntries(): CatalogEntry[] {
   ]);
 }
 
-/** This module's datasets a viz accepting `accepts` can render on a
+/** This module's datasets `spec` can render (by shape, or by artifact type for
+ * an artifact viewer) on a
  * `logModel` log, in manifest order, except that a dataset whose id names the
  * entry (`prefer`, e.g. "petri-net" → `petri_net`) comes first. The first one
  * is the auto-binding. */
 export function compatibleDatasets(
-  accepts: DatasetShape[],
+  spec: VizSpec,
   datasets: DatasetCatalogEntry[] | undefined,
   moduleId: string,
   logModel: LogModel,
@@ -65,7 +66,9 @@ export function compatibleDatasets(
   return (datasets ?? [])
     .filter(
       (d) =>
-        d.module_id === moduleId && accepts.includes(d.shape) && d.log_models.includes(logModel),
+        d.module_id === moduleId &&
+        vizAccepts(spec, d.shape, d.artifact_type) &&
+        d.log_models.includes(logModel),
     )
     .sort((a, b) => named(a) - named(b));
 }
@@ -109,6 +112,7 @@ export function needsDataSnippet(spec: VizSpec): { manifest: string; route: stri
     `  - id: ${id}`,
     `    title: ${spec.title} data`,
     `    shape: ${shape}`,
+    ...(spec.acceptsArtifactTypes ? [`    artifact_type: ${spec.acceptsArtifactTypes[0]}`] : []),
     `    route: ${path}`,
   ].join("\n");
   const route = [

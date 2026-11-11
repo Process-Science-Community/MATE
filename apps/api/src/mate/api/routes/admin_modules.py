@@ -9,6 +9,7 @@ Surfaces:
 - who owns which module (and, best-effort, who first uploaded it),
 - declaring a module a platform default (eager-seeded to all users),
 - force-installing a module onto a user, and force-uninstalling it.
+- rolling an uploaded module back to its previous version.
 """
 
 from __future__ import annotations
@@ -33,6 +34,12 @@ from mate.api.modules.defaults import (
     set_excluded_default_ids,
     set_precompute_override,
 )
+from mate.api.modules.install_jobs import (
+    DependentConflictError,
+    previous_manifest,
+    rollback_module,
+)
+from mate.api.modules.installer import ModuleInstallError
 from mate.api.modules.installs import record_install, user_owns_module
 from mate.api.modules.processing import get_coordinator
 from mate.api.modules.uninstall import uninstall_for_user
@@ -323,6 +330,35 @@ async def set_module_precompute(
         session, module_id, body.mode, manifest_mode=loaded.manifest.precompute
     )
     await session.commit()
+    return await _single_row(session, module_id)
+
+
+@router.post("/{module_id}/rollback", response_model=AdminModuleRow)
+async def rollback(module_id: str, session: SessionDep, user: AdminUserDep) -> AdminModuleRow:
+    """Reinstall an uploaded module's previous version (`uploaded_modules/.prev/<id>`)
+    for everyone, staged like an upload: build, import check, swap, and back to the
+    current version if it fails to load (500 with the reason). The version it
+    replaces becomes the previous one, so a second rollback goes forward again. Also
+    works when the current version failed to load (at boot) but a previous one is
+    kept. 404 neither loaded nor a previous version, 400 bundled, 409 no previous
+    version, or a `requirements.modules` specifier - a loaded dependent's on it, or its
+    own on a loaded module - excludes the other side's version."""
+    loader = get_module_loader()
+    if module_id in loader.default_module_ids:
+        raise HTTPException(
+            status_code=400, detail="Bundled modules update with the platform, not by rollback."
+        )
+    if (
+        module_id not in loader.loaded
+        and previous_manifest(loader.uploaded_modules_dir, module_id) is None
+    ):
+        raise HTTPException(status_code=404, detail=f"Module {module_id!r} is not loaded.")
+    try:
+        await rollback_module(loader, module_id, user.id)
+    except (LookupError, DependentConflictError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ModuleInstallError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return await _single_row(session, module_id)
 
 

@@ -12,6 +12,7 @@ from typing import Any, ClassVar
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -341,10 +342,15 @@ class ModuleInstall(Base):
     __table_args__ = (Index("ix_module_installs_module_id", "module_id"),)
 
 
-class ModuleLayout(Base):
-    """Per-user, per-(log, module) widget layout."""
+class LogModuleConfig(Base):
+    """Per-(user, log, module) overrides of a module's ``ui.scope: dataset`` properties.
 
-    __tablename__ = "module_layouts"
+    Only the keys the user overrode for this log; a missing key inherits the
+    module-wide value (``module_configs``). Merged by
+    ``mate.api.modules.log_config.effective_config`` - admin card locks still win.
+    """
+
+    __tablename__ = "log_module_configs"
 
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
@@ -355,7 +361,7 @@ class ModuleLayout(Base):
         primary_key=True,
     )
     module_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    layout_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
     )
@@ -367,8 +373,10 @@ class LogModuleRun(Base):
     One row per module that has ever been asked to compute for a log. ``status``
     is the state *for the data revision recorded on the row*; ``stale`` and
     ``idle`` are derived at read time (``mate.api.modules.processing``) by
-    comparing ``data_revision`` / ``module_version`` against the log and module,
-    or by the row's absence. ``job_id`` is the latest precompute ``Job`` for the
+    comparing ``data_revision`` / ``module_version`` / ``fingerprint`` against
+    the log and module, or by the row's absence. ``fingerprint`` is the module's
+    compute-code hash as of submission, combined with the effective values of its
+    ``ui.affects: precompute`` config. ``job_id`` is the latest precompute ``Job`` for the
     row (``None`` while a chained module waits on its upstream); terminal-job
     events are matched back to the row through it.
     """
@@ -390,6 +398,8 @@ class LogModuleRun(Base):
     data_revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # NULL = unknown (a backfilled row), treated as matching the loaded version.
     module_version: Mapped[str | None] = mapped_column(String(64))
+    # NULL = unknown (a row from before 0017), treated as matching.
+    fingerprint: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
     requested_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -397,6 +407,55 @@ class LogModuleRun(Base):
     __table_args__ = (
         Index("ix_log_module_runs_job_id", "job_id"),
         Index("ix_log_module_runs_user_module", "user_id", "module_id"),
+    )
+
+
+class Artifact(Base):
+    """One artifact in a user's workspace (``mate.api.modules.artifacts``).
+
+    An index, never a copy: a ``run`` row points at a module's result-cache entry
+    (``ref`` = ``ArtifactRef`` text, ``variant`` set for a run variant's) and is
+    upserted when that run settles ready; an ``upload`` row owns its file under
+    ``data/users/{uid}/artifacts/{id}.json`` (``ref`` = ``{log_id or "_"}/_workspace/{id}``).
+    ``name``/``pinned`` are the user's and survive re-registration.
+    """
+
+    __tablename__ = "artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    log_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("process_logs.id", ondelete="CASCADE")
+    )
+    ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    artifact_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    type_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # run | upload
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    module_id: Mapped[str | None] = mapped_column(String(64))
+    dataset_id: Mapped[str | None] = mapped_column(String(64))
+    variant: Mapped[str | None] = mapped_column(String(16))
+    key: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    producer_version: Mapped[str | None] = mapped_column(String(64))
+    # The producing run's fingerprint (``modules.log_config``) when it was submitted.
+    producer_hash: Mapped[str | None] = mapped_column(String(64))
+    # Lineage: the input ref strings the producing run had bound.
+    inputs: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    # A run variant's spec (``{params, inputs, filter}``); NULL otherwise.
+    spec: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    # When the content was last (re)produced - a rename or pin leaves it alone.
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ux_artifacts_user_ref", "user_id", "ref", unique=True),
+        Index("ix_artifacts_user_log", "user_id", "log_id"),
+        Index("ix_artifacts_user_type", "user_id", "artifact_type"),
     )
 
 
@@ -679,12 +738,21 @@ class Dashboard(Base):
     )
     layout_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Reserved, always NULL: module boards were removed in favour of layout.json;
+    # kept so migration 0019 and the model agree. The dashboard routes still hide a
+    # row with it set (a board left over from before the removal).
+    module_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
-    __table_args__ = (Index("ix_dashboards_user_created_at", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_dashboards_user_created_at", "user_id", "created_at"),
+        # One board per (user, module, log). NULLs are distinct, so plain dashboards
+        # (module_id NULL) are unconstrained.
+        Index("ix_dashboards_user_module_log", "user_id", "module_id", "event_log_id", unique=True),
+    )
 
 
 class Team(Base):
@@ -796,3 +864,59 @@ class ApiToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     __table_args__ = (Index("ix_api_tokens_user", "user_id"),)
+
+
+class Flow(Base):
+    """A user's flow: a node graph that chains module runs (``mate.api.flows``).
+
+    ``graph_json`` is ``{"nodes": [...], "edges": [...]}`` - source, module and output
+    nodes, edges from an output handle to an input port. A flow is a template: the
+    log is bound per run (``FlowRun``). ``pins_json`` records ``{module_id:
+    "version+compute_hash"}`` of each module node at the last save. Private: never
+    shared in v1.
+    """
+
+    __tablename__ = "flows"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # "case_centric" | "object_centric", fixed at creation: what the log source is.
+    log_model: Mapped[str] = mapped_column(String(16), default="case_centric", nullable=False)
+    graph_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    pins_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_flows_user_created_at", "user_id", "created_at"),)
+
+
+class FlowRun(Base):
+    """One run of a flow on one log. ``job_id`` is its parent ``flow.run`` job (the
+    module nodes' variant jobs are its children); ``nodes_json`` is ``{node_id:
+    {status, variant, error, refs, job_id, reused}}``."""
+
+    __tablename__ = "flow_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    flow_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("flows.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    log_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("process_logs.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[str | None] = mapped_column(String(36))
+    # queued | running | ready | failed | cancelled
+    status: Mapped[str] = mapped_column(String(16), default="queued", nullable=False)
+    nodes_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (Index("ix_flow_runs_flow_created_at", "flow_id", "created_at"),)

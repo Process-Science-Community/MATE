@@ -194,7 +194,7 @@ export function CardPalette({
             description: e.description || null,
             icon: e.icon,
             entry: e,
-            dataset: compatibleDatasets(e.spec.accepts, datasets, moduleId, logModel, e.key)[0] ?? null,
+            dataset: compatibleDatasets(e.spec, datasets, moduleId, logModel, e.key)[0] ?? null,
             applicable: true,
             logModels: [],
           }),

@@ -73,7 +73,8 @@ def _disc(mid: str, requires: list[str] | None = None) -> DiscoveredModule:
 
 
 def test_keep_only_keeps_transitive_hard_deps() -> None:
-    mods = [_disc("a", ["b"]), _disc("b", ["c"]), _disc("c"), _disc("d"), _disc("e", ["a"])]
+    # A version specifier on the requirement still names the dependency.
+    mods = [_disc("a", ["b>=1,<2"]), _disc("b", ["c"]), _disc("c"), _disc("d"), _disc("e", ["a"])]
     assert [d.id for d in keep_only(mods, {"a"})] == ["a", "b", "c"]
     assert [d.id for d in keep_only(mods, {"d", "missing"})] == ["d"]
     assert keep_only(mods, set()) == mods
@@ -234,7 +235,7 @@ async def test_hot_reload_adds_new_folder_as_default_and_unloads_by_folder(
         from mate.api.modules.hot_reload import _ModuleEventHandler
 
         loader = get_module_loader()
-        handler = _ModuleEventHandler(loader, asyncio.get_running_loop())
+        handler = _ModuleEventHandler(loader, asyncio.get_running_loop(), {})
         # Folder name deliberately differs from the manifest id.
         shutil.copytree(FIXTURES / "eager_mod", tmp_path / "modules" / "renamed_folder")
         await handler._reload("renamed_folder")
@@ -255,7 +256,7 @@ async def test_hot_reload_skips_new_folder_outside_modules_only(tmp_path: Path) 
 
         loader = get_module_loader()
         shutil.copytree(FIXTURES / "eager_mod", tmp_path / "modules" / "eager_mod")
-        handler = _ModuleEventHandler(loader, asyncio.get_running_loop())
+        handler = _ModuleEventHandler(loader, asyncio.get_running_loop(), {})
         await handler._reload("eager_mod")
         assert "eager_mod" not in loader.loaded
         assert "sample_mod" in loader.loaded
@@ -352,35 +353,6 @@ async def test_report_worker_error_reaches_job_ring_and_bus() -> None:
     # No traceback attached (e.g. a cancel) -> nothing logged.
     report_worker_error(RuntimeError("plain"), SimpleNamespace(logger=logger), "m1", "x")
     assert len(get_job_log_buffer().get("job-tb")) == 1
-
-
-# -- dev staleness salt -------------------------------------------------------
-
-
-async def test_dev_fingerprint_salts_version_only_in_dev(tmp_path: Path) -> None:
-    from mate.api.modules.loader import _dev_fingerprint
-    from mate.api.modules.processing import ModuleProcessingCoordinator
-
-    (tmp_path / "module.py").write_text("x = 1\n")
-    with _env(ENV="prod"):
-        assert await _dev_fingerprint(tmp_path) is None
-    with _env(ENV="dev"):
-        fp1 = await _dev_fingerprint(tmp_path)
-        (tmp_path / "module.py").write_text("x = 2\n")
-        fp2 = await _dev_fingerprint(tmp_path)
-    assert fp1 and fp2 and fp1 != fp2
-
-    manifest = _manifest("m")
-    loader = SimpleNamespace(
-        loaded={
-            "dev": SimpleNamespace(manifest=manifest, dev_fingerprint=fp1),
-            "prod": SimpleNamespace(manifest=manifest, dev_fingerprint=None),
-        }
-    )
-    coord = ModuleProcessingCoordinator(loader, MagicMock(), MagicMock())  # type: ignore[arg-type]
-    assert coord._version("dev") == f"1.0.0+dev.{fp1}"
-    assert coord._version("prod") == "1.0.0"
-    assert coord._version("missing") is None
 
 
 def test_dev_force_thread_keeps_worker_jobs_in_process(tmp_path: Path) -> None:

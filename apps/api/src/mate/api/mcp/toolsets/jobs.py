@@ -236,7 +236,10 @@ async def retry_job(ctx: MCPContext, job_id: str) -> dict[str, str]:
         sm = get_sessionmaker()
         async with sm() as session:
             await _ensure_owned_job(session, job_id, p.user.id)
-        new_id = await get_job_runtime().retry(job_id)
+        try:
+            new_id = await get_job_runtime().retry(job_id)
+        except RuntimeError as exc:  # no handler now: module gone or pre-upgrade job type
+            raise tool_error(CODE_CONFLICT, str(exc)) from exc
         if new_id is None:
             raise tool_error(CODE_CONFLICT, "Only failed jobs can be retried.")
         return {"job_id": new_id}

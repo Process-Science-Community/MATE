@@ -35,12 +35,12 @@ declare global {
 /**
  * Deferred elkjs.
  *
- * `elk.bundled.js` is 429 KB gzip - by far the largest single external - and
- * only three canvases ever touch it (discovery Petri + Heuristics, and
- * ocel_discovery). Those all construct it at module scope (`const elk = new
- * ELK()` in `layout/layered.ts`) and then only ever call `.layout()`, so the
- * bundle itself can be deferred behind a stand-in whose construction is free
- * and whose first real call pays the import.
+ * `elk.bundled.js` is 429 KB gzip - by far the largest single external. The
+ * bundled modules lay out through `@/components/visualizations/artifacts/layout`
+ * (which defers it itself); a panel that imports elkjs directly usually
+ * constructs it at module scope (`const elk = new ELK()`) and then only ever
+ * calls `.layout()`, so the bundle itself can be deferred behind a stand-in
+ * whose construction is free and whose first real call pays the import.
  *
  * If a module ever needs an elkjs API beyond the four below it will fail
  * loudly here rather than silently mislayout - add the method and forward it.
@@ -131,6 +131,20 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
     import("@/components/visualizations/canvases/shared/canvas-toolbar"),
   "@/components/visualizations/canvases/shared/canvas-skeleton": () =>
     import("@/components/visualizations/canvases/shared/canvas-skeleton"),
+  // Artifact viewers + their shared layout / edge helpers. `bpmn` takes the
+  // bpmn-js libraries from the panel (see `BpmnEngine`), never the host copy.
+  "@/components/visualizations/artifacts/layout": () =>
+    import("@/components/visualizations/artifacts/layout"),
+  "@/components/visualizations/artifacts/edges": () =>
+    import("@/components/visualizations/artifacts/edges"),
+  "@/components/visualizations/artifacts/petri-net": () =>
+    import("@/components/visualizations/artifacts/petri-net"),
+  "@/components/visualizations/artifacts/process-tree": () =>
+    import("@/components/visualizations/artifacts/process-tree"),
+  "@/components/visualizations/artifacts/dfg": () =>
+    import("@/components/visualizations/artifacts/dfg"),
+  "@/components/visualizations/artifacts/bpmn": () =>
+    import("@/components/visualizations/artifacts/bpmn"),
   "@/lib/api": () => import("@/lib/api"),
   "@/lib/cn": () => import("@/lib/cn"),
   // Column specs + time bounds for the filter controls above.

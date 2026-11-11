@@ -722,6 +722,9 @@ export function useUpdateModuleConfig() {
       }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: queryKeys.moduleConfig(vars.id) });
+      // Logs inherit the module-wide values, and a precompute setting stales their runs.
+      qc.invalidateQueries({ queryKey: ["log-module-config"] });
+      qc.invalidateQueries({ queryKey: ["module-runs"] });
     },
   });
 }

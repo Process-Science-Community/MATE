@@ -22,7 +22,7 @@ The panel has no controls. The module has one setting, on its module page: open 
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
-| Distance-metric variant cap | 300 | How many distinct trace variants the two distance metrics, `avg-edit-distance` and `structural-var`, use (25 to 1000 in steps of 25). The most frequent variants are kept. Larger values are more faithful and cost memory and time that grow with the square of the number of variants. Saving does not recompute results that already exist; the new value applies the next time the metrics are computed, for example after the log's data has changed. |
+| Distance-metric variant cap | 300 | How many distinct trace variants the two distance metrics, `avg-edit-distance` and `structural-var`, use (25 to 1000 in steps of 25). The most frequent variants are kept. Larger values are more faithful and cost memory and time that grow with the square of the number of variants. A changed value makes the stored metrics outdated, and they are recomputed the next time you open the module for a process. The value is the default for every process; **Parameters for this log** on the module's page for a process overrides it there. |
 
 ## Reading the results
 

@@ -712,6 +712,20 @@
   cursor: pointer;
 }
 
+/* The flow editor's `output` node type shares its name with xyflow's built-in
+   one, whose default box (150px, padding, white fill) style.css applies by class. */
+.flow-editor .react-flow__node-output {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none !important;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+}
+
 /* react-grid-layout: theme the default (red) drop placeholder to match the
    palette-add ghost (both preview the same commit). */
 .react-grid-item.react-grid-placeholder {

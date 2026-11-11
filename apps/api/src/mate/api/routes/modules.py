@@ -7,6 +7,7 @@ router; this router covers the platform's own module-meta surface.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import tempfile
 from pathlib import Path
@@ -21,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.auth.dependencies import ensure_not_sandboxed
 from mate.api.config import get_settings
-from mate.api.db.models import ModuleConfig, ModuleLayout, UserSetting
+from mate.api.db.models import ModuleConfig, UserSetting
 from mate.api.db.session import SessionDep
 from mate.api.jobs.runtime import get_job_runtime
 from mate.api.modules import ModuleLoader, get_module_loader
@@ -33,13 +34,14 @@ from mate.api.modules.cards import (
     derive_cards,
     resolve_card_overlays,
 )
+from mate.api.modules.content_hash import read_content_hash
 from mate.api.modules.defaults import (
     DEFAULTS_SEEDED_KEY,
     get_admin_default_ids,
     get_excluded_default_ids,
 )
 from mate.api.modules.guides import has_guide, read_guide
-from mate.api.modules.install_jobs import JOB_TYPE_UPLOAD
+from mate.api.modules.install_jobs import JOB_TYPE_UPLOAD, previous_manifest, read_history
 from mate.api.modules.installs import (
     seed_default_modules,
     user_module_ids,
@@ -48,9 +50,10 @@ from mate.api.modules.installs import (
 from mate.api.modules.uninstall import uninstall_for_user
 from mate.api.policy import SCOPE_CARD, resolve
 from mate.api.schemas.event_logs import LogModel
+from mate.sdk.errors import ModuleManifestError
 from mate.sdk.layout import LAYOUT_FILENAME
 from mate.sdk.layout import ModuleLayout as FileModuleLayout
-from mate.sdk.manifest import Artifact, Source
+from mate.sdk.manifest import InputPort, Link, Manifest, Source
 
 # UserSetting key holding the per-user record of which default module ids have
 # already been offered to a user (a JSON list). Seeding grants only the defaults
@@ -155,7 +158,7 @@ class ModuleSummary(BaseModel):
     # no author fields - the citation string carries the author names.
     source: list[Source] = Field(default_factory=list)
     # Optional named links (max 20) - repo, dataset, demo, released model.
-    artifacts: list[Artifact] = Field(default_factory=list)
+    links: list[Link] = Field(default_factory=list)
     license: str | None = None
     provides: list[str]
     consumes: list[str]
@@ -177,6 +180,9 @@ class ModuleSummary(BaseModel):
     # no gate: it computes inline or on an explicit user action. The UI gates a
     # module page / dashboard card on exactly these (`/event-logs/{id}/module-runs`).
     precompute_deps: list[str] = Field(default_factory=list)
+    # Artifacts the module consumes (manifest `inputs:`), serialized with the YAML key
+    # `from` for the producer module.
+    inputs: list[InputPort] = Field(default_factory=list)
 
 
 class ModuleConfigPayload(BaseModel):
@@ -245,7 +251,7 @@ async def list_modules(
             description=m.description,
             about=m.about,
             source=list(m.source),
-            artifacts=list(m.artifacts),
+            links=list(m.links),
             license=m.license,
             provides=list(m.provides),
             consumes=list(m.consumes),
@@ -257,6 +263,7 @@ async def list_modules(
             is_confidential_safe=m.is_confidential_safe,
             availability=avail_map.get(m.id),
             precompute_deps=loader.precompute_deps(m.id, owned),
+            inputs=list(m.inputs),
         )
         for m in manifests
     ]
@@ -403,6 +410,70 @@ async def get_guide(module_id: str, session: SessionDep, user: CurrentUserDep) -
             status_code=404, detail=f"Module {module_id!r} has no how-to-use guide."
         )
     return ModuleGuide(module_id=module_id, markdown=markdown)
+
+
+_CHANGELOG_MAX_BYTES = 64 * 1024
+
+
+class ModuleVersion(BaseModel):
+    version: str
+    # The pristine upload's content hash (`.content-hash` sidecar); None for a
+    # bundled module.
+    content_hash: str | None = None
+
+
+class ModuleVersionEntry(ModuleVersion):
+    installed_at: str
+    user_id: str | None = None
+
+
+class ModuleVersions(BaseModel):
+    current: ModuleVersion
+    # Successful installs of an uploaded module (upgrades and rollbacks), newest
+    # first. Empty for a bundled module.
+    history: list[ModuleVersionEntry]
+    # A previous version is kept (`uploaded_modules/.prev/<id>`) for an admin
+    # rollback (`POST /admin/modules/{id}/rollback`), and which one.
+    previous_available: bool
+    previous_version: str | None = None
+    # The module's `CHANGELOG.md`, cut at 64 KiB; None without one.
+    changelog: str | None = None
+
+
+@router.get("/{module_id}/versions", response_model=ModuleVersions)
+async def get_versions(module_id: str, session: SessionDep, user: CurrentUserDep) -> ModuleVersions:
+    """The loaded version of a module you have installed, its install history, the
+    previous version an admin can roll back to, and its changelog. An uploaded module
+    that failed to load (at boot) but has a kept version or a history reports the
+    version on disk, so an admin can still roll it back; 404 otherwise."""
+    await _assert_owns_module(session, user.id, module_id)
+    loader = get_module_loader()
+    uploaded = module_id not in loader.default_module_ids
+    history = read_history(loader.uploaded_modules_dir, module_id) if uploaded else []
+    previous = previous_manifest(loader.uploaded_modules_dir, module_id) if uploaded else None
+    loaded = loader.loaded.get(module_id)
+    folder = _module_folder(loader, module_id)
+    version = loaded.manifest.version if loaded is not None else None
+    if loaded is None and (history or previous is not None):
+        folder = loader.uploaded_modules_dir / module_id
+        with contextlib.suppress(ModuleManifestError, OSError):
+            version = Manifest.load_yaml(folder / "manifest.yaml", lenient=True).version
+    if version is None or folder is None:
+        raise HTTPException(status_code=404, detail=f"Module {module_id!r} is not loaded.")
+    changelog: str | None = None
+    with contextlib.suppress(OSError):
+        with (folder / "CHANGELOG.md").open("rb") as f:
+            raw = f.read(_CHANGELOG_MAX_BYTES + 1)
+        changelog = raw[:_CHANGELOG_MAX_BYTES].decode("utf-8", errors="replace")
+        if len(raw) > _CHANGELOG_MAX_BYTES:
+            changelog += "\n\n*(truncated)*"
+    return ModuleVersions(
+        current=ModuleVersion(version=version, content_hash=read_content_hash(folder)),
+        history=[ModuleVersionEntry.model_validate(e) for e in reversed(history)],
+        previous_available=previous is not None,
+        previous_version=previous.version if previous is not None else None,
+        changelog=changelog,
+    )
 
 
 @router.get("/{module_id}/config-schema")
@@ -562,10 +633,6 @@ async def install_from_upload(
     return InstallJobResponse(job_id=job_id)
 
 
-class ModuleLayoutPayload(BaseModel):
-    layout: dict[str, Any] = Field(default_factory=dict)
-
-
 class ModuleFileLayoutPayload(BaseModel):
     layout: dict[str, Any] | None = None
 
@@ -586,43 +653,13 @@ async def get_module_layout(
     module_id: str,
     session: SessionDep,
     user: CurrentUserDep,
-    log_id: Annotated[str | None, Query(min_length=1)] = None,
 ) -> ModuleFileLayoutPayload:
-    """Without ``log_id``: the module's declarative page layout
-    (``modules/<id>/layout.json``, read fresh each call), ``null`` when it ships
-    none. With ``log_id``: the saved layout JSON for this `(user, log, module)`
-    triple, or an empty object if none saved (§7.7).
-    """
+    """The module's declarative page layout (``modules/<id>/layout.json``, read
+    fresh each call), ``null`` when it ships none."""
     await _assert_owns_module(session, user.id, module_id)
-    if log_id is None:
-        return ModuleFileLayoutPayload(
-            layout=read_module_file_layout(_module_folder(get_module_loader(), module_id))
-        )
-    await get_owned_event_log(session, log_id, user.id)
-    row = await session.get(ModuleLayout, (user.id, log_id, module_id))
-    return ModuleFileLayoutPayload(layout=row.layout_json if row else {})
-
-
-@router.put("/{module_id}/layout", response_model=ModuleLayoutPayload)
-async def put_module_layout(
-    module_id: str,
-    session: SessionDep,
-    user: CurrentUserDep,
-    payload: ModuleLayoutPayload,
-    log_id: Annotated[str, Query(..., min_length=1)],
-) -> ModuleLayoutPayload:
-    await _assert_owns_module(session, user.id, module_id)
-    await get_owned_event_log(session, log_id, user.id)
-    row = await session.get(ModuleLayout, (user.id, log_id, module_id))
-    if row is None:
-        row = ModuleLayout(
-            user_id=user.id, log_id=log_id, module_id=module_id, layout_json=payload.layout
-        )
-        session.add(row)
-    else:
-        row.layout_json = payload.layout
-    await session.commit()
-    return payload
+    return ModuleFileLayoutPayload(
+        layout=read_module_file_layout(_module_folder(get_module_loader(), module_id))
+    )
 
 
 @router.get("/readme")

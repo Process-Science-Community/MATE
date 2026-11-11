@@ -138,6 +138,14 @@ if curl -fsS "$API/health" >/dev/null 2>&1; then
     curl -fsS -o /dev/null -H "$AUTH_HEADER" \
       -F "file=@scripts/lite/sample_log.csv" -F "name=Order process (lite)" \
       "$API/api/v1/event-logs" || echo "lite: seeding failed (upload it from the UI instead)" >&2
+    # An object-centric module shows on no case-centric log: seed the OCEL fixture too.
+    first="modules/${MODULES%%,*}/manifest.yaml"
+    if [ -n "$MODULES" ] && [ -f "$first" ] && grep -Eq '^[[:space:]]*log_model:[[:space:]]*object_centric' "$first"; then
+      echo "lite: seeding an OCEL sample (apps/api/tests/fixtures/sample.jsonocel)"
+      curl -fsS -o /dev/null -H "$AUTH_HEADER" \
+        -F "file=@apps/api/tests/fixtures/sample.jsonocel" -F "name=OCEL sample (lite)" \
+        "$API/api/v1/event-logs" || echo "lite: OCEL seeding failed (upload it from the UI instead)" >&2
+    fi
   fi
   loaded="$(curl -fsS -H "$AUTH_HEADER" "$API/api/v1/modules" | uv run --extra dev python -c \
     'import json, sys; print(", ".join(sorted(m["id"] for m in json.load(sys.stdin))))' || true)"

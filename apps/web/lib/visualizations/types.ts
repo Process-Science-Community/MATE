@@ -124,6 +124,9 @@ export interface DatasetEnvelope {
    * shapes that need no mapping (graph/kpi/tree/blob). */
   schema: { columns: ColumnSpec[] };
   data: DatasetPayload;
+  /** The raw route response of a dataset that declares an `artifact_type`
+   *  (unversioned id, e.g. `petri_net`) – what the artifact viewers render. */
+  artifact?: { type: string; payload: unknown };
   meta?: {
     title?: string;
     sourceKind?: string;
@@ -180,6 +183,9 @@ export interface VizSpec {
   icon: string;
   group: VizGroup;
   accepts: DatasetShape[];
+  /** Artifact viewers only: the artifact types (unversioned ids) it renders.
+   *  Set ⇒ offered only for datasets declaring one of them, never by shape. */
+  acceptsArtifactTypes?: string[];
   /** Empty ⇒ the viz needs no field-mapping (table, kpi-grid, process-map). */
   fields: VizFieldDef[];
   /** Non-field options, in the existing card `config_schema` dialect. */

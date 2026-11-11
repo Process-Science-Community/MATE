@@ -78,6 +78,11 @@ async function open(page: Page, path: string) {
 async function openStudio(page: Page, module: string) {
   await open(page, `/dev/studio/${module}?log=${logId}`);
   await expect(page.locator("[data-studio-stage]")).toBeVisible();
+  // Wait for the saved layout to hydrate, so addEntry's "before" count is not taken too early.
+  const { layout } = await api(`/api/v1/modules/${module}/layout`);
+  const firstTab = layout?.tabs?.[0]?.id;
+  const shown = (layout?.items ?? []).filter((i: { tab?: string }) => !i.tab || i.tab === firstTab).length;
+  await expect(page.locator("[data-grid-id]")).toHaveCount(shown);
 }
 
 const search = (page: Page) => page.getByPlaceholder(/^Search/);

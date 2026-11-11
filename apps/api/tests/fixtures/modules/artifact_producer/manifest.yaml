@@ -1,0 +1,28 @@
+id: artifact_producer
+name: Artifact Producer
+version: 0.1.0
+category: foundation
+description: Test fixture - its precompute caches a petri_net artifact under the dataset's cache_key.
+license: MIT
+
+requirements:
+  event_log:
+    required_columns:
+      - case_id
+      - activity
+      - timestamp
+
+consumes:
+  - log.imported
+
+datasets:
+  - id: model
+    artifact_type: petri_net
+    cache_key: model
+
+dependencies:
+  python:
+    inherit:
+      - duckdb
+      - pandas
+    isolation: in_process

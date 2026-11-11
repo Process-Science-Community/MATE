@@ -25,7 +25,7 @@ import pytest
 from mate.api.modules import subprocess_worker
 from mate.api.modules.runtimes.base import WorkerLaunchSpec
 from mate.api.modules.subprocess_host import SubprocessBridge, SubprocessHostError
-from mate.sdk.errors import Cancelled
+from mate.sdk.errors import Cancelled, ReadOnlyContextError
 from mate.sdk.manifest import Manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -113,15 +113,19 @@ class _StubEventLog:
 
 
 class _StubCache:
-    def __init__(self, workdir: Path) -> None:
+    def __init__(self, workdir: Path, *, read_only: bool = False) -> None:
         self.store: dict[str, Any] = {}
         self.dir = workdir / "cache"
         self.dir.mkdir(parents=True, exist_ok=True)
+        self.read_only = read_only
 
     async def get(self, key: str) -> Any:
         return self.store.get(key)
 
     async def set(self, key: str, value: Any) -> None:
+        # Stands in for ResultCache's refusal of an owner's reserved entry.
+        if self.read_only:
+            raise ReadOnlyContextError(f"{key!r} belongs to the log's owner")
         self.store[key] = value
 
     async def exists(self, key: str) -> bool:
@@ -193,13 +197,21 @@ class _StubConfig:
 
 
 class StubCtx:
-    def __init__(self, workdir: Path, *, walled: bool = False, job_id: str | None = None) -> None:
+    def __init__(
+        self,
+        workdir: Path,
+        *,
+        walled: bool = False,
+        job_id: str | None = None,
+        read_only: bool = False,
+    ) -> None:
         self.log_id = "log1"
         self.module_id = "conformance_worker"
         self.workdir = workdir
+        self.read_only = read_only
         self.config = _StubConfig()
         self.event_log = _StubEventLog(walled=walled)
-        self.cache = _StubCache(workdir)
+        self.cache = _StubCache(workdir, read_only=read_only)
         self.registry = _StubRegistry()
         self.bus = _StubBus()
         self.progress = _StubProgress()
@@ -266,6 +278,15 @@ async def test_ready_metadata_mounts_equivalently(bridge) -> None:
     job_spec = get_job_spec(cancel_stub)
     assert job_spec is not None and job_spec.progress is True
 
+    # `viewer_safe` crosses the handshake onto the stub's RouteSpec - what the
+    # loader's shared-viewer gate reads (`ModuleLoader._refuse_viewer_write`).
+    assert meta["log_lines"]["route"]["viewer_safe"] is True
+    assert meta["bus_emit"]["route"]["viewer_safe"] is False
+    safe = get_route_spec(type(module).log_lines)
+    unsafe = get_route_spec(type(module).bus_emit)
+    assert safe is not None and safe.viewer_safe is True
+    assert unsafe is not None and unsafe.viewer_safe is False
+
     # Guidance advertised + callable through the bridge.
     assert b._guidance_meta is not None
     assert b._guidance_meta["system_prompt"].startswith("Conformance")
@@ -297,7 +318,22 @@ async def test_snapshot_serves_locally(bridge, ctx) -> None:
     result = await b.call_handler("snapshot", ctx, (), {})
     assert result["log_id"] == "log1"
     assert result["workdir_exists"] is True
+    assert result["read_only"] is False
     assert result["config"] == {"threshold": 3}
+
+
+@pytest.mark.asyncio
+async def test_read_only_is_served_and_a_refused_write_stays_typed(
+    bridge: tuple[SubprocessBridge, Any], tmp_path: Path
+) -> None:
+    b, _ = bridge
+    shared = StubCtx(tmp_path, read_only=True)
+    assert (await b.call_handler("snapshot", shared, (), {}))["read_only"] is True
+    # The host's refusal crosses into the worker and back out of the handler as
+    # ReadOnlyContextError - the type the loader answers with 403.
+    with pytest.raises(ReadOnlyContextError, match="belongs to the log's owner"):
+        await b.call_handler("cache_roundtrip", shared, (), {})
+    assert shared.cache.store == {}
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,8 @@ import { Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
 
-import { handlePositions, type Direction } from "./handle-positions";
+import type { LayoutDirection } from "@/lib/stores/visualization-settings";
+import { handlePositions } from "@/components/visualizations/artifacts/layout";
 
 export interface ObjectTypeNodeData extends Record<string, unknown> {
   label: string;
@@ -14,7 +15,7 @@ export interface ObjectTypeNodeData extends Record<string, unknown> {
   count: number;
   /** Within-type interactions (object pairs of the same type), if any. */
   intraCount?: number;
-  direction: Direction;
+  direction: LayoutDirection;
 }
 
 export type ObjectTypeNode = Node<ObjectTypeNodeData, "objectType">;

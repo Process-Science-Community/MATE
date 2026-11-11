@@ -12,7 +12,7 @@ import {
 import { formatNumber } from "@/lib/format";
 import { useVizSettings } from "@/lib/stores/visualization-settings";
 
-import { elkLayout } from "../layout/layered";
+import { elkLayout } from "@/components/visualizations/artifacts/layout";
 import { ObjectTypeNode, type ObjectTypeNodeData } from "../nodes/object-type-node";
 import {
   OBJECT_GRAPH_LABELS,

@@ -35,6 +35,7 @@ from mate.api.db.engine import dispose_engine, get_sessionmaker
 from mate.api.db.models import Job, ModuleInstall, WatchedFolder
 from mate.api.duckdb.pool import get_duckdb_pool
 from mate.api.events import EventBus, set_event_bus
+from mate.api.flows.executor import FlowExecutor, set_flow_executor
 from mate.api.ingest.dispatch import register_import_handler
 from mate.api.ingest.staging import sweep_staging
 from mate.api.ingest.watch import scan_watch
@@ -43,9 +44,10 @@ from mate.api.jobs.runtime import JobRuntime, load_persisted_concurrency, set_jo
 from mate.api.jobs.supervisor import get_child_supervisor
 from mate.api.middleware import UsageTrackingMiddleware
 from mate.api.modules import CapabilityRegistry, ModuleLoader, set_module_loader
+from mate.api.modules.artifacts import backfill as backfill_artifacts
 from mate.api.modules.hot_reload import HotReload, sweep_stale_workdirs
 from mate.api.modules.install_jobs import register_module_install_handlers
-from mate.api.modules.maintenance import gc_orphaned_uploaded_modules
+from mate.api.modules.maintenance import gc_orphaned_uploaded_modules, recover_install_staging
 from mate.api.modules.processing import ModuleProcessingCoordinator, set_coordinator
 from mate.api.routes import v1
 from mate.api.routes.analytics import prune_expired, record_server_event
@@ -337,6 +339,9 @@ async def lifespan(app: FastAPI):
     )
     set_module_loader(loader)
     register_module_install_handlers(runtime, loader)
+    # An install/rollback that died mid-swap: put the live version back before
+    # anything (S3 restore, discovery) looks at the uploads dir.
+    await asyncio.to_thread(recover_install_staging, settings.uploaded_modules_dir.resolve())
 
     # S3 mode: reclaim orphaned uploaded-module dirs (zero install rows), then
     # re-materialise any *owned* upload whose source is missing locally (fresh
@@ -374,6 +379,9 @@ async def lifespan(app: FastAPI):
     # job (an eager module, or one already computed for the log) instead of
     # submitting one for every module on every import.
     loader.precompute_dispatcher = coordinator.dispatch
+    # Flow runs: a detached `flow.run` job per run, chaining run variants.
+    flow_executor = FlowExecutor(coordinator, runtime, bus, get_sessionmaker())
+    set_flow_executor(flow_executor)
     # Subscribe to terminal job events *before* anything can finish: the resume
     # below restarts jobs immediately, and a `job.completed` published before this
     # loop is listening would leave its run stuck in flight. The sleep lets the
@@ -391,6 +399,12 @@ async def lifespan(app: FastAPI):
     # Then settle the runs that process left in flight - after the resume, so the
     # import children it just requeued are left to finish on their own.
     await coordinator.reconcile_boot()
+    await flow_executor.reconcile_boot()
+    # Index, once, the results computed before the artifact workspace existed - in the
+    # background, now that the modules are loaded (a no-op once it has run).
+    backfill_task = asyncio.create_task(
+        backfill_artifacts({mid: lm.manifest for mid, lm in loader.loaded.items()})
+    )
 
     # Sweep any `ff-mod-*` temp dirs older than 24h that earlier crashes left
     # behind (the per-invocation cleanup in `_invoke_handler` handles the
@@ -483,6 +497,7 @@ async def lifespan(app: FastAPI):
             eviction_task,
             db_backup_task,
             sample_content_task,
+            backfill_task,
         ):
             task.cancel()
             with suppress(asyncio.CancelledError, Exception):
@@ -493,6 +508,7 @@ async def lifespan(app: FastAPI):
         set_resource_sampler(None)
         coordinator.stop()
         set_coordinator(None)
+        set_flow_executor(None)
         # Both teardowns are internally time-boxed (subprocess hosts fall back to
         # SIGKILL; runtime.stop drains are graced), but wrap them anyway: uvicorn
         # waits on this `finally`, so any future unbounded await here would wedge

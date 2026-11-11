@@ -1,6 +1,6 @@
 id: process_comparison
 name: Process Comparison
-version: 1.0.0
+version: 1.0.1
 category: comparison
 description: >-
   Compares two filtered views of event logs side by side: an overlaid

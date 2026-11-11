@@ -1,6 +1,6 @@
 id: pcomp
 name: Pcomp
-version: 1.0.0
+version: 1.0.1
 category: comparison
 description: >-
   Tests whether two event logs differ in a statistically meaningful way,
@@ -25,7 +25,7 @@ source:
       A. Berti, S. van Zelst, and D. Schuster, "PM4Py: A process mining library
       for Python," Softw. Impacts, vol. 17, 100556, 2023
     url: https://doi.org/10.1016/j.simpa.2023.100556
-artifacts:
+links:
   - name: pcomp reference implementation
     url: https://github.com/cpitsch/pcomp
   - name: pm4py

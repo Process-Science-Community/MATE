@@ -8,13 +8,108 @@ overlap (§5.4 inherit-conflict rule).
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
+import structlog
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import InvalidVersion, Version
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
+from mate.sdk.artifacts import WORKSPACE_MODULE_ID, DatasetShape, get_artifact_type
 from mate.sdk.errors import ModuleManifestError
+
+log = structlog.get_logger(__name__)
+
+# SemVer 2.0.0 (semver.org's reference pattern). `version` is also the run-staleness
+# signal and lands in `String(64)` columns, hence the length cap.
+SEMVER_RE = re.compile(
+    r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?"
+)
+MAX_VERSION_LENGTH = 64
+
+_MODULE_REQUIREMENT_RE = re.compile(r"\s*([a-z0-9_]+)\s*(.*?)\s*")
+# What precedes a specifier: the id a lenient parse keeps from an unparseable entry.
+_SPECIFIER_START_RE = re.compile(r"[\s<>=!~,]")
+
+# `Manifest.load_yaml(path, lenient=True)` / `model_validate(data, context=LENIENT)`:
+# a non-SemVer `version` or an unparseable `requirements.modules` entry is logged and
+# accepted, as every manifest was before P8, and a dataset `route` without its leading
+# "/" gets one (with a warning). Only for manifests already on disk (boot
+# discovery, restoring a previous version) - new uploads and `mate-module validate`
+# stay strict.
+LENIENT = {"lenient": True}
+
+
+def _lenient(info: ValidationInfo) -> bool:
+    return bool(info.context and info.context.get("lenient"))
+
+
+@dataclass(frozen=True)
+class ModuleRequirement:
+    """One `requirements.modules` entry: a module id plus an optional PEP 440
+    specifier on its version (`"discovery>=1,<2"`; a bare `"discovery"` takes any)."""
+
+    id: str
+    specifier: SpecifierSet
+
+    @classmethod
+    def parse(cls, text: str, *, lenient: bool = False) -> ModuleRequirement:
+        """Strict by default; *lenient* reads an unparseable entry as the bare id in
+        front of its specifier (the whole text when there is none), as before P8."""
+        try:
+            return cls._parse(text)
+        except ModuleManifestError:
+            if not lenient:
+                raise
+            stripped = text.strip()
+            return cls(
+                _SPECIFIER_START_RE.split(stripped, maxsplit=1)[0] or stripped, SpecifierSet()
+            )
+
+    @classmethod
+    def _parse(cls, text: str) -> ModuleRequirement:
+        match = _MODULE_REQUIREMENT_RE.fullmatch(text)
+        if match is None:
+            raise ModuleManifestError(
+                f"requirements.modules entry {text!r} must be a module id, optionally followed "
+                "by a version specifier (e.g. `discovery>=1,<2`)."
+            )
+        try:
+            specifier = SpecifierSet(match.group(2))
+        except InvalidSpecifier as exc:
+            raise ModuleManifestError(
+                f"requirements.modules entry {text!r} has an invalid version specifier: {exc}"
+            ) from exc
+        return cls(match.group(1), specifier)
+
+    def allows(self, version: str) -> bool:
+        """Whether a loaded module at *version* satisfies this requirement."""
+        if not self.specifier:
+            return True
+        try:
+            # shortcut: a SemVer prerelease PEP 440 can't spell (`1.0.0-alpha.beta`)
+            # never satisfies a specifier; map SemVer to PEP 440 if anyone needs one.
+            return self.specifier.contains(Version(version), prereleases=True)
+        except InvalidVersion:
+            return False
+
+    def __str__(self) -> str:
+        return f"{self.id}{self.specifier}"
+
 
 ModuleCategory = Literal[
     "foundation", "attribute", "external_input", "advanced", "comparison", "other"
@@ -47,8 +142,39 @@ class OptionalModuleDep(BaseModel):
 
 class Requirements(BaseModel):
     event_log: EventLogRequirements = Field(default_factory=EventLogRequirements)
+    # Hard deps: module ids, each optionally constrained by a PEP 440 specifier on
+    # its version (`discovery>=1,<2`). Read them through `module_requirements` /
+    # `module_ids`, never as plain ids.
     modules: list[str] = Field(default_factory=list)
     optional_modules: list[OptionalModuleDep] = Field(default_factory=list)
+
+    @field_validator("modules")
+    @classmethod
+    def _parse_modules(cls, value: list[str], info: ValidationInfo) -> list[str]:
+        for entry in value:
+            try:
+                ModuleRequirement.parse(entry)
+            except ModuleManifestError as exc:
+                if not _lenient(info):
+                    raise
+                treated_as = ModuleRequirement.parse(entry, lenient=True).id
+                log.warning(
+                    "modules.manifest.requirement_invalid",
+                    requirement=entry,
+                    treated_as=treated_as,
+                    error=str(exc),
+                )
+        return value
+
+    @property
+    def module_requirements(self) -> list[ModuleRequirement]:
+        # Lenient only matters for a manifest validated leniently: a strict one has no
+        # unparseable entry left.
+        return [ModuleRequirement.parse(entry, lenient=True) for entry in self.modules]
+
+    @property
+    def module_ids(self) -> list[str]:
+        return [r.id for r in self.module_requirements]
 
 
 class DependenciesPython(BaseModel):
@@ -326,13 +452,20 @@ class DatasetEntry(BaseModel):
     # falls back to a generic icon when unknown or absent.
     icon: str | None = None
     # The data shape this dataset produces. Drives which generic visualizations
-    # can render it - a viz declares which shape(s) it `accepts`.
-    shape: Literal["table", "graph", "kpi", "tree", "blob"]
+    # can render it - a viz declares which shape(s) it `accepts`. Optional when
+    # `artifact_type` is set: the artifact type's default shape fills it in.
+    shape: DatasetShape
     # Module sub-route (leading slash, e.g. "/dfg") whose JSON response carries
     # the data. The platform calls ``GET /api/v1/modules/{module_id}{route}``,
     # so the existing per-request ephemeral filter + result-cache variant apply
-    # unchanged.
-    route: str
+    # unchanged. Optional when `cache_key` is set.
+    route: str | None = None
+    # What this dataset is, as an artifact type id from `mate.sdk.artifacts`
+    # (`petri_net` or `petri_net@1`). Other modules' `inputs:` match on it.
+    artifact_type: str | None = None
+    # The result-cache key the module's precompute writes this artifact under.
+    # Inputs bound to this dataset read that entry; they never call `route`.
+    cache_key: str | None = None
     # Which log data model(s) this dataset applies to. A dashboard is created
     # for one model (case-centric vs object-centric/OCEL) and its palette only
     # offers datasets whose `log_models` include the board's model. Defaults to
@@ -344,6 +477,58 @@ class DatasetEntry(BaseModel):
     # the dataset's route accepts as query params. Passed through to the
     # frontend as-is; rendering/validation is the frontend's job.
     params_schema: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _shape_from_artifact_type(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        fields = cast(dict[str, Any], data)
+        type_id = fields.get("artifact_type")
+        artifact_type = get_artifact_type(type_id) if isinstance(type_id, str) else None
+        if fields.get("shape") is None and artifact_type is not None:
+            return {**fields, "shape": artifact_type.shape}
+        return data
+
+    @model_validator(mode="after")
+    def _route_or_cache_key(self, info: ValidationInfo) -> Self:
+        if self.route is None and self.cache_key is None:
+            raise ModuleManifestError(
+                f"Dataset {self.id!r} needs a `route`, a `cache_key` or both."
+            )
+        # Appended to `/api/v1/modules/{id}` as-is, so "" or "x" would build a bad URL.
+        if self.route is not None and not self.route.startswith("/"):
+            if _lenient(info):  # a module installed before the rule: fix it up, keep it
+                log.warning(
+                    "modules.manifest.dataset_route_slash", dataset=self.id, route=self.route
+                )
+                self.route = f"/{self.route}"
+                return self
+            raise ModuleManifestError(
+                f"Dataset {self.id!r}: `route` must start with '/' (got {self.route!r})."
+            )
+        return self
+
+
+class InputPort(BaseModel):
+    """One artifact a module consumes (manifest `inputs:`).
+
+    A handler reads it with `await ctx.inputs.get(<id>)`: the platform binds the
+    port to the `from` module's dataset of this artifact type and returns that
+    module's precomputed cache entry, or None while it is unbound or not yet
+    produced. The `from` module runs first when the user owns it.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    artifact_type: str
+    required: bool = False
+    # Producer module id (YAML `from:`). Without it the port stays unbound.
+    from_: str | None = Field(default=None, alias="from")
+    # Producer dataset id. Default: the producer's only dataset of this type.
+    dataset: str | None = None
+    description: str | None = None
 
 
 class AiModelSlot(BaseModel):
@@ -398,9 +583,9 @@ class ModelStoreManifest(BaseModel):
     config_key: str = "model"
 
 
-# A manifest may cite up to this many sources and link up to this many artifacts.
+# A manifest may cite up to this many sources and list up to this many links.
 MAX_SOURCES = 20
-MAX_ARTIFACTS = 20
+MAX_LINKS = 20
 
 # Author credits were removed from the manifest: a source's `fullCitation`
 # carries the author names, so these keys are rejected instead of silently
@@ -426,8 +611,8 @@ class Source(BaseModel):
     url: str | None = None
 
 
-class Artifact(BaseModel):
-    """One linked artifact a module points at - code, data, or a model.
+class Link(BaseModel):
+    """One named link a module points at - code, data, or a model.
 
     A plain named link (`name` is what the UI shows, `url` is where it goes),
     used for the reference implementation's repo, a dataset, a demo, or a
@@ -460,9 +645,15 @@ class Manifest(BaseModel):
     source: list[Source] = Field(default_factory=list, max_length=MAX_SOURCES)
     # Optional named links (max 20) - the reference implementation's repo, a
     # dataset, a demo, a released model. Rendered as their own row in the "About
-    # this module" box, below the cited sources. An artifact is `{name, url}`,
-    # both required, and an empty list simply renders nothing.
-    artifacts: list[Artifact] = Field(default_factory=list, max_length=MAX_ARTIFACTS)
+    # this module" box, below the cited sources. A link is `{name, url}`, both
+    # required, and an empty list simply renders nothing. The old YAML key
+    # `artifacts:` is still read (deprecated): "artifact" now means what a
+    # module produces or consumes, not a link.
+    links: list[Link] = Field(
+        default_factory=list,
+        max_length=MAX_LINKS,
+        validation_alias=AliasChoices("links", "artifacts"),
+    )
     license: str | None = None
 
     # Which language runtime executes this module. Absent = Python (every
@@ -485,6 +676,9 @@ class Manifest(BaseModel):
     # normalizes the response into a shape-tagged envelope and renders it with a
     # generic visualization. Surfaced by `GET /api/v1/datasets/catalog`.
     datasets: list[DatasetEntry] = Field(default_factory=list)
+    # Artifacts this module consumes from other modules' datasets, read with
+    # `ctx.inputs.get(<port id>)`. See InputPort and `mate.sdk.artifacts`.
+    inputs: list[InputPort] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     default_enabled: bool = True
     # When the module's import-time precompute (`@on_event("log.imported")` +
@@ -505,7 +699,12 @@ class Manifest(BaseModel):
     is_confidential_safe: bool = Field(default=False, alias="isConfidentialSafe")
     # JSON-Schema-flavoured dict so module authors write it in YAML. The
     # platform passes it through to the frontend as-is (`/config-schema`);
-    # form-rendering and validation are the frontend's responsibility.
+    # form-rendering and validation are the frontend's responsibility. Two
+    # per-property flags under `ui` are read by the platform itself:
+    # `scope: dataset` (default `module`) lets a user override the value per event
+    # log, the module-wide value being every log's default; `affects: precompute`
+    # (next to `compute`/`view`) marks a value the precompute job reads, so
+    # changing its effective value makes the log's stored run stale.
     config_schema: dict[str, Any] | None = None
     # Optional declaration of AI-model selectors. When present, the module's
     # settings page renders an "AI models" card and the chosen (provider,
@@ -539,11 +738,32 @@ class Manifest(BaseModel):
             )
         return data
 
+    @field_validator("version")
+    @classmethod
+    def _semver(cls, value: str, info: ValidationInfo) -> str:
+        if len(value) > MAX_VERSION_LENGTH or SEMVER_RE.fullmatch(value) is None:
+            if _lenient(info):
+                log.warning(
+                    "modules.manifest.version_not_semver",
+                    module_id=info.data.get("id"),
+                    version=value,
+                )
+                return value
+            raise ModuleManifestError(
+                f"Manifest version {value!r} must be a SemVer 2.0 version (MAJOR.MINOR.PATCH, "
+                f"e.g. 1.0.0 or 1.1.0-rc.1) of at most {MAX_VERSION_LENGTH} characters."
+            )
+        return value
+
     @model_validator(mode="after")
     def _validate_id(self) -> Self:
         if not self.id.replace("_", "").isalnum() or not self.id.islower():
             raise ModuleManifestError(
                 f"Manifest id {self.id!r} must be lowercase snake_case (letters, digits, underscores)."
+            )
+        if self.id == WORKSPACE_MODULE_ID:
+            raise ModuleManifestError(
+                f"Manifest id {self.id!r} is reserved for uploaded workspace artifacts."
             )
         return self
 
@@ -583,7 +803,9 @@ class Manifest(BaseModel):
         return self
 
     @classmethod
-    def load_yaml(cls, path: Path | str) -> Manifest:
+    def load_yaml(cls, path: Path | str, *, lenient: bool = False) -> Manifest:
+        """Parse and validate *path*. *lenient* (see `LENIENT`) is for manifests
+        already on disk; anything new is validated strictly."""
         path = Path(path)
         try:
             data = yaml.safe_load(path.read_text())
@@ -592,7 +814,7 @@ class Manifest(BaseModel):
         if not isinstance(data, dict):
             raise ModuleManifestError(f"Manifest at {path} is not a YAML mapping.")
         try:
-            return cls.model_validate(data)
+            return cls.model_validate(data, context=LENIENT if lenient else None)
         except Exception as exc:
             raise ModuleManifestError(f"Manifest validation failed for {path}: {exc}") from exc
 

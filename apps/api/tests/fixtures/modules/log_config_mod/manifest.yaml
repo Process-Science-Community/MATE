@@ -1,0 +1,58 @@
+id: log_config_mod
+name: Log Config Module
+version: 0.1.0
+category: foundation
+description: Test fixture – a lazy precompute with per-log (`ui.scope dataset`) and precompute-affecting (`ui.affects precompute`) config properties plus a model store.
+license: MIT
+
+requirements:
+  event_log:
+    required_columns:
+      - case_id
+      - activity
+      - timestamp
+    min_events: 1
+    min_cases: 1
+
+consumes:
+  - log.imported
+
+dependencies:
+  python:
+    inherit:
+      - duckdb
+      - pandas
+    isolation: in_process
+
+config_schema:
+  type: object
+  properties:
+    min_support:
+      type: number
+      default: 0.5
+      ui:
+        scope: dataset
+        affects: precompute
+    zoom:
+      type: number
+      default: 1
+      ui:
+        scope: dataset
+        affects: view
+    solver_budget:
+      type: integer
+      default: 10
+      ui:
+        affects: compute
+    label:
+      type: string
+      default: plain
+    api_key:
+      type: string
+      ui:
+        widget: secret
+
+model_store:
+  title: Detection model
+  accept: .bin
+  config_key: model

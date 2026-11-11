@@ -1,20 +1,20 @@
 # How to use Conformance Checking
 
-Conformance Checking replays your event log against a reference BPMN model that you upload. You get the fitness and precision of the model, the share of cases that follow it, and the places where cases deviate, painted onto the diagram.
+Conformance Checking replays your event log against a reference BPMN model that you upload, or against the model Discovery mined from the log while you have uploaded none. You get the fitness and precision of the model, the share of cases that follow it, and the places where cases deviate, painted onto the diagram.
 
 ## When to use it
 
 - You have a model of how the process should run, such as a designed process, a policy or a standard, and you want to know how closely the recorded cases follow it.
 - You want to find where reality departs from it: the activities and the variants with the most deviations.
-- You have no model yet. Open the BPMN view of Discovery, save the diagram with **Download BPMN** and upload it here, or draw your own. A mined model mainly reflects the log it came from, so a compliance check is most useful with a model that states what should happen.
+- You have no model yet. With Discovery installed, the module checks the log against Discovery's mined model until you upload one, or you draw your own. A mined model mainly reflects the log it came from, so a compliance check is most useful with a model that states what should happen.
 - You want to compare two groups of cases or see how the process runs without a model. Use Process Comparison or Discovery.
 
 ## Before you start
 
 - The module needs a case-centric event log with `case_id`, `activity` and `timestamp` columns, at least 50 events and at least 2 cases. Otherwise the module's card in the process's module list shows an **Unavailable** badge and cannot be opened; hover the card to read the reason.
-- You need a reference model: a BPMN 2.0 file ending in `.bpmn` or `.xml` with at least one labelled task. MATE refuses a file it cannot read ("Not a readable BPMN model") or one without labelled tasks. The model belongs to this log and your account; it is not shared with other logs.
+- You need a reference model. Without an upload, the module uses the Petri net Discovery mined with the Inductive Miner, converted to BPMN, and needs Discovery installed for that. An uploaded model always takes precedence: a BPMN 2.0 file ending in `.bpmn` or `.xml` with at least one labelled task. MATE refuses a file it cannot read ("Not a readable BPMN model") or one without labelled tasks. The model belongs to this log and your account; it is not shared with other logs.
 - Task names in the model must match the activity names in the log. They are compared exactly after trimming spaces, collapsing repeated spaces and ignoring upper and lower case. There is no fuzzy matching, so one wrong letter makes a different activity.
-- Nothing is precomputed. A check runs when you start it, as a background job with progress messages, and a freshly uploaded model starts one automatically.
+- The check itself is never precomputed. With Discovery installed, the first time you open the module for a process, and again when the log's data has changed, MATE runs Discovery first so its model is ready. It shows "Computing Discovery…" with a progress bar and a **Cancel** button before the panel appears, and offers **Retry** if that run fails. A check runs when you start it, as a background job with progress messages, and a freshly uploaded model starts one automatically.
 - This page has no filter bar. A filter applied on the log's **Events** tab narrows the events that are replayed.
 
 ## Settings
@@ -24,8 +24,8 @@ Conformance Checking replays your event log against a reference BPMN model that 
 The **Reference model** card holds the model controls and the technique.
 
 - **Upload BPMN** adds a model. It becomes the active model and a run starts at once, and a message confirms it with the number of tasks, for example `Reference model "order.bpmn" ready (14 tasks)`. A file with the name of an existing model replaces it. File names are reduced to letters, digits, dots, hyphens and underscores.
-- **Run conformance** appears once a model exists and starts a check with the chosen technique. It reads "Running…" while a run is in progress.
-- The list shows every uploaded model with its size and an **active** badge. Choose one to make it active. The trash icon deletes a model from this log after you confirm.
+- **Run conformance** appears once a model is uploaded and starts a check with the chosen technique. It reads "Running…" while a run is in progress. With Discovery's model and no upload, the results area shows "Reference model ready" with its own **Run conformance** button.
+- The list shows every uploaded model with its size and an **active** badge. Choose one to make it active. The trash icon deletes a model from this log after you confirm. Discovery's model is never listed; it is used whenever the list is empty.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ The **Reference model** card holds the model controls and the technique.
 
 ### On the module page
 
-Open **Module Settings** in the sidebar and choose this module. The values in its **Configuration** card apply to the next run, and saving does not start one. An administrator can lock the card, which makes it read-only. Save with **Save configuration**.
+Open **Module Settings** in the sidebar and choose this module. The values in its **Configuration** card apply to the next run, and saving does not start one. An administrator can lock the card, which makes it read-only. Save with **Save configuration**. Conforming-trace threshold is the default for every process; **Parameters for this log** on the module's page for a process overrides it there, from the next run on. Conformance technique is one value for all processes.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ An amber notice reading "Activity names don't fully line up" appears when the mo
 
 ### Deviations on the model
 
-The reference diagram with the result painted onto its tasks. Green marks a task the log replays without deviations, and a red scale in five steps marks deviating tasks, darker for more deviations. An amber dashed task is in the model but never in the log, which usually means a name mismatch. With **Deviation counts** on, a badge shows the number of deviations at a task, and "not in log" on such an amber task. With alignments it reads `+2 −1`: 2 steps happened in the log but are not allowed by the model, and 1 step is required by the model but skipped in the log. A legend under the diagram explains the colours and shows only what is switched on.
+The reference diagram with the result painted onto its tasks. Discovery's model is shown as its BPMN conversion, which can add gateways the Petri net did not draw. Green marks a task the log replays without deviations, and a red scale in five steps marks deviating tasks, darker for more deviations. An amber dashed task is in the model but never in the log, which usually means a name mismatch. With **Deviation counts** on, a badge shows the number of deviations at a task, and "not in log" on such an amber task. With alignments it reads `+2 −1`: 2 steps happened in the log but are not allowed by the model, and 1 step is required by the model but skipped in the log. A legend under the diagram explains the colours and shows only what is switched on.
 
 The diagram has a toolbar in its top right corner with **Zoom out**, **Zoom in**, **Fit to view**, **Graph settings** and **Fullscreen**.
 
@@ -95,6 +95,6 @@ The module also offers the datasets **Conformance KPIs** and **Per-activity devi
 
 ## Method
 
-The module reads the BPMN model, converts it to a Petri net with PM4Py and replays the log against it. Token-based replay follows Rozinat and van der Aalst (2008): every case is replayed on the net, and missing and remaining tokens measure its deviations. The log fitness combines them as 0.5 times one minus the missing tokens over the consumed tokens, plus 0.5 times one minus the remaining tokens over the produced tokens. Alignments, as surveyed by Carmona, van Dongen and Weidlich (2022), instead find the cheapest way to match each case to a run of the model, where a step in the log only or in the model only is a deviation.
+The module reads the BPMN model, converts it to a Petri net with PM4Py and replays the log against it. Discovery's Petri net is first converted to BPMN with PM4Py and then takes the same path. Token-based replay follows Rozinat and van der Aalst (2008): every case is replayed on the net, and missing and remaining tokens measure its deviations. The log fitness combines them as 0.5 times one minus the missing tokens over the consumed tokens, plus 0.5 times one minus the remaining tokens over the produced tokens. Alignments, as surveyed by Carmona, van Dongen and Weidlich (2022), instead find the cheapest way to match each case to a run of the model, where a step in the log only or in the model only is a deviation.
 
 Precision measures how much of the model's behaviour the log actually uses. Activity names are unified with the model's spelling before the replay, and the diagram colours come from the per-activity deviation counts. The formal citations are in the info popover next to the module name.

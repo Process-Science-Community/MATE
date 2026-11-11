@@ -1,6 +1,6 @@
 id: performance_java
 name: Performance Metrics (Java)
-version: 1.0.0
+version: 1.0.1
 category: foundation
 description: >-
   Timing metrics straight from the event log: cycle time, throughput, the

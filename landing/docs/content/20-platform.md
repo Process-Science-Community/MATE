@@ -73,8 +73,8 @@ mate/
 | Identity and access | `users` (a mirror of the Keycloak subject), `api_tokens`, `user_settings`, `system_settings`, `control_policies` |
 | Logs | `process_logs`, `process_folders`, `watched_folders`, `watched_folder_files`, `event_edits` |
 | Work | `jobs` (status, progress, payload, parent job) |
-| Modules | `module_configs`, `module_installs`, `module_layouts` |
-| Sharing | `dashboards`, `teams`, `team_members`, `dashboard_shares` |
+| Modules | `module_configs`, `module_installs`, `log_module_configs` (per-log overrides), `log_module_runs` (per-log run state) |
+| Sharing | `dashboards` (a row with `module_id` set is a module's board for one log, not a shared dashboard), `teams`, `team_members`, `dashboard_shares` |
 | Usage (optional) | `analytics_sessions`, `analytics_events`, plus the OCEL-shaped `analytics_objects`, `analytics_object_relations`, `analytics_event_objects` |
 
 Logs, folders, watched folders, and teams use soft deletes: the row stays for audit and cascade bookkeeping while the data is removed.
@@ -169,7 +169,7 @@ In-process pub/sub, with a bounded queue per subscriber: when one fills, the old
 | Gating | Per log: log model, required columns, `min_events`/`min_cases`, required modules, and the user's enable switch. |
 | Hot reload | Dev only: changed files reload in place; a changed dependency block triggers `uv sync` for that module. |
 
-**Precompute** is declared by stacking `@on_event("log.imported")` and `@job` on one handler, and it is **lazy**: a log is `ready` once parsed, and a module computes for it only when something asks — opening the module page, a dashboard card, or an MCP read — or at import for a manifest that says `precompute: eager` (an admin can override that per module). One row per (log, module) in `log_module_runs` records the state (`queued`, `running`, `ready`, `failed`, `cancelled`); `idle` and `stale` are derived by comparing the row with the log's data revision and the module's version, so a data change never has to touch a row. Requests are deduplicated per (log, module).
+**Precompute** is declared by stacking `@on_event("log.imported")` and `@job` on one handler, and it is **lazy**: a log is `ready` once parsed, and a module computes for it only when something asks — opening the module page, a dashboard card, or an MCP read — or at import for a manifest that says `precompute: eager` (an admin can override that per module). One row per (log, module) in `log_module_runs` records the state (`queued`, `running`, `ready`, `failed`, `cancelled`); `idle` and `stale` are derived by comparing the row with the log's data revision, the module's version and its run fingerprint, so a data change never has to touch a row. The fingerprint covers the module's compute code (its `.py`/`.jar` files and manifest) plus the effective values of its `ui.affects: precompute` settings, module-wide or per log, and the selected `model_store` model — so a code change without a version bump, or a changed precompute setting, stales the result too. Requests are deduplicated per (log, module).
 
 A committed filter, a reimport or a cell edit bumps the data revision and re-runs only the modules already computed on the log, with their result cache emptied first (cell edits wait for a pause). Ordering is pull-based: asking for a module first runs what it depends on — the modules it chains off via `<module_id>.completed`, and its hard `requirements.modules` — and parks it until they finish. A module whose upstream fails or is cancelled is failed with that reason, never left waiting. A run lost to an API restart is resubmitted at boot.
 

@@ -17,6 +17,13 @@ public interface ModuleContext {
     String moduleId();
 
     /**
+     * True when the calling user is not the log's owner (a log reached through
+     * a shared dashboard). Reads see the owner's data; a route that changes
+     * durable owner state must refuse. Absent from older platforms = false.
+     */
+    boolean readOnly();
+
+    /**
      * Per-invocation scratch directory on a filesystem shared with the
      * platform. Deleted by the platform when the call ends.
      */
@@ -28,6 +35,9 @@ public interface ModuleContext {
     EventLog eventLog();
 
     Cache cache();
+
+    /** The manifest's {@code inputs:} ports, bound to other modules' artifacts. */
+    Inputs inputs();
 
     Bus bus();
 

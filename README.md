@@ -110,7 +110,7 @@ mounted automatically:
 | `complexity` | EPA-based complexity measures – variant/sequence entropy, Lempel-Ziv, affinity, structure, Pentland's task/process complexity |
 | `cv4cdd` | Computer-vision concept-drift detection (sudden, gradual, incremental, recurring) |
 | `concept_drift_explainer` | LLM-backed explanations for drifts, grounded in user-uploaded enterprise documents |
-| `agent_simulator` | Agent-based simulation that learns from a log and generates synthetic traces |
+| `agentsimulator` | Agent-based simulation that learns from a log and generates synthetic traces |
 
 The table shows a selection; `make modules` lists all of them. Enable / disable /
 configure each one on the **Modules** page (`/modules`).
@@ -243,13 +243,17 @@ Then:
 4. `make test ID=my_mod`, then `make validate` before you ship.
 
 Several modules at once: `make lite MODULES=a,b`. `make modules` lists every
-module, and `make reset` wipes the lite data.
+module, and `make reset` wipes the lite data. `uv run mate-module run recount modules/my_mod`
+calls one handler against the bundled sample log without a server.
 
 | Read | For |
 | --- | --- |
 | [`docs/DEV_LITE.md`](./docs/DEV_LITE.md) | Setup details, the full flow (new, run, Studio, test, validate, ship), Studio card kinds, debugging per execution mode, troubleshooting |
-| [`modules/README.md`](./modules/README.md) | The module contract: manifest, `module.py`, context API, frontend, dependencies |
+| [`modules/README.md`](./modules/README.md) | The module contract: manifest, `module.py`, context API, frontend, inputs and artifacts, run variants, versioning, dependencies |
 | [`modules/PROTOCOL.md`](./modules/PROTOCOL.md) | Wire protocol for subprocess and JVM modules |
+| [`docs/INSTRUCTIONS.md`](./docs/INSTRUCTIONS.md) | Platform internals, including artifacts (`/artifacts`) and flows (`/flows`) |
 
-To ship, commit the folder under `modules/`, or zip it and upload it via
-**Modules → Install a module** (`/modules/import`).
+To ship, commit the folder under `modules/`, or zip it with
+`uv run mate-module pack modules/my_mod` (keeps the built `.dist/` bundles) and upload
+it via **Modules → Install a module** (`/modules/import`). A changed module needs the
+version bump its contract change calls for: `make versions` checks it.

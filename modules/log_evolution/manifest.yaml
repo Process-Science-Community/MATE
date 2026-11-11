@@ -1,6 +1,6 @@
 id: log_evolution
 name: Log Evolution
-version: 1.0.0
+version: 1.1.0
 category: advanced
 description: >-
   Shows how your log grows and shifts over time: case arrivals versus

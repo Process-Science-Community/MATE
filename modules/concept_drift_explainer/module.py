@@ -1,7 +1,7 @@
 """Concept Drift Explainer - module entry point.
 
 Routes:
-  GET    /drifts                    → list adapted drifts from cv4cdd's cache
+  GET    /drifts                    → list adapted drifts from cv4cdd (`inputs: drifts`)
   GET    /documents                 → list per-log documents currently on disk
   POST   /documents                 → upload one document (multipart)
   DELETE /documents/{name}          → remove a document + its Pinecone vectors
@@ -26,7 +26,7 @@ from typing import Any
 from fastapi import HTTPException, UploadFile
 from pydantic import BaseModel
 
-from mate.sdk import Module, ModuleContext, job, on_event, route
+from mate.sdk import Module, ModuleContext, job, route
 
 from .agents.drift_agent import build_drift_record
 from .graph.build_graph import build_graph
@@ -51,6 +51,15 @@ FILENAME_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_")
 
 def _docs_dir(events_path: Path) -> Path:
     return events_path.parent / DOCS_SUBDIR
+
+
+def _require_owner(ctx: ModuleContext) -> None:
+    """403 for a shared dashboard's viewer: the documents and chats are the owner's."""
+    if ctx.read_only:
+        raise HTTPException(
+            status_code=403,
+            detail="This log is shared with you read-only: only its owner can change it.",
+        )
 
 
 def _ns_for(log_id: str) -> str:
@@ -125,21 +134,6 @@ class ConceptDriftExplainerModule(Module):
             return None
         return {"explanations": explanations}
 
-    # ── triggers ──────────────────────────────────────────────────────────────
-
-    @on_event("cv4cdd.completed")
-    async def on_cv4cdd_completed(self, ctx: ModuleContext, payload: dict[str, Any]) -> None:
-        """Cheap refresh hook - no LLM cost.
-
-        The platform auto-emits `<module_id>.completed` when a module's precompute
-        job succeeds, so this fires after cv4cdd finishes detecting drifts and the
-        panel can show a fresh drift list without the user having to refresh. It is
-        *not* a `@job` (no `progress`/`@job` stacked) so it never gates the log's
-        `processing → ready` transition, and it intentionally does *not* trigger
-        the explanation pipeline (which costs real money).
-        """
-        ctx.logger.info("cv4cdd.completed arrived; drift list will refresh on next poll")
-
     # ── drift listing ────────────────────────────────────────────────────────
 
     @route.get("/drifts")
@@ -179,6 +173,7 @@ class ConceptDriftExplainerModule(Module):
 
     @route.post("/documents")
     async def upload_doc(self, ctx: ModuleContext, file: UploadFile) -> dict[str, Any]:
+        _require_owner(ctx)
         if not file.filename:
             raise HTTPException(status_code=422, detail="filename missing")
         if not FILENAME_PREFIX_RE.match(file.filename):
@@ -205,6 +200,7 @@ class ConceptDriftExplainerModule(Module):
 
     @route.delete("/documents/{name}")
     async def delete_doc(self, ctx: ModuleContext, name: str) -> dict[str, Any]:
+        _require_owner(ctx)
         async with ctx.event_log as log:
             docs_dir = _docs_dir(log.events_path)
         target = docs_dir / name
@@ -436,6 +432,7 @@ class ConceptDriftExplainerModule(Module):
 
     @route.post("/chat")
     async def chat(self, ctx: ModuleContext, body: ChatRequest) -> dict[str, Any]:
+        _require_owner(ctx)  # it appends to the owner's chat history
         explanations = await ctx.cache.get("explanations") or {}
         if not isinstance(explanations, dict) or body.drift_key not in explanations:
             raise HTTPException(
@@ -486,13 +483,9 @@ class ConceptDriftExplainerModule(Module):
 
     async def _adapted_drifts(self, ctx: ModuleContext) -> tuple[list[dict[str, Any]], int]:
         """Read cv4cdd's detections and adapt them into the CDE drift shape."""
-        from mate.api.modules.cache import ResultCache
-
-        # cv4cdd writes its detections to *its own* per-user result cache. Scope
-        # the read to the same user (ResultCache requires user_id since the
-        # multi-user migration) or the lookup raises and we silently get no drifts.
-        cv4cdd_cache = ResultCache(log_id=ctx.log_id, module_id="cv4cdd", user_id=ctx.user_id)
-        detections = await cv4cdd_cache.get("detections")
+        # The manifest `inputs: drifts` port: cv4cdd's cached detections for this log
+        # (the platform runs cv4cdd first), or None before it has produced any.
+        detections = await ctx.inputs.get("drifts")
         if not isinstance(detections, dict):
             return [], 0
 

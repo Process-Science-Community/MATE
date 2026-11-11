@@ -14,6 +14,8 @@ from typing import Any, Protocol, runtime_checkable
 
 import structlog
 
+from mate.sdk.artifacts import ArtifactRef
+
 
 @runtime_checkable
 class EventBusProtocol(Protocol):
@@ -144,7 +146,9 @@ class OpenEventLogProtocol(Protocol):
     **owned by `ctx.user_id`**, applying that log's committed Events-tab filter
     just like the primary view. It is the only sanctioned cross-log accessor:
     it enforces the tenant-isolation invariant, raising if the log is missing,
-    belongs to another user, or is object-centric. Use it as a context manager::
+    belongs to another user, or is object-centric. In a `read_only` context (a log
+    reached through a shared dashboard) it opens only `ctx.log_id` itself, and
+    refuses every other log the same way. Use it as a context manager::
 
         async with await ctx.open_event_log(other_id) as other:
             df = await other.pandas()
@@ -192,6 +196,40 @@ class ObjectCentricLogAccessProtocol(Protocol):
     async def duckdb_fetch(self, sql: str, params: list | tuple | None = None) -> list[tuple]: ...
 
 
+@runtime_checkable
+class InputsProtocol(Protocol):
+    """The module's manifest `inputs:` ports, bound to artifacts other modules produced.
+
+    ``get`` returns the producer's cached output for this log - a dict/list for JSON
+    artifact types, a pandas DataFrame for Parquet, bytes for binary - or None while the
+    port is unbound (no `from:`, producer not installed for this user) or the producer
+    has not produced it yet::
+
+        model = await ctx.inputs.get("reference_model")
+        if model is None:
+            ...  # fall back, or tell the user to run the producer
+    """
+
+    @property
+    def ports(self) -> list[str]: ...
+    def ref(self, port: str) -> ArtifactRef | None: ...
+    async def get(self, port: str) -> Any | None: ...
+
+
+class _NoInputs:
+    """Default ``ctx.inputs`` for contexts built without a binding: no ports."""
+
+    @property
+    def ports(self) -> list[str]:
+        return []
+
+    def ref(self, port: str) -> ArtifactRef | None:
+        return None
+
+    async def get(self, port: str) -> Any | None:
+        return None
+
+
 @dataclass
 class ModuleContext:
     """The dependency-injected context every handler receives.
@@ -226,6 +264,14 @@ class ModuleContext:
     # never-cancelled no-op so contexts built outside a cancellable job - or by
     # an older platform that doesn't wire one in - keep working unchanged.
     cancellation: CancellationProtocol = field(default_factory=_NoopCancellation)
+    # The manifest's `inputs:` ports, bound to other modules' artifacts.
+    inputs: InputsProtocol = field(default_factory=_NoInputs)
+    # True when `user_id` is not the log's owner (a log reached through a shared
+    # dashboard): reads see the owner's data, but a route that changes durable
+    # owner state (an upload, a stored model) must refuse with 403. The platform
+    # already answers 403 on every non-GET route not marked `viewer_safe`. Writes to
+    # the reserved `__*` cache entries raise `mate.sdk.errors.ReadOnlyContextError`.
+    read_only: bool = False
 
     def is_cancelled(self) -> bool:
         """Whether the running job has been asked to stop (non-blocking)."""

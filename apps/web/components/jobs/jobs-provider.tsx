@@ -12,6 +12,8 @@ import { subscribeBus } from "@/lib/ws";
 import { useJobsStore } from "@/lib/stores/jobs";
 import { useUi } from "@/lib/stores/ui";
 import { queryKeys } from "@/lib/queries";
+import { artifactKeys } from "@/lib/artifact-queries";
+import { flowKeys } from "@/lib/flow-queries";
 import type { EventLogDetail, JobDetail, ModuleRunState } from "@/lib/api-types";
 
 /** A module's precompute job (`module.<id>.event.<topic>`): started by the platform
@@ -67,7 +69,14 @@ export function JobsProvider() {
 
   useEffect(() => {
     const sub = subscribeBus<Record<string, unknown>>(
-      ["job.*", "log.imported", "log.ready", "module_run.updated"],
+      [
+        "job.*",
+        "log.imported",
+        "log.ready",
+        "module_run.updated",
+        "module_variant.updated",
+        "flow_run.updated",
+      ],
       (env) => {
         const id = (env.payload.id as string | undefined) ?? "";
         // Read before `apply`: a cancelled job is deleted from the store by it, and
@@ -90,12 +99,29 @@ export function JobsProvider() {
           return;
         }
 
+        if (env.topic === "module_variant.updated") {
+          // A settled or deleted variant adds or prunes workspace artifacts.
+          void qc.invalidateQueries({ queryKey: artifactKeys.all });
+          return;
+        }
+
+        if (env.topic === "flow_run.updated") {
+          // A flow run or one of its nodes moved on: the editor's badges and the
+          // list's last-run status refetch (both also poll while a run is live).
+          const flowId = env.payload.flow_id as string | undefined;
+          if (flowId) void qc.invalidateQueries({ queryKey: flowKeys.runs(flowId) });
+          void qc.invalidateQueries({ queryKey: flowKeys.list() });
+          return;
+        }
+
         if (env.topic === "module_run.updated") {
           // A module's compute state for a log changed (queued → running → ready /
           // failed ...). Refetch both the per-log list (grid badges) and any
           // module gate watching it - they all live under this prefix.
           const logId = env.payload.log_id as string | undefined;
           if (logId) void qc.invalidateQueries({ queryKey: queryKeys.moduleRuns(logId) });
+          // A run that settled ready (re)registers its artifacts.
+          void qc.invalidateQueries({ queryKey: artifactKeys.all });
           return;
         }
 

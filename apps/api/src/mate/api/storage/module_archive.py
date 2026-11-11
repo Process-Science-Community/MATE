@@ -26,8 +26,8 @@ from mate.api.storage.config import get_storage_settings, is_s3
 log = structlog.get_logger(__name__)
 
 # Derived build artifacts excluded from the source archive - the loader rebuilds
-# them per VM (venvs are ABI/machine-specific; bundles are esbuilt on load). Public
-# so the module content-hash reuses the exact same set (single source of truth).
+# them per VM (venvs are ABI/machine-specific). Public so the module content-hash
+# reuses the exact same set (single source of truth).
 BUILD_ARTIFACT_NAMES = {
     ".venv",
     ".dist",
@@ -50,9 +50,14 @@ def _modules_prefix() -> str:
     return f"{prefix}/_system/modules/" if prefix else "_system/modules/"
 
 
+# An upload's `.dist` is its only frontend bundle - the bundler only builds `modules/`
+# - so the source archive keeps it; a fresh VM would otherwise lose the module's UI.
+_ARCHIVE_EXCLUDE = BUILD_ARTIFACT_NAMES - {".dist"}
+
+
 def _excluded(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     parts = set(Path(tarinfo.name).parts)
-    return None if parts & BUILD_ARTIFACT_NAMES else tarinfo
+    return None if parts & _ARCHIVE_EXCLUDE else tarinfo
 
 
 def archive_module_sync(folder: Path, module_id: str) -> bool:

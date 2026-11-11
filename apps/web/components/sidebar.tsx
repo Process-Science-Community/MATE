@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { useState } from "react";
 import {
   Activity,
+  Boxes,
   Cog,
   FileBox,
   FolderKanban,
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   Sun,
   Wrench,
+  Workflow,
 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -60,6 +62,18 @@ const NAV: NavItem[] = [
     icon: LayoutDashboard,
     match: (p) => p.startsWith("/dashboards"),
     prefetch: (qc) => prefetchDashboards(qc),
+  },
+  {
+    href: "/artifacts",
+    label: "Artifacts",
+    icon: Boxes,
+    match: (p) => p.startsWith("/artifacts"),
+  },
+  {
+    href: "/flows",
+    label: "Flows",
+    icon: Workflow,
+    match: (p) => p.startsWith("/flows"),
   },
   {
     href: "/modules",

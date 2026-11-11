@@ -13,7 +13,7 @@ import {
 import {CardShell} from "@/components/dashboards/kit";
 import { formatNumber } from "@/lib/format";
 
-import { CONF_COLORS } from "../panel/conformance-decorate";
+import { CONF_COLORS } from "../panel/colors";
 import { useConformanceResultsAuto } from "../panel/queries";
 
 /** Activities with the most conformance deviations. */

@@ -95,4 +95,4 @@ uv run --with promg==1.0.10 --with 'neo4j>=5.15,<6' --with 'pandas>=2.2.2,<3' \
 `GPL-3.0` for this module folder: it links against [promg](https://github.com/PromG-dev/promg-core)
 (GPL-3.0). The reference implementation repository carries no license file; its Cypher
 was rewritten here (with fixes) and is credited in `pipeline/queries.py` and the
-manifest's `source`/`artifacts`.
+manifest's `source`/`links`.

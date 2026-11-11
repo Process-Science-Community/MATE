@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardCanvas, type AddStarter } from "@/components/dashboards/dashboard-canvas";
 import { LogFilterProvider } from "@/components/processes/log-filter";
+import { LogModuleParams } from "@/components/processes/log-module-params";
 import { ModuleRunGate } from "@/components/processes/module-run-gate";
 import { PageParamsProvider } from "@/lib/module-layout/page-params";
 import { getModulePanel } from "@/lib/module-panels";
@@ -51,6 +52,9 @@ export function ModuleLayoutPage({
   layout: ModuleLayout | null;
   edit?: ModuleLayoutEdit;
 }) {
+  // Bumped after "Parameters for this log" saves: remounting the filter provider
+  // gives the body a fresh QueryClient, so it refetches under the new values.
+  const [paramsVersion, setParamsVersion] = useState(0);
   // Deep links can reach a module the grid renders grayed-out (disabled, or the
   // log doesn't meet its manifest requirements). Mounting the panel would just
   // fail on its first query - explain instead.
@@ -85,24 +89,38 @@ export function ModuleLayoutPage({
   const body = (
     // Log-scoped filter bar; re-scopes every query below through the
     // `X-FF-Event-Filter` header. Modules opt out via `frontend.log_filter`.
-    <LogFilterProvider logId={logId} enabled={mod.supports_log_filter}>
+    <LogFilterProvider key={paramsVersion} logId={logId} enabled={mod.supports_log_filter}>
       <PageParamsProvider>
         <PageBody logId={logId} mod={mod} layout={layout} edit={edit} />
       </PageParamsProvider>
     </LogFilterProvider>
   );
+  // Null unless the module declares `ui.scope: dataset` props.
+  const params = (
+    <LogModuleParams logId={logId} moduleId={mod.id} onSaved={() => setParamsVersion((v) => v + 1)} />
+  );
   // Editing is never gated: a running or failed compute must not lock the
   // layout (data cards still gate themselves through CardRunGate).
-  if (edit) return body;
+  if (edit) {
+    return (
+      <>
+        {params}
+        {body}
+      </>
+    );
+  }
   return (
-    // Modules compute lazily: opening one starts its job if the log has no
-    // results for it yet, shows live progress, and mounts the body only once
-    // they exist. It sits *outside* the filter provider on purpose: the provider
-    // owns the body's isolated QueryClient, which is therefore created fresh
-    // after each run instead of carrying a stale miss.
-    <ModuleRunGate logId={logId} moduleId={mod.id} deps={mod.precompute_deps ?? []}>
-      {body}
-    </ModuleRunGate>
+    <>
+      {params}
+      {/* Modules compute lazily: opening one starts its job if the log has no
+          results for it yet, shows live progress, and mounts the body only once
+          they exist. It sits *outside* the filter provider on purpose: the provider
+          owns the body's isolated QueryClient, which is therefore created fresh
+          after each run instead of carrying a stale miss. */}
+      <ModuleRunGate logId={logId} moduleId={mod.id} deps={mod.precompute_deps ?? []}>
+        {body}
+      </ModuleRunGate>
+    </>
   );
 }
 

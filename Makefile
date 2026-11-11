@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install checkenv preflight dev api web lite reset e2e new widget modules validate up down build test jvm typecheck fmt clean codegen docs deploy
+.PHONY: help install checkenv preflight dev api web lite reset e2e new widget modules validate versions up down build test jvm typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -44,6 +44,12 @@ web: preflight ## Run only the web dev server
 
 lite: ## Low-memory native stack, no .env needed: make lite [MODULES=a,b] [PORT=] [WEB_PORT=]
 	@MODULES="$(MODULES)" PORT="$(PORT)" WEB_PORT="$(WEB_PORT)" bash ./scripts/lite.sh
+
+# Base ref for `make versions`. Override with `make versions BASE=main`.
+BASE ?= origin/main
+
+versions: ## Fail when a changed module under modules/ lacks the version bump its contract change needs
+	uv run python scripts/check-module-versions.py --base $(BASE)
 
 reset: ## Wipe the lite stack's data (data/lite only)
 	rm -rf data/lite

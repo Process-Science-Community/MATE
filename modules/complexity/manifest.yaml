@@ -1,6 +1,6 @@
 id: complexity
 name: Complexity
-version: 1.0.0
+version: 1.0.1
 category: advanced
 description: >-
   Measures how complex your process is with entropy-based metrics over its
@@ -131,4 +131,5 @@ config_schema:
       default: 1.0
       ui:
         widget: number
-        affects: compute
+        affects: precompute
+        scope: dataset

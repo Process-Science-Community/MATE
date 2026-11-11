@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "i": "petri-net-from-process-tree",
+      "kind": "viz",
+      "module_id": "interop",
+      "dataset_ref": {
+        "module_id": "interop",
+        "dataset_id": "petri_net_from_process_tree"
+      },
+      "viz_id": "petri-net-view",
+      "mapping": {},
+      "title": "Petri net (from process tree)",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 12,
+      "config": {}
+    },
+    {
+      "i": "bpmn-from-petri-net",
+      "kind": "viz",
+      "module_id": "interop",
+      "dataset_ref": {
+        "module_id": "interop",
+        "dataset_id": "bpmn_from_petri_net"
+      },
+      "viz_id": "bpmn-view",
+      "mapping": {},
+      "title": "BPMN (from Petri net)",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 12,
+      "config": {}
+    },
+    {
+      "i": "imported-petri-net",
+      "kind": "viz",
+      "module_id": "interop",
+      "dataset_ref": {
+        "module_id": "interop",
+        "dataset_id": "imported_petri_net"
+      },
+      "viz_id": "petri-net-view",
+      "mapping": {},
+      "title": "Imported Petri net",
+      "x": 0,
+      "y": 12,
+      "w": 6,
+      "h": 12,
+      "config": {}
+    },
+    {
+      "i": "imported-bpmn",
+      "kind": "viz",
+      "module_id": "interop",
+      "dataset_ref": {
+        "module_id": "interop",
+        "dataset_id": "imported_bpmn"
+      },
+      "viz_id": "bpmn-view",
+      "mapping": {},
+      "title": "Imported BPMN model",
+      "x": 6,
+      "y": 12,
+      "w": 6,
+      "h": 12,
+      "config": {}
+    }
+  ]
+}

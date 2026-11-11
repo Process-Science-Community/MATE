@@ -384,8 +384,14 @@ export interface DatasetCatalogEntry {
   icon: string | null;
   /** The data shape – drives which generic viz can render it. */
   shape: "table" | "graph" | "kpi" | "tree" | "blob";
-  /** Module sub-route (leading slash) the card fetches the data from. */
-  route: string;
+  /** What the data is, as an artifact type id (`petri_net`); null when untyped. */
+  artifact_type: string | null;
+  /** Module sub-route (leading slash) the card fetches the data from; null for a
+   *  dataset only the precompute writes (read by `content_ref_key` instead). */
+  route: string | null;
+  /** Cache key of a route-less dataset: the card reads
+   *  `GET /api/v1/artifacts/content?ref={log_id}/{module_id}/{content_ref_key}`. */
+  content_ref_key?: string | null;
   log_models: LogModel[];
   params_schema: WidgetConfigSchema | null;
 }

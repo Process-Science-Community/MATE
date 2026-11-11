@@ -315,6 +315,76 @@
   }
   .statement p em { font-style: normal; color: var(--muted); display: block; font-size: 0.62em; font-weight: 600; margin-top: 0.875rem; letter-spacing: -0.01em; }
 
+  /* ---------- roles ----------
+     Two cards drawn as flow-editor nodes, joined by an edge that animates the
+     way a running edge does in the app (xyflow `animated`: dashes marching
+     toward the target), plus a dot carrying the module across. CSS only; the
+     edge turns vertical when the cards stack. */
+  .roles {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(5.5rem, 10rem) minmax(0, 1fr);
+    align-items: stretch; max-width: 62rem; margin: 0 auto;
+  }
+  .role {
+    position: relative; background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 1.625rem; box-shadow: var(--card-shadow);
+  }
+  .role .label { display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+  .role .label::before { content: ""; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: #a78bfa; }
+  .role-ent .label::before { background: #f0a3c4; }
+  .role h3 { font-size: 1.15625rem; letter-spacing: -0.015em; margin-bottom: 0.5rem; font-weight: 650; }
+  .role p { font-size: 0.90625rem; color: var(--ink-soft); }
+  .role-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 1rem; }
+  .role-tags span {
+    font-family: var(--mono); font-size: 0.6875rem; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 0.1875rem 0.5625rem;
+  }
+  /* the node handles the edge attaches to */
+  .role-handle {
+    position: absolute; top: 50%; width: 0.625rem; height: 0.625rem; margin-top: -0.3125rem;
+    border-radius: 50%; background: var(--card); border: 1.5px solid var(--ink-soft);
+  }
+  .role-res .role-handle { right: -0.3125rem; }
+  .role-ent .role-handle { left: -0.3125rem; }
+  .role-edge { position: relative; align-self: stretch; display: flex; align-items: center; justify-content: center; }
+  .role-edge::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1.5px; margin-top: -0.75px;
+    background: repeating-linear-gradient(90deg, var(--ink-soft) 0 5px, transparent 5px 10px);
+    opacity: 0.6; animation: edge-dash 0.5s linear infinite;
+  }
+  .role-pulse { position: absolute; left: 0; right: 0; top: 50%; height: 0; animation: edge-travel 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+  .role-pulse::after {
+    content: ""; position: absolute; left: 0; top: 0; width: 0.5rem; height: 0.5rem; margin: -0.25rem 0 0 -0.25rem;
+    border-radius: 50%; background: #a78bfa; box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.25);
+  }
+  .role-chip {
+    position: relative; z-index: 1; font-family: var(--mono); font-size: 0.6875rem; color: var(--ink-soft);
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 0.1875rem 0.625rem;
+  }
+  @keyframes edge-dash { to { background-position: 10px 0; } }
+  @keyframes edge-dash-v { to { background-position: 0 10px; } }
+  @keyframes edge-travel {
+    0% { transform: translateX(0); opacity: 0; }
+    12%, 88% { opacity: 1; }
+    100% { transform: translateX(100%); opacity: 0; }
+  }
+  @keyframes edge-travel-v {
+    0% { transform: translateY(0); opacity: 0; }
+    12%, 88% { opacity: 1; }
+    100% { transform: translateY(100%); opacity: 0; }
+  }
+  @media (max-width: 760px) {
+    .roles { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 6rem auto; }
+    .role-res .role-handle, .role-ent .role-handle { top: auto; left: 50%; right: auto; margin: 0 0 0 -0.3125rem; }
+    .role-res .role-handle { bottom: -0.3125rem; }
+    .role-ent .role-handle { top: -0.3125rem; }
+    .role-edge::before {
+      left: 50%; right: auto; top: 0; bottom: 0; width: 1.5px; height: auto; margin: 0 0 0 -0.75px;
+      background: repeating-linear-gradient(180deg, var(--ink-soft) 0 5px, transparent 5px 10px);
+      animation-name: edge-dash-v;
+    }
+    .role-pulse { left: 50%; right: auto; top: 0; bottom: 0; width: 0; height: auto; animation-name: edge-travel-v; }
+  }
+
   /* ---------- community ---------- */
   .community { position: relative; overflow: hidden; padding-top: 0; }
   .res-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.125rem; }
@@ -337,11 +407,12 @@
     padding: 1.5rem 1rem 1.25rem; text-align: center; box-shadow: var(--card-shadow);
   }
   .pavatar {
-    width: 3.5rem; height: 3.5rem; border-radius: 50%;
+    width: 4.5rem; height: 4.5rem; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
     font-weight: 650; font-size: 1.0625rem; letter-spacing: 0.01em; color: var(--ink);
-    border: 1px solid var(--line); margin-bottom: 0.75rem;
+    border: 1px solid var(--line); margin-bottom: 0.75rem; overflow: hidden;
   }
+  .pavatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .person:nth-child(3n+1) .pavatar { background: var(--av-lav); }
   .person:nth-child(3n+2) .pavatar { background: var(--av-rose); }
   .person:nth-child(3n) .pavatar { background: var(--av-sky); }
@@ -375,6 +446,8 @@
     html { scroll-behavior: auto; }
     html.js .reveal { opacity: 1; transform: none; transition: none; }
     .btn, .th-tab, body { transition: none; }
+    .role-edge::before { animation: none; }
+    .role-pulse { display: none; }
     .cursor-glow { display: none; }
     ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
   }
@@ -519,6 +592,37 @@
     </div>
   </section>
 
+  <!-- ================= ROLES ================= -->
+  <section id="roles">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="label">Two sides</span>
+        <h2>One module, two kinds of users.</h2>
+        <p>Researchers turn a method into a module. Enterprise users run it on their own processes and turn the results into decisions. The module connects the two.</p>
+      </div>
+      <div class="roles reveal">
+        <div class="role role-res">
+          <span class="label">Researcher</span>
+          <h3>Builds methods as modules</h3>
+          <p>Write a method against the typed SDK, then test and debug it on a lightweight development Docker image: only your module, its dependencies, and a sample log, small enough for a laptop. Publish it, and it runs unchanged on every MATE instance.</p>
+          <div class="role-tags"><span>Python &amp; JVM SDK</span><span>Dev image</span><span>Sample log</span></div>
+          <span class="role-handle" aria-hidden="true"></span>
+        </div>
+        <div class="role-edge" aria-hidden="true">
+          <span class="role-pulse"></span>
+          <span class="role-chip">module</span>
+        </div>
+        <div class="role role-ent">
+          <span class="label">Enterprise</span>
+          <h3>Turns analysis into decisions</h3>
+          <p>Run published modules on your own event logs, chain them into flows, and pin the results to dashboards your team shares. No code needed, and every result names the method behind it.</p>
+          <div class="role-tags"><span>Flows</span><span>Dashboards</span><span>MATE AI</span></div>
+          <span class="role-handle" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= COMMUNITY ================= -->
   <section id="community" class="community">
     <div class="wrap">
@@ -557,19 +661,19 @@
         <p>MATE is open to everyone who works with processes, whether they write methods or apply them. These are the people behind the platform and its first modules.</p>
       </div>
       <div class="people-grid reveal">
-        <div class="person"><span class="pavatar">HA</span><b>Han van der Aa</b></div>
-        <div class="person"><span class="pavatar">MB</span><b>Max Blaschke</b></div>
-        <div class="person"><span class="pavatar">JB</span><b>Jan vom Brocke</b></div>
-        <div class="person"><span class="pavatar">YB</span><b>Yannick Brusa</b></div>
-        <div class="person"><span class="pavatar">PB</span><b>Paul Brützke</b></div>
-        <div class="person"><span class="pavatar">SF</span><b>Sandro Franzoi</b></div>
-        <div class="person"><span class="pavatar">FK</span><b>Finn Klessascheck</b></div>
-        <div class="person"><span class="pavatar">JM</span><b>Jan Mendling</b></div>
-        <div class="person"><span class="pavatar">PM</span><b>Philipp Michels</b></div>
-        <div class="person"><span class="pavatar">BP</span><b>Brian T. Pentland</b></div>
-        <div class="person"><span class="pavatar">OU</span><b>Oscar Ulbricht</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/han-van-der-aa.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Han van der Aa</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/max-blaschke.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Max Blaschke</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/jan-vom-brocke.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Jan vom Brocke</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/yannick-brusa.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Yannick Brusa</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/paul-bruetzke.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Paul Brützke</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/sandro-franzoi.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Sandro Franzoi</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/finn-klessascheck.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Finn Klessascheck</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/jan-mendling.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Jan Mendling</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/philipp-michels.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Philipp Michels</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/brian-pentland.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Brian T. Pentland</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/oscar-ulbricht.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Oscar Ulbricht</b></div>
         <div class="person"><span class="pavatar">LZ</span><b>Li Zhang</b></div>
-        <div class="person"><span class="pavatar">TZ</span><b>Tobias Zimmermann</b></div>
+        <div class="person"><span class="pavatar"><img src="assets/people/tobias-zimmermann.webp" width="72" height="72" loading="lazy" decoding="async" alt=""></span><b>Tobias Zimmermann</b></div>
       </div>
       <p class="people-note reveal">Ship a module and your name joins this list.</p>
     </div>

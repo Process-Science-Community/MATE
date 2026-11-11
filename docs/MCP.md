@@ -100,9 +100,9 @@ MCP serves **aggregates and curated module outputs only**. Structurally unavaila
 - Raw event rows (the UI's Events table), distinct column *values*, cell-edit history
 - OCEL object/event/relationship rows
 - File downloads/exports of any kind (original uploads, XES/CSV exports, the metadata DB, analytics exports)
-- Simulated event rows (agentsimulator) and other row-shaped module artifacts
+- Simulated event rows (agentsimulator) and other row-shaped module artifacts (`get_artifact` returns a Parquet artifact's columns + row count only)
 
-Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_dataset`, `get_module_results`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` never starts anything: modules that haven't run appear under `skipped`. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
+Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_dataset`, `get_module_results`, `get_artifact`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` and `list_artifacts` never start anything: modules that haven't run appear under `skipped` / are not listed. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
 
 ## Tool catalog
 
@@ -146,8 +146,12 @@ Legend: **W** = write (needs the write scope; blocked in read-only mode) · **D*
 | `get_process_overview` | Outputs of every guidance-capable module that has already run, in one call (never starts a module) |
 | `get_module_results` | A module's cached JSON results, canonical view (keys + parsed entries) |
 | `list_datasets` / `get_dataset` | Typed module datasets (table/graph/kpi/tree) → canonical envelope |
+| `list_artifacts` / `get_artifact` | The process's entries in your artifact workspace: typed module outputs (e.g. `petri_net@1`) indexed once their run finished, plus JSON artifacts you uploaded for it - each with its workspace `id`, `name` and `pinned` flag, addressed by `ref` = `{log_id}/{module_id}/{key}`, `{log_id}/{module_id}@{variant}/{key}` for a run variant's (listed with its `variant` key) or `{log_id}/_workspace/{id}` for an upload (`module_id` null). An entry whose file is gone (a deleted or evicted variant) drops out of the list. `get_artifact` returns JSON artifacts whole (size-capped), Parquet as columns + row count. A run variant is never started from MCP: its artifact is served only while the variant is `ready`, else `[conflict]` |
 | `get_cached_guidance` | Stored AI guidance for a module or `"__platform__"` (never triggers an LLM call) |
 | `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts` | Curated shortcuts (performance / conformance / discovery / drift modules) |
+| `list_flows` | Your flows (module pipelines built at `/flows` in the web app): `id`, `name`, `log_model`, `last_run` |
+| **W** `run_flow` | Run one of your flows on a process you own → its `flow.run` job (`wait_for_job`); nodes whose inputs did not change reuse their earlier result. `[invalid]` lists why a flow cannot run (an unconnected required input, a module you no longer have, a process of the other model) |
+| `get_flow_run` | One run by `run_id`: `status`, `error` and per node its `status` (`skipped` downstream of a failure), `error`, `reused` and the `refs` it produced (read with `get_artifact`) |
 | **W** `set_module_config` | Per-user module config + enabled flag (admin-locked settings refuse) |
 | **WD** `uninstall_module` · **W** `restore_default_modules` | Install lifecycle (`modules:manage`) |
 

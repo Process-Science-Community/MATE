@@ -32,7 +32,7 @@ These controls sit in the bar above the chart. Number fields apply when you leav
 
 ### On the module page
 
-Open **Module Settings** in the sidebar and choose this module. Its **Configuration** card has two fields; save them with **Save configuration**. An administrator can lock the card, which makes it read-only.
+Open **Module Settings** in the sidebar and choose this module. Its **Configuration** card has two fields; save them with **Save configuration**. An administrator can lock the card, which makes it read-only. Minimum cases per slice is the default for every process; **Parameters for this log** on the module's page for a process overrides it there.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |

@@ -42,6 +42,7 @@ class ConformanceModule(Module):
             "log_id": ctx.log_id,
             "module_id": ctx.module_id,
             "workdir_exists": Path(ctx.workdir).is_dir(),
+            "read_only": ctx.read_only,
             "config": ctx.config.value,
         }
 
@@ -79,7 +80,7 @@ class ConformanceModule(Module):
         await ctx.progress.update(1.0)
         return "ok"
 
-    @route.post("/log")
+    @route.post("/log", viewer_safe=True)  # advertised in `ready` (viewer-safe case)
     async def log_lines(self, ctx: ModuleContext) -> str:
         ctx.logger.info("conformance_started", n=1)
         ctx.logger.warning("conformance_warned")

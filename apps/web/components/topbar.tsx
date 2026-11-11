@@ -23,6 +23,7 @@ import { ModuleAboutContent } from "@/components/modules/module-about";
 import { ModuleGuideTopbarButton } from "@/components/modules/module-guide";
 import { useEventLogs, useModules } from "@/lib/queries";
 import { useDashboards } from "@/lib/dashboard-queries";
+import { useFlows } from "@/lib/flow-queries";
 import { resolvePageMeta, type ModuleAbout, type PageMeta } from "@/lib/page-meta";
 
 interface Crumb {
@@ -36,6 +37,7 @@ function deriveCrumbs(
   logNames: Map<string, string>,
   dashboardNames: Map<string, string>,
   moduleNames: Map<string, string>,
+  flowNames: Map<string, string>,
 ): Crumb[] {
   const parts = pathname.split("/").filter(Boolean);
   if (parts.length === 0) return [{ href: "/processes", label: "Processes", current: true }];
@@ -68,6 +70,8 @@ function deriveCrumbs(
       label = logNames.get(parts[i])!;
     } else if (parts[i - 1] === "dashboards" && dashboardNames.has(parts[i])) {
       label = dashboardNames.get(parts[i])!;
+    } else if (parts[i - 1] === "flows" && flowNames.has(parts[i])) {
+      label = flowNames.get(parts[i])!;
     } else if (parts[i - 1] === "modules" && moduleNames.has(parts[i])) {
       label = moduleNames.get(parts[i])!;
     } else if (parts[i - 1] === "variants") {
@@ -98,7 +102,7 @@ function prettify(seg: string): string {
 // areas whose tabs are peers, so the whole section counts as top-level.
 function isTopLevelRoute(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, "") || "/";
-  if (p === "/" || p === "/processes" || p === "/dashboards" || p === "/modules") return true;
+  if (p === "/" || p === "/processes" || p === "/dashboards" || p === "/artifacts" || p === "/flows" || p === "/modules") return true;
   if (p === "/profile") return true;
   if (p.startsWith("/settings") || p.startsWith("/admin")) return true;
   return false;
@@ -110,6 +114,8 @@ export function Topbar() {
   const { data: logs } = useEventLogs();
   const { data: dashboards } = useDashboards();
   const { data: modules } = useModules();
+  // Only a flow page needs its name in the breadcrumb.
+  const { data: flows } = useFlows(pathname.startsWith("/flows/"));
 
   const logNames = new Map(logs?.map((log) => [log.id, log.name]) ?? []);
   const dashboardNames = new Map(dashboards?.map((d) => [d.id, d.name]) ?? []);
@@ -124,17 +130,19 @@ export function Topbar() {
         description: m.description,
         about: m.about,
         sources: m.source,
-        artifacts: m.artifacts,
+        links: m.links,
         license: m.license,
         version: m.version,
       },
     ]) ?? [],
   );
 
-  const crumbs = deriveCrumbs(pathname, logNames, dashboardNames, moduleNames);
+  const flowNames = new Map(flows?.map((f) => [f.id, f.name]) ?? []);
+  const crumbs = deriveCrumbs(pathname, logNames, dashboardNames, moduleNames, flowNames);
   const meta = resolvePageMeta(pathname, {
     logNames,
     dashboardNames,
+    flowNames,
     modules: moduleMeta,
   });
   const showBack = !isTopLevelRoute(pathname);

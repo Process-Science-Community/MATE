@@ -35,7 +35,7 @@ The checklist offers the measures of Complexity, computed on each slice: Magnitu
 
 ### On the module page
 
-Open **Module Settings** in the sidebar and choose this module. The **Configuration** card has three fields; save them with **Save configuration**. An administrator can lock the card, which makes it read-only. The values are part of what a result is stored under, so a changed value is computed the next time the chart is loaded.
+Open **Module Settings** in the sidebar and choose this module. The **Configuration** card has three fields; save them with **Save configuration**. An administrator can lock the card, which makes it read-only. The values are part of what a result is stored under, so a changed value is computed the next time the chart is loaded. Exponential forgetting k and Minimum cases per slice are the default for every process; **Parameters for this log** on the module's page for a process overrides them there.
 
 | Setting | Default | What it changes |
 | --- | --- | --- |

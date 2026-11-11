@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
@@ -27,6 +27,7 @@ import {
   CanvasSettings,
   CanvasSettingsSwitch,
 } from "@/components/visualizations/canvases/shared/canvas-toolbar";
+import { BpmnView, type BpmnViewer } from "@/components/visualizations/artifacts/bpmn";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -39,8 +40,13 @@ import {
 import { formatNumber } from "@/lib/format";
 import { subscribeJob } from "@/lib/ws";
 
-import { ConformanceBpmnCanvas } from "./canvases/ConformanceBpmnCanvas";
-import { buildDeviationMaps, CONF_COLORS, DEV_BUCKETS, devColor } from "./conformance-decorate";
+import { BPMN_ENGINE } from "./bpmn-engine";
+import { CONF_COLORS, DEV_BUCKETS, devColor } from "./colors";
+import {
+  applyConformanceOverlay,
+  buildDeviationMaps,
+  injectConformanceStyles,
+} from "./conformance-decorate";
 import { DeviationTable } from "./deviation-table";
 import { LabelReportBanner } from "./label-report";
 import { ModelManager } from "./model-manager";
@@ -90,6 +96,18 @@ export default function ConformancePanel({ logId }: { logId: string; moduleId: s
 
   const data = resultsQ.data;
   const maps = useMemo(() => buildDeviationMaps(data?.per_activity), [data?.per_activity]);
+  const decorate = useCallback(
+    (viewer: BpmnViewer) => {
+      injectConformanceStyles();
+      applyConformanceOverlay(viewer, {
+        maps,
+        heatmap: decor.heatmap,
+        labels: decor.labels,
+        alignments: technique === "alignments",
+      });
+    },
+    [maps, decor, technique],
+  );
   const kpis = data?.kpis;
 
   const chartRows = (data?.per_activity ?? [])
@@ -183,11 +201,11 @@ export default function ConformancePanel({ logId }: { logId: string; moduleId: s
             <CardContent className="space-y-3">
               <div className="relative h-[640px] w-full overflow-hidden rounded-xl border bg-card">
                 {data.bpmn_xml ? (
-                  <ConformanceBpmnCanvas
+                  <BpmnView
                     key={`${data.model_hash ?? "m"}-${technique}`}
+                    engine={BPMN_ENGINE}
                     xml={data.bpmn_xml}
-                    maps={maps}
-                    decor={{ ...decor, alignments: technique === "alignments" }}
+                    decorate={decorate}
                     // Overlay toggles live in the canvas control cluster, like
                     // every other canvas – never in a bar above it.
                     settings={

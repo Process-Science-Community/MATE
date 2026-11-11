@@ -9,7 +9,7 @@ import { activityHref, variantHref } from "@/lib/dashboards/drill";
 import { formatNumber } from "@/lib/format";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-import { CONF_COLORS } from "./conformance-decorate";
+import { CONF_COLORS } from "./colors";
 import type { PerActivityDeviation, PerVariant, Technique } from "./types";
 
 const DEVIATIONS_TITLE =

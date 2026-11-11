@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatNumber } from "@/lib/format";
 import { VizEmpty } from "@/components/visualizations/viz-shell";
 import { FieldMappingForm, type VizPatch } from "@/components/visualizations/field-mapping-form";
 import { configWithoutWidgetFilter } from "@/components/dashboards/widget-filter";
 import { useIsDev } from "@/lib/dev-queries";
 import { needsDataSnippet } from "@/lib/visualizations/catalog";
-import { vizRegistry } from "@/lib/visualizations/registry";
+import { vizAccepts, vizRegistry } from "@/lib/visualizations/registry";
 import { useDatasetData } from "@/lib/visualizations/use-dataset-data";
 import type { DashboardItem } from "@/lib/dashboard-queries";
 import type { FieldMapping, VizSpec } from "@/lib/visualizations/types";
@@ -25,7 +27,7 @@ type VizState = "ready" | "needs-data" | "empty" | "error" | "loading";
  * Every state is wrapped in `data-viz-id` / `data-viz-state` (e2e hooks).
  */
 export function GenericVizBody({ item, logId }: { item: DashboardItem; logId: string | null }) {
-  const { envelope, isLoading, isError, missing } = useDatasetData(item, logId);
+  const { envelope, isLoading, isError, missing, unfiltered, truncated } = useDatasetData(item, logId);
   const spec = item.viz_id ? vizRegistry[item.viz_id] : undefined;
   const wrap = (state: VizState, node: React.ReactNode) => (
     <div data-viz-id={item.viz_id ?? ""} data-viz-state={state} className="h-full w-full">
@@ -36,24 +38,53 @@ export function GenericVizBody({ item, logId }: { item: DashboardItem; logId: st
   if (!item.dataset_ref && spec) return wrap("needs-data", <NeedsData spec={spec} />);
   if (!logId) return wrap("empty", <VizEmpty message="Select an event log to populate this card." />);
   if (missing) return wrap("error", <VizEmpty message="This dataset's module isn't installed." />);
+  // A saved card can name a viz id this web build doesn't ship.
+  if (item.viz_id && !spec) {
+    return wrap(
+      "error",
+      <VizEmpty message={`Unknown visualization "${item.viz_id}". Open settings to pick one.`} />,
+    );
+  }
   if (!item.viz_id || !spec) {
     return wrap("empty", <VizEmpty message="Open settings to choose a visualization." />);
   }
   if (isLoading) return wrap("loading", <Skeleton className="h-full w-full" />);
   if (isError || !envelope) return wrap("error", <VizEmpty message="Couldn't load this dataset." />);
-  if (!spec.accepts.includes(envelope.shape)) {
+  if (!vizAccepts(spec, envelope.shape, envelope.artifact?.type)) {
     return wrap("error", <VizEmpty message="This visualization can't render this dataset." />);
   }
 
   const Viz = spec.Component;
-  return wrap(
-    "ready",
+  const viz = (
     <Viz
       dataset={envelope}
       mapping={(item.mapping ?? {}) as FieldMapping}
       // Strip the reserved per-widget-filter key so the viz never sees it.
       options={configWithoutWidgetFilter(item.config) as Record<string, unknown>}
-    />,
+    />
+  );
+  if (!unfiltered && !truncated) return wrap("ready", viz);
+  return wrap(
+    "ready",
+    <div className="flex h-full flex-col gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+        {unfiltered && (
+          <Badge
+            variant="outline"
+            className="h-4 px-1 text-[10px] font-normal"
+            title="The module precomputed this result for the whole log - the board's filter doesn't apply to it."
+          >
+            Unfiltered (precomputed)
+          </Badge>
+        )}
+        {truncated && (
+          <span className="tabular-nums">
+            First {formatNumber(truncated.shown)} of {formatNumber(truncated.total)} rows
+          </span>
+        )}
+      </div>
+      <div className="min-h-0 flex-1">{viz}</div>
+    </div>,
   );
 }
 
@@ -127,7 +158,7 @@ export function VizSettings({
   onChange: (patch: VizPatch) => void;
   studioModuleId?: string;
 }) {
-  const { envelope, shape } = useDatasetData(item, logId);
+  const { envelope, shape, artifactType } = useDatasetData(item, logId);
   // The per-card filter editor used to sit below the mapping form. It's gone:
   // one filter row above the board scopes everything, and a second filter
   // hidden inside a single card contradicts it. A filter already stored on a
@@ -139,6 +170,7 @@ export function VizSettings({
       item={item}
       dataset={envelope}
       shape={shape}
+      artifactType={artifactType}
       onChange={onChange}
       studioModuleId={studioModuleId}
     />

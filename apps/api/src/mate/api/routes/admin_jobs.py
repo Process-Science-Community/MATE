@@ -315,7 +315,11 @@ async def kill_job(job_id: str, user: AdminUserDep) -> None:
 @router.post("/{job_id}/retry")
 async def retry_job(job_id: str, user: AdminUserDep) -> dict[str, str]:
     """Re-enqueue any user's failed job; returns the new job id."""
-    new_id = await get_job_runtime().retry(job_id)
+    try:
+        new_id = await get_job_runtime().retry(job_id)
+    except RuntimeError as exc:
+        # Its type has no handler now: the module is gone, or a pre-upgrade job type.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if new_id is None:
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried.")
     log.info("admin_job_retry", admin_id=user.id, job_id=job_id, new_id=new_id)

@@ -1029,6 +1029,7 @@ name = "mate-sdk"
 version = "0.2.0"
 source = { editable = "packages/module-sdk-py" }
 dependencies = [
+    { name = "packaging" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "structlog" },
@@ -1036,6 +1037,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "packaging", specifier = ">=24.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "structlog", specifier = ">=24.1" },

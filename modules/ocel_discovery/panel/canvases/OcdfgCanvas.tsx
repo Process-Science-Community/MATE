@@ -13,7 +13,7 @@ import {
 import { formatDuration, formatNumber } from "@/lib/format";
 import { useVizSettings } from "@/lib/stores/visualization-settings";
 
-import { elkLayout } from "../layout/layered";
+import { elkLayout } from "@/components/visualizations/artifacts/layout";
 import { ActivityNode, type ActivityNodeData } from "../nodes/activity-node";
 import { OCDFG_MEASURE_LABELS, type OcdfgData, type OcdfgMeasure } from "../queries";
 

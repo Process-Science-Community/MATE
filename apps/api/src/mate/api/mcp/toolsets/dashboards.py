@@ -61,10 +61,14 @@ def _validated[M: BaseModel](model: type[M], data: Any, what: str) -> M:
         raise tool_error(CODE_INVALID, f"Invalid {what}: {exc}") from exc
 
 
-async def _ensure_owned(session: AsyncSession, dashboard_id: str, user_id: str) -> Dashboard:
+async def _ensure_owned(
+    session: AsyncSession, dashboard_id: str, user_id: str, *, allow_module_board: bool = True
+) -> Dashboard:
     """Owner-only gate, translated to a tool error (404 for missing AND foreign)."""
     try:
-        return await get_owned_dashboard(session, dashboard_id, user_id)
+        return await get_owned_dashboard(
+            session, dashboard_id, user_id, allow_module_board=allow_module_board
+        )
     except HTTPException as exc:
         raise from_http_exception(exc) from exc
 
@@ -139,14 +143,14 @@ async def list_dashboards(
                 await session.execute(
                     select(func.count())
                     .select_from(Dashboard)
-                    .where(Dashboard.user_id == p.user.id)
+                    .where(Dashboard.user_id == p.user.id, Dashboard.module_id.is_(None))
                 )
             ).scalar_one()
             rows = (
                 (
                     await session.execute(
                         select(Dashboard)
-                        .where(Dashboard.user_id == p.user.id)
+                        .where(Dashboard.user_id == p.user.id, Dashboard.module_id.is_(None))
                         .order_by(Dashboard.position.asc(), Dashboard.created_at.desc())
                         .offset(offset)
                         .limit(size)
@@ -279,7 +283,7 @@ async def export_dashboard(ctx: MCPContext, dashboard_id: str) -> dict[str, Any]
     async def _impl() -> dict[str, Any]:
         sm = get_sessionmaker()
         async with sm() as session:
-            row = await _ensure_owned(session, dashboard_id, p.user.id)
+            row = await _ensure_owned(session, dashboard_id, p.user.id, allow_module_board=False)
             snapshot = DashboardExport(
                 name=row.name,
                 description=row.description,

@@ -1,0 +1,18 @@
+id: shared_probe
+name: Shared Probe
+version: 0.1.0
+category: other
+description: Test fixture - write, compute and viewer-safe routes driven by a shared dashboard's viewer.
+license: MIT
+
+datasets:
+  - id: reserved_read
+    shape: table
+    route: /reserved-read
+
+dependencies:
+  python:
+    inherit:
+      - duckdb
+      - pandas
+    isolation: in_process

@@ -5,7 +5,7 @@ import { Play, Square } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { useGeneralSettings } from "../discovery-settings-context";
-import { handlePositions } from "./handle-positions";
+import { handlePositions } from "@/components/visualizations/artifacts/layout";
 
 export interface TerminalNodeData extends Record<string, unknown> {
   kind: "start" | "end";

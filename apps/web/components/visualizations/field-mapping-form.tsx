@@ -15,7 +15,7 @@ import {
   categoryCols,
   numericCols,
 } from "@/components/visualizations/charts/chart-common";
-import { vizSpecs, vizzesForShape } from "@/lib/visualizations/registry";
+import { vizSpecs, vizzesFor } from "@/lib/visualizations/registry";
 import {
   useDatasetCatalog,
   type DashboardItem,
@@ -184,7 +184,7 @@ function DataSelect({
 
 /**
  * Settings for a generic-viz card: a Title, a visualization picker (filtered to
- * the dataset's shape), per-field column binders (Power-BI style) and the viz's
+ * the dataset's shape / artifact type), per-field column binders (Power-BI style) and the viz's
  * non-field options (reusing the card `config_schema` `Field` renderer).
  *
  * `studioModuleId` (module Studio only, never dashboards) adds the Data select
@@ -194,17 +194,20 @@ export function FieldMappingForm({
   item,
   dataset,
   shape,
+  artifactType,
   onChange,
   studioModuleId,
 }: {
   item: DashboardItem;
   dataset?: DatasetEnvelope;
   shape?: DatasetShape;
+  /** Typed datasets also list their artifact viewers. */
+  artifactType?: string | null;
   onChange: (patch: VizPatch) => void;
   studioModuleId?: string;
 }) {
   const unbound = !item.dataset_ref;
-  const vizzes = shape ? vizzesForShape(shape) : studioModuleId && unbound ? vizSpecs : [];
+  const vizzes = shape ? vizzesFor(shape, artifactType) : studioModuleId && unbound ? vizSpecs : [];
   const spec = item.viz_id ? vizzes.find((v) => v.id === item.viz_id) : undefined;
   const columns = dataset?.schema.columns ?? [];
   const mapping = (item.mapping ?? {}) as FieldMapping;

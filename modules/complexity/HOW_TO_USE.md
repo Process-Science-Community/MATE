@@ -21,7 +21,7 @@ The panel has no controls apart from the two tabs described below. The module ha
 
 | Setting | Default | What it changes |
 | --- | --- | --- |
-| Exponential forgetting k | 1.0 | The coefficient k of the exponentially forgetting sequence entropy (0.1 to 10 in steps of 0.1). Larger values make older events count less. The original paper uses 1. The panel shows the value in the row's name. Saving does not recompute results that already exist; the new value applies the next time the measures are computed, for example after the log's data has changed. |
+| Exponential forgetting k | 1.0 | The coefficient k of the exponentially forgetting sequence entropy (0.1 to 10 in steps of 0.1). Larger values make older events count less. The original paper uses 1. The panel shows the value in the row's name. A changed value makes the stored measures outdated, and they are recomputed the next time you open the module for a process. The value is the default for every process; **Parameters for this log** on the module's page for a process overrides it there. |
 
 ## Reading the results
 

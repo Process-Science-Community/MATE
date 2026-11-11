@@ -30,7 +30,7 @@ import {
   type WidgetConfigSchema,
 } from "@/lib/dashboard-queries";
 import type { CardPatch } from "@/components/dashboards/dashboard-card";
-import { defaultVizForShape, vizRegistry } from "@/lib/visualizations/registry";
+import { defaultVizFor, vizRegistry } from "@/lib/visualizations/registry";
 
 import "react-grid-layout/css/styles.css";
 
@@ -188,7 +188,7 @@ export type AddRequest =
 
 /** The viz a viz add request places: the catalog's pick, else the dataset shape's default. */
 function addVizId(req: Extract<AddRequest, { kind: "viz" }>): string {
-  return req.vizId ?? defaultVizForShape(req.dataset?.shape ?? "table");
+  return req.vizId ?? defaultVizFor(req.dataset?.shape ?? "table", req.dataset?.artifact_type);
 }
 
 function addTitle(req: AddRequest): string {
@@ -1082,14 +1082,20 @@ export function DashboardCanvas({
   useEffect(() => {
     if (!freeReflow) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      // Never hijack typing. Covers inputs, textareas, contenteditable, and
-      // anything inside a Radix popover (the card settings form lives there).
-      const el = document.activeElement as HTMLElement | null;
+      // Never hijack typing or a focused control's own keys. Covers inputs,
+      // textareas, contenteditable, anything inside a Radix popover/dialog/sheet
+      // (card settings, "Parameters for this log") and widgets that use arrows or
+      // Backspace themselves. Focus elsewhere still counts: selecting a card by its
+      // header (the drag handle preventDefaults the pointerdown) keeps focus where
+      // it was, e.g. on the Edit button.
+      const el = e.target as HTMLElement;
       if (
-        el &&
-        (el.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
-          el.closest("[data-radix-popper-content-wrapper]"))
+        el.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ||
+        el.closest(
+          '[data-radix-popper-content-wrapper], [role="dialog"], [role="slider"], ' +
+            '[role="switch"], [role="combobox"], [role="listbox"], [role="menu"]',
+        )
       ) {
         return;
       }

@@ -133,6 +133,7 @@ public final class MateModule {
                 route.put("method", entry.route.method());
                 route.put("path", entry.route.path());
                 route.put("name", entry.route.name());
+                route.put("viewer_safe", entry.route.isViewerSafe());
                 meta.put("route", route);
             }
             if (entry.eventTopic != null) {

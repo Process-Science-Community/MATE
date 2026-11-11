@@ -73,7 +73,14 @@ function onlyIds(folders) {
   for (const folder of folders) {
     try {
       const m = readManifest(folder);
-      deps.set(m.id, m.requirements?.modules ?? []);
+      // Hard deps (version specifier stripped: `discovery>=1,<2`) and input producers.
+      deps.set(
+        m.id,
+        [
+          ...(m.requirements?.modules ?? []).map((r) => String(r).match(/^\s*([a-z0-9_]+)/)?.[1]),
+          ...(m.inputs ?? []).map((i) => i?.from),
+        ].filter(Boolean),
+      );
     } catch {
       // Unreadable manifest (mid-write): bundleModule reports it.
     }
@@ -244,7 +251,8 @@ async function bundleModule(folder, onlyIdSet, rescan = false) {
   const all = entriesForModule(folder, manifest);
   const entries = all.filter((e) => !started.has(join(outdir, e.name)));
   if (!entries.length) {
-    if (!all.length && manifest.frontend && !rescan) {
+    const f = manifest.frontend;
+    if (!all.length && !rescan && f && (f.panel || f.widgets?.length)) {
       console.warn(`[bundle-modules] ${moduleId}: manifest declares frontend but no entry found.`);
     }
     return [];

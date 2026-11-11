@@ -2,7 +2,6 @@
 
 import { BaseEdge, getBezierPath, useInternalNode, type EdgeProps } from "@xyflow/react";
 
-import { renderLabel } from "./celonis-edge";
 import {
   ARROW,
   arrowScaleFor,
@@ -13,7 +12,8 @@ import {
   strokeOf,
   type ExpectedRects,
   type Point,
-} from "./edge-common";
+  renderLabel,
+} from "@/components/visualizations/artifacts/edges";
 
 /**
  * Edge renderer for the Backbone v2 layout.

@@ -10,13 +10,16 @@ const LIMIT = 50;
  * holding an arrow key doesn't fill the stack with single-cell nudges. */
 const COALESCE_MS = 500;
 
-export interface ItemHistory {
+export interface ItemHistory<T = DashboardItem[]> {
   /** Apply a new item list AND record it as an undoable step.
    *
    * `label` groups consecutive edits of the same kind ("move", "resize",
    * "config"…) — pass a *specific* one, since two different edits sharing a
-   * label within the coalesce window would merge into a single step. */
-  commit: (next: DashboardItem[], label: string) => void;
+   * label within the coalesce window would merge into a single step.
+   *
+   * `prev` is the state to step back to, when the live state already moved on
+   * before the edit was committed (a node drag streams its positions first). */
+  commit: (next: T, label: string, prev?: T) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -45,12 +48,12 @@ export interface ItemHistory {
  *    undid back onto the stack, making undo unreachable. `isApplying()` is how
  *    the canvas tells that echo apart from a real edit.
  */
-export function useItemHistory(
-  items: DashboardItem[],
-  setItems: (next: DashboardItem[]) => void,
-): ItemHistory {
-  const past = useRef<DashboardItem[][]>([]);
-  const future = useRef<DashboardItem[][]>([]);
+export function useItemHistory<T = DashboardItem[]>(
+  items: T,
+  setItems: (next: T) => void,
+): ItemHistory<T> {
+  const past = useRef<T[]>([]);
+  const future = useRef<T[]>([]);
   const lastLabel = useRef<string | null>(null);
   const lastAt = useRef(0);
   const applying = useRef(false);
@@ -66,11 +69,11 @@ export function useItemHistory(
   );
 
   const commit = useCallback(
-    (next: DashboardItem[], label: string) => {
+    (next: T, label: string, prev?: T) => {
       const now = Date.now();
       const coalesce = lastLabel.current === label && now - lastAt.current < COALESCE_MS;
       if (!coalesce) {
-        past.current.push(currentRef.current);
+        past.current.push(prev ?? currentRef.current);
         if (past.current.length > LIMIT) past.current.shift();
       }
       lastLabel.current = label;
@@ -84,7 +87,7 @@ export function useItemHistory(
   );
 
   const step = useCallback(
-    (from: DashboardItem[][], to: DashboardItem[][]) => {
+    (from: T[], to: T[]) => {
       const snapshot = from.pop();
       if (!snapshot) return;
       to.push(currentRef.current);

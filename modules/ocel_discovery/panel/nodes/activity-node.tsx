@@ -6,7 +6,8 @@ import { Play, Square } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
 
-import { handlePositions, type Direction } from "./handle-positions";
+import type { LayoutDirection } from "@/lib/stores/visualization-settings";
+import { handlePositions } from "@/components/visualizations/artifacts/layout";
 
 export interface ActivityNodeData extends Record<string, unknown> {
   label: string;
@@ -17,7 +18,7 @@ export interface ActivityNodeData extends Record<string, unknown> {
   /** Unique objects of the selected type that start / end at this activity. */
   startCount?: number;
   endCount?: number;
-  direction: Direction;
+  direction: LayoutDirection;
 }
 
 export type ActivityNode = Node<ActivityNodeData, "activity">;

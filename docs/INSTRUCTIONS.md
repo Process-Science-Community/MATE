@@ -163,7 +163,7 @@ version: 1.2.0
 category: foundation                # foundation | attribute | external_input | advanced | other
 description: Throughput, lead time, waiting / sojourn time, bottleneck detection.
 source: []                          # cited works ({title, fullCitation, url?}, max 20); also
-                                    # artifacts: for repo/dataset links – see modules/README.md §3
+                                    # links: for repo/dataset links – see modules/README.md §3
 license: MIT
 
 requirements:
@@ -513,7 +513,7 @@ When the user opens a process page:
 | `GET /modules` | List manifests + per-log availability |
 | `GET /modules/{id}/manifest` | Full manifest |
 | `GET / PUT /modules/{id}/config` | User config |
-| `GET / PUT /modules/{id}/layout?log_id=...` | Per-(user, log, module) layout JSON for the widget grid (§7.7) |
+| `GET /modules/{id}/layout` | The module's declarative page (`modules/<id>/layout.json`, read fresh), `null` when it ships none |
 | `GET /modules/{id}/assets/{path}` | Serve `modules/<id>/.dist/<path>` – the bundled panel + widgets (§5.4) |
 | `POST /modules/install` | Multipart zip / tar.gz upload – returns `{ job_id }` |
 | `POST /modules/install/git` | `{ url, ref? }` – clone + install – returns `{ job_id }` |
@@ -675,7 +675,7 @@ Platform version, license, an "Onboarding → Restart" button, and a one-click *
 ### 7.7 Per-module page customisation
 
 - Each module supplies a default `frontend.page_layout` in its manifest.
-- **Layout persistence: superseded, frontend removed.** The `module_layouts (user_id, log_id, module_id, layout_json)` table and its `GET / PUT /api/v1/modules/{id}/layout?log_id=...` routes still exist, but the `useModuleLayout` / `useSaveModuleLayout` hooks and their SDK re-export are gone. The idea was that a module *page* would become a user-arrangeable widget grid; Dashboards took that role instead, and no module ever called the hooks. The table is retained rather than dropped (a destructive migration for no gain) — treat it as dead, not as an API.
+- **Module pages are a TSX panel or `layout.json`.** A module without `frontend.panel` renders its `layout.json` (built in the dev-only Studio, served by `GET /api/v1/modules/{id}/layout`) read-only, the same for every user and log. The per-log saved layouts (`module_layouts`) were dropped in Alembic `0019`; `dashboards.module_id`, added by the same migration for the removed module boards, is a reserved column that stays NULL.
 - Widgets share a small contract: `Widget(props: { logId, moduleId, config }) → ReactNode`.
 - **Cross-module widget reuse** – a widget exposed by one module can be embedded on another module's page, provided the source module is installed. `useWidget(sourceModuleId, widgetId)` from `@mate/module-sdk-ts` ([apps/web/lib/module-widgets.tsx](../apps/web/lib/module-widgets.tsx)) resolves the bundle lazily via the same loader as panels, renders a `Skeleton`, then a placeholder card if the source module is missing or disabled. The bundler in [bundle-modules.mjs](../apps/web/scripts/bundle-modules.mjs) already produces one bundle per `frontend.widgets[]` entry (`.dist/widget-<id>.js`).
 - **Public SDK surface.** [packages/module-sdk-ts/src/index.ts](../packages/module-sdk-ts/src/index.ts) re-exports `useWidget`, the dashboard widget kit (`CardShell` / `KpiTile` / `ChartFrame` / `seriesColor` …), the drill-down helpers (`DRILL_PARAMS`, `resolveDrillHref`, `useDrillParams`), the settings-scope helpers (`useCardScope`, `panelScope`), the `api` / `rawFetch` HTTP helpers, the `subscribeBus` / `subscribeJob` WS helpers, and `cn` / `formatDuration` / `formatNumber` so module authors import from one place rather than reaching into host `@/` aliases directly.

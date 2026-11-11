@@ -2,7 +2,6 @@
 
 import {
   BaseEdge,
-  EdgeLabelRenderer,
   getBezierPath,
   useInternalNode,
   type EdgeProps,
@@ -13,6 +12,7 @@ import {
   type CelonisEdgeGeometry,
   type CelonisRect,
 } from "../layout/celonis-flow";
+import { renderLabel } from "@/components/visualizations/artifacts/edges";
 
 /**
  * Renderer for the "Process flow (Celonis)" edges. All routing decisions live
@@ -95,47 +95,5 @@ export function CelonisEdge(props: EdgeProps) {
       <BaseEdge id={id} path={path} style={style} />
       {renderLabel({ label, labelX, labelY, labelStyle, labelBgPadding, labelBgBorderRadius })}
     </>
-  );
-}
-
-export function renderLabel({
-  label,
-  labelX,
-  labelY,
-  labelStyle,
-  labelBgPadding,
-  labelBgBorderRadius,
-}: {
-  label: EdgeProps["label"];
-  labelX: number;
-  labelY: number;
-  labelStyle?: React.CSSProperties;
-  labelBgPadding?: [number, number];
-  labelBgBorderRadius?: number;
-}) {
-  if (label === undefined || label === null || label === "") return null;
-  return (
-    <EdgeLabelRenderer>
-      <div
-        style={{
-          position: "absolute",
-          transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-          padding: labelBgPadding
-            ? `${labelBgPadding[1]}px ${labelBgPadding[0]}px`
-            : "2px 4px",
-          borderRadius: labelBgBorderRadius ?? 4,
-          border: "1px solid var(--border)",
-          background: "var(--card)",
-          fontSize: 10,
-          whiteSpace: "nowrap",
-          color: "var(--muted-foreground)",
-          pointerEvents: "all",
-          ...labelStyle,
-        }}
-        className="nodrag nopan"
-      >
-        {label}
-      </div>
-    </EdgeLabelRenderer>
   );
 }

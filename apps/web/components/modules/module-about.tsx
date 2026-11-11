@@ -2,7 +2,7 @@
 
 import { BookOpen, ExternalLink, Info, Package } from "lucide-react";
 
-import type { ManifestArtifact, ManifestSource } from "@/lib/api-types";
+import type { ManifestLink, ManifestSource } from "@/lib/api-types";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
 
-/** Hard ceiling mirroring the manifest schema (`MAX_SOURCES`/`MAX_ARTIFACTS`). */
+/** Hard ceiling mirroring the manifest schema (`MAX_SOURCES`/`MAX_LINKS`). */
 const MAX_CREDITS = 20;
 
 export interface ModuleAboutProps {
@@ -24,8 +24,8 @@ export interface ModuleAboutProps {
   about?: string | null;
   /** Cited works (manifest `source[]`); `fullCitation` carries the authors. */
   sources?: ManifestSource[] | null;
-  /** Named links (manifest `artifacts[]`) — code repo, dataset, demo, model. */
-  artifacts?: ManifestArtifact[] | null;
+  /** Named links (manifest `links[]`) — code repo, dataset, demo, model. */
+  links?: ManifestLink[] | null;
   license?: string | null;
   version?: string | null;
   className?: string;
@@ -38,14 +38,14 @@ export interface ModuleAboutProps {
  */
 export function resolveCredits({
   sources,
-  artifacts,
-}: Pick<ModuleAboutProps, "sources" | "artifacts">): {
+  links,
+}: Pick<ModuleAboutProps, "sources" | "links">): {
   sourceList: ManifestSource[];
-  artifactList: ManifestArtifact[];
+  linkList: ManifestLink[];
 } {
   return {
     sourceList: (sources ?? []).slice(0, MAX_CREDITS),
-    artifactList: (artifacts ?? []).slice(0, MAX_CREDITS),
+    linkList: (links ?? []).slice(0, MAX_CREDITS),
   };
 }
 
@@ -54,13 +54,13 @@ export function resolveCredits({
  *
  * Platform-side (not module-authored): every module gets it for free from its
  * manifest fields - `description`, `about` (what-you-can-do text), `source`
- * (cited works) and `artifacts` (named links).
+ * (cited works) and `links` (named links).
  */
 export function ModuleAboutInfo({ name, className, ...content }: ModuleAboutProps) {
   const { description, about } = content;
-  const { sourceList, artifactList } = resolveCredits(content);
+  const { sourceList, linkList } = resolveCredits(content);
   const hasBody = Boolean(about || description);
-  if (!hasBody && sourceList.length === 0 && artifactList.length === 0) return null;
+  if (!hasBody && sourceList.length === 0 && linkList.length === 0) return null;
 
   return (
     <Popover>
@@ -83,7 +83,7 @@ export function ModuleAboutInfo({ name, className, ...content }: ModuleAboutProp
 
 /**
  * Body of the module "About" popover — header, what-you-can-do, cited sources,
- * artifact links, and the version · license footer. Split out so it can render
+ * named links, and the version · license footer. Split out so it can render
  * inside any popover shell (the in-page {@link ModuleAboutInfo} button and the
  * topbar ⓘ).
  */
@@ -95,7 +95,7 @@ export function ModuleAboutContent({
   ...credits
 }: Omit<ModuleAboutProps, "name" | "className">) {
   const meta = [version ? `v${version}` : null, license].filter(Boolean).join(" · ");
-  const { sourceList, artifactList } = resolveCredits(credits);
+  const { sourceList, linkList } = resolveCredits(credits);
 
   return (
     <>
@@ -115,7 +115,7 @@ export function ModuleAboutContent({
         </div>
       )}
 
-      {(sourceList.length > 0 || artifactList.length > 0) && (
+      {(sourceList.length > 0 || linkList.length > 0) && (
         <div className="space-y-2 border-t border-white/10 pt-2.5 text-xs">
           {sourceList.map((s, i) => (
             <div key={`${s.title}-${i}`} className="flex gap-1.5 text-muted-foreground">
@@ -141,7 +141,7 @@ export function ModuleAboutContent({
               </div>
             </div>
           ))}
-          {artifactList.map((a, i) => (
+          {linkList.map((a, i) => (
             <div
               key={`${a.url}-${i}`}
               className="flex items-center gap-1.5 text-muted-foreground"

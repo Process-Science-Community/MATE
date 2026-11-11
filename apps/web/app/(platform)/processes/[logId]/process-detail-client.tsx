@@ -24,6 +24,7 @@ import { LogStatusBanner } from "@/components/processes/log-status-banner";
 import { OcelObjectsTab } from "@/components/processes/ocel/ocel-objects-tab";
 import { OcelEventsTab } from "@/components/processes/ocel/ocel-events-tab";
 import { OcelRelationshipsTab } from "@/components/processes/ocel/ocel-relationships-tab";
+import { ArtifactWorkspace } from "@/components/artifacts/artifact-workspace";
 import { useEventLog } from "@/lib/queries";
 import { prefetchProcessTabs } from "@/lib/client-prefetch";
 import { formatRelative } from "@/lib/format";
@@ -37,10 +38,25 @@ type TabId =
   | "activities"
   | "objects"
   | "relationships"
+  | "artifacts"
   | "settings";
 
-const CASE_TAB_IDS: readonly TabId[] = ["overview", "events", "variants", "activities", "settings"];
-const OCEL_TAB_IDS: readonly TabId[] = ["overview", "objects", "events", "relationships", "settings"];
+const CASE_TAB_IDS: readonly TabId[] = [
+  "overview",
+  "events",
+  "variants",
+  "activities",
+  "artifacts",
+  "settings",
+];
+const OCEL_TAB_IDS: readonly TabId[] = [
+  "overview",
+  "objects",
+  "events",
+  "relationships",
+  "artifacts",
+  "settings",
+];
 
 function readTab(value: string | null | undefined, allowed: readonly TabId[]): TabId {
   return allowed.includes(value as TabId) ? (value as TabId) : "overview";
@@ -131,6 +147,7 @@ export function ProcessDetailClient({ logId }: { logId: string }) {
           count: ready ? log.relations_count : null,
           disabled: !ready,
         },
+        { value: "artifacts", label: "Artifacts", disabled: !ready },
         { value: "settings", label: "Settings" },
       ]
     : [
@@ -138,6 +155,7 @@ export function ProcessDetailClient({ logId }: { logId: string }) {
         { value: "events", label: "Events", count: ready ? log.events_count : null, disabled: !ready },
         { value: "variants", label: "Variants", count: ready ? log.variants_count : null, disabled: !ready },
         { value: "activities", label: "Activities", disabled: !ready },
+        { value: "artifacts", label: "Artifacts", disabled: !ready },
         { value: "settings", label: "Settings" },
       ];
 
@@ -253,6 +271,9 @@ export function ProcessDetailClient({ logId }: { logId: string }) {
             </TabsContent>
           </>
         )}
+        <TabsContent value="artifacts">
+          {ready && <ArtifactWorkspace logId={logId} />}
+        </TabsContent>
         <TabsContent value="settings">
           <SettingsTab logId={logId} log={log} />
         </TabsContent>

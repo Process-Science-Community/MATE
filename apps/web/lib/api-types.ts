@@ -234,10 +234,23 @@ export interface ManifestSource {
   url: string | null;
 }
 
-/** One linked artifact (manifest `artifacts[]`) — repo, dataset, demo, model. */
-export interface ManifestArtifact {
+/** One named link (manifest `links[]`) — repo, dataset, demo, model. */
+export interface ManifestLink {
   name: string;
   url: string;
+}
+
+/** One artifact a module consumes (manifest `inputs[]`). */
+export interface ModuleInputPort {
+  id: string;
+  /** Artifact type id, e.g. `petri_net` or `petri_net@1`. */
+  artifact_type: string;
+  required: boolean;
+  /** Producer module id; null leaves the port unbound. */
+  from: string | null;
+  /** Producer dataset id; null = the producer's only dataset of this type. */
+  dataset: string | null;
+  description: string | null;
 }
 
 export interface ModuleSummary {
@@ -259,7 +272,7 @@ export interface ModuleSummary {
    *  There are no author fields: `fullCitation` carries the author names. */
   source: ManifestSource[];
   /** Optional named links (max 20) — code repo, dataset, demo, released model. */
-  artifacts: ManifestArtifact[];
+  links: ManifestLink[];
   license: string | null;
   provides: string[];
   consumes: string[];
@@ -279,11 +292,41 @@ export interface ModuleSummary {
    *  order. Empty = no gate: the module computes inline or on an explicit action.
    *  The module page / dashboard cards gate on exactly these. */
   precompute_deps: string[];
+  /** Artifacts the module consumes from other modules (manifest `inputs[]`). */
+  inputs: ModuleInputPort[];
+}
+
+/** One installed version of a module. `content_hash`: the uploaded archive's pristine
+ *  content hash; null for a bundled module. */
+export interface ModuleVersion {
+  version: string;
+  content_hash: string | null;
+}
+
+/** One successful install of an uploaded module (upload or rollback). */
+export interface ModuleVersionEntry extends ModuleVersion {
+  installed_at: string;
+  user_id: string | null;
+}
+
+/** `GET /modules/{id}/versions` (owners only). `history` is newest first and empty
+ *  for a bundled module. `previous_version` is kept for an admin rollback:
+ *  `POST /admin/modules/{id}/rollback` reinstalls it (staged; 409 when there is none,
+ *  400 for a bundled module, 500 with the reason when it fails to load – the current
+ *  version stays) and answers the admin module row. `changelog`: the module's
+ *  `CHANGELOG.md` (first 64 KiB), markdown. */
+export interface ModuleVersions {
+  current: ModuleVersion;
+  history: ModuleVersionEntry[];
+  previous_available: boolean;
+  previous_version: string | null;
+  changelog: string | null;
 }
 
 /** Where one module stands for one log (`GET /event-logs/{id}/module-runs`).
- *  `idle`: never computed. `stale`: computed, but the data or module version has
- *  since changed. `queued` with no `job_id`: waiting on a module it depends on. */
+ *  `idle`: never computed. `stale`: computed, but the data, the module's code or a
+ *  `ui.affects: "precompute"` setting has since changed. `queued` with no `job_id`:
+ *  waiting on a module it depends on. */
 export type ModuleRunStatus =
   | "idle"
   | "queued"
@@ -304,6 +347,174 @@ export interface ModuleRunState {
   finished_at: string | null;
 }
 
+/** A module's parameters for one log (`GET`/`PUT /event-logs/{id}/modules/{module}/config`).
+ *  Covers only the module's `ui.scope: "dataset"` properties. A key missing from
+ *  `overrides` inherits the module-wide value; `PUT {overrides}` replaces the whole
+ *  object (a null value also inherits) and 422s on a key that is not per-log. */
+export interface LogModuleConfig {
+  /** `config_schema` dialect, holding only the per-log properties. */
+  schema: { type: "object"; properties: Record<string, Record<string, unknown>> };
+  /** This log's stored overrides. */
+  overrides: Record<string, unknown>;
+  /** The module-wide value of each property (schema default when unset). */
+  module_values: Record<string, unknown>;
+  /** What the module uses for this log; an admin lock wins over an override. */
+  effective: Record<string, unknown>;
+  /** Properties an admin-locked card owns: read-only, a PUT keeps their stored override. */
+  locked: string[];
+}
+
+/** A run variant's request (`POST /event-logs/{id}/module-runs/{module}/variants`).
+ *  Its canonical JSON hashes to the variant key, so the same spec is the same variant. */
+export interface RunSpec {
+  /** Values for the module's `ui.scope: "dataset"` properties only (422 otherwise). */
+  params?: Record<string, unknown>;
+  /** `{port_id: ArtifactRef}`; an unbound port keeps its default producer. */
+  inputs?: Record<string, string>;
+  /** Replaces the log's committed filter (`{field, op, value?}` entries); `[]` = raw log. */
+  filter?: Record<string, unknown>[] | null;
+}
+
+export type ModuleVariantStatus =
+  | "queued"
+  | "running"
+  | "ready"
+  | "stale"
+  | "failed"
+  | "cancelled"
+  | "unavailable";
+
+/** One run variant (`GET …/module-runs/{module}/variants[/{variant}]`). The POST
+ *  answers 202 while it is in flight, 200 once settled; `force: true` in its body
+ *  retries a failed or cancelled one. `DELETE …/variants/{variant}` cancels + removes. */
+export interface ModuleVariantState {
+  /** 16 hex chars. */
+  variant: string;
+  status: ModuleVariantStatus;
+  spec: Required<RunSpec>;
+  job_id: string | null;
+  error: string | null;
+  finished_at: string | null;
+  /** The module's typed, cached outputs in this variant -
+   *  `ref` = `{log_id}/{module_id}@{variant}/{cache_key}`. */
+  refs: { dataset_id: string; artifact_type: string; ref: string }[];
+}
+
+/** `module_variant.updated` bus event. Always carries `user_id`. */
+export interface ModuleVariantUpdatedPayload {
+  log_id: string;
+  module_id: string;
+  variant: string;
+  status: ModuleVariantStatus | "deleted";
+  job_id: string | null;
+}
+
+// ── Artifact workspace (`/api/v1/artifacts`) ────────────────────────────────
+
+/** One artifact in the user's workspace (`GET /artifacts?log_id=&artifact_type=&pinned=`,
+ *  newest first). `run`: an output of a module the user has installed, indexed when its
+ *  default run or run variant settled ready, or found by a list (the file stays in the
+ *  module's cache). `upload`: a JSON artifact the user uploaded. A default result is
+ *  listed while its cache entry exists (hidden during a rerun, keeping its name and pin);
+ *  a variant's or upload whose file is gone is dropped by the server on read.
+ *  `GET /artifacts/{id}/download`: the stored file, whole – `.json`, or a table's
+ *  `.parquet` – with a `Content-Disposition` filename from `name`. */
+export interface Artifact {
+  id: string;
+  /** `{log_id}/{module_id}[@{variant}]/{key}`, or `{log_id ?? "_"}/_workspace/{id}` for an
+   *  upload – what a run variant's `inputs` binds and `GET /artifacts/content?ref=` reads. */
+  ref: string;
+  /** Artifact type id (`petri_net`) – match the viz registry's `acceptsArtifactTypes` on it. */
+  artifact_type: string;
+  type_version: number;
+  source: "run" | "upload";
+  log_id: string | null;
+  /** The producer; null for an upload. */
+  module_id: string | null;
+  module_name: string | null;
+  dataset_id: string | null;
+  /** The run variant (16 hex) that produced it; null for a default result or an upload. */
+  variant: string | null;
+  key: string;
+  name: string;
+  pinned: boolean;
+  producer_version: string | null;
+  /** The producer's loaded version now – differs from `producer_version` when the
+   *  result predates an upgrade or rollback (re-run it). Null for an upload. */
+  current_version: string | null;
+  producer_hash: string | null;
+  /** Lineage: the input refs the producing run had bound. */
+  inputs: string[];
+  /** A run variant's spec. */
+  spec: Required<RunSpec> | null;
+  size_bytes: number | null;
+  created_at: string;
+  /** When the content was last produced (a rename/pin leaves it alone). */
+  updated_at: string;
+  /** `ready`: the file is there. A pinned variant's is listed `running` while its rerun
+   *  is under way and `failed` once it failed – no content: re-run it (POST its `spec`
+   *  with `force: true`) or delete it. `missing` only answers a PATCH of a hidden row
+   *  (PATCH and DELETE work on hidden rows too). */
+  state: ArtifactState;
+}
+
+export type ArtifactState = "ready" | "missing" | "failed" | "running";
+
+/** An installed module whose input port takes this artifact type ("Use in…"): POST
+ *  `/event-logs/{log_id}/module-runs/{module_id}/variants` with
+ *  `{inputs: {[port_id]: artifact.ref}}` (a `_/_workspace/…` upload binds on any log). */
+export interface ArtifactConsumer {
+  module_id: string;
+  module_name: string;
+  port_id: string;
+  required: boolean;
+}
+
+/** One of `Artifact.inputs`, resolved against the workspace (`id` null when it isn't in it). */
+export interface ArtifactLineageEntry {
+  ref: string;
+  id: string | null;
+  name: string | null;
+  artifact_type: string | null;
+}
+
+/** `GET /artifacts/{id}`. 404 for someone else's or a vanished artifact.
+ *  `DELETE /artifacts/{id}`: 204 for an upload or a variant's artifact (deletes the whole
+ *  variant); 409 for a default-run result ("managed by the module"). A default result is
+ *  also readable by a shared dashboard's viewer via `GET /artifacts/content?ref=`. */
+export interface ArtifactDetail extends Artifact {
+  consumers: ArtifactConsumer[];
+  lineage: ArtifactLineageEntry[];
+}
+
+/** `PATCH /artifacts/{id}` (optimistic). Pinned variant artifacts survive the variant GC. */
+export interface ArtifactPatch {
+  name?: string;
+  pinned?: boolean;
+}
+
+/** `POST /artifacts` as JSON (201 → `Artifact`), or multipart with the payload as `file`
+ *  and these fields as form fields (with a `Content-Length`, else 411). Only JSON-stored
+ *  types (`petri_net`, `bpmn`, `dfg`, `process_tree`, `conformance_result`,
+ *  `drift_points`); 422 lists schema problems, 413 over `ARTIFACT_UPLOAD_MAX_BYTES`
+ *  (20 MiB). The name is cut to 255 characters. PNML/BPMN files: Model Interop instead. */
+export interface ArtifactUpload {
+  artifact_type: string;
+  name?: string;
+  log_id?: string | null;
+  payload: unknown;
+}
+
+/** `GET /artifacts/{id}/content` / `GET /artifacts/content?ref=` for a Parquet table:
+ *  the first 200 rows. A JSON artifact comes back as stored (415 for binary, 413 too big). */
+export interface ArtifactTablePreview {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total_rows: number;
+  /** `total_rows > rows.length` – the whole table is `GET /artifacts/{id}/download`. */
+  truncated: boolean;
+}
+
 /** `module_run.updated` bus event — a run changed state. Always carries `user_id`. */
 export interface ModuleRunUpdatedPayload {
   log_id: string;
@@ -316,6 +527,216 @@ export interface BusEnvelope<T = Record<string, unknown>> {
   topic: string;
   payload: T;
   ts: number;
+}
+
+// ── Flows (`/api/v1/flows`) ──────────────────────────────────────────────────
+// A flow chains module runs: source -> module -> output nodes, edges from an output
+// handle to an input port of the same artifact type. Private to its owner; the log is
+// bound per run. Artifact types here are base ids (`petri_net`, no `@1`).
+
+export type FlowLogModel = "case_centric" | "object_centric";
+
+/** `{kind: "log"}`: the run's log (at most one per flow; every module node reads it
+ *  implicitly - no edge needed). Output handle `"log"`, artifact type
+ *  `FlowPalette.log_artifact_type`. `{kind: "artifact", ref}`: an artifact of your
+ *  workspace (`Artifact.ref`; `""` until picked). Output handle = the ref itself. */
+export type FlowSourceData = { kind: "log" } | { kind: "artifact"; ref: string };
+
+/** A run variant of the module's precompute. `params` = values for its
+ *  `ui.scope: "dataset"` properties only (`FlowPaletteModule.params`). Output handles:
+ *  `FlowPaletteModule.outputs[].dataset_id`; input handles: `inputs[].id`. */
+export interface FlowModuleData {
+  module_id: string;
+  params?: Record<string, unknown>;
+}
+
+/** Names (non-empty `name`) and pins (`pin`) the connected module output in the
+ *  workspace once a run produced it. Input handle `"in"`. */
+export interface FlowOutputData {
+  name: string;
+  pin: boolean;
+}
+
+interface FlowNodeBase {
+  /** 1–64 chars, unique in the flow. */
+  id: string;
+  position: { x: number; y: number };
+}
+
+export type FlowNode =
+  | (FlowNodeBase & { type: "source"; data: FlowSourceData })
+  | (FlowNodeBase & { type: "module"; data: FlowModuleData })
+  | (FlowNodeBase & { type: "output"; data: FlowOutputData });
+
+export interface FlowEdge {
+  id: string;
+  source: string;
+  /** `"log"` (log source), the ref (artifact source) or a dataset id (module node). */
+  sourceHandle: string;
+  target: string;
+  /** An input port id (module node) or `"in"` (output node). One edge per input. */
+  targetHandle: string;
+}
+
+/** Max 200 nodes / 500 edges. Extra node/edge keys (React Flow's `selected`,
+ *  `measured`, …) are dropped on save. */
+export interface FlowGraph {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+}
+
+/** One thing wrong with a flow, on the node or edge to mark (both null: the flow or
+ *  the log as a whole). */
+export interface FlowProblem {
+  node_id: string | null;
+  edge_id: string | null;
+  message: string;
+}
+
+/** Body of every flow 422 (`ApiError.detail.detail`): POST/PUT refuse only what the
+ *  graph alone gets wrong (duplicate ids, a dangling edge, an input connected twice, a
+ *  second log source, a cycle) - an unfinished graph autosaves fine. Everything else
+ *  comes from `POST /flows/{id}/validate` and refuses `POST /flows/{id}/runs`. */
+export interface FlowInvalidDetail {
+  message: string;
+  errors: FlowProblem[];
+}
+
+export type FlowRunStatus = "queued" | "running" | "ready" | "failed" | "cancelled";
+
+export interface FlowRunSummary {
+  id: string;
+  log_id: string;
+  status: FlowRunStatus;
+  created_at: string;
+  finished_at: string | null;
+}
+
+/** `GET /flows` (newest first). */
+export interface FlowSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  log_model: FlowLogModel;
+  created_at: string;
+  updated_at: string;
+  /** The newest run, whatever its log. */
+  last_run: FlowRunSummary | null;
+}
+
+/** `GET /flows/{id}`, and the answer to `POST /flows` (201) / `PUT /flows/{id}`. */
+export interface FlowDetail extends FlowSummary {
+  graph: FlowGraph;
+  /** `{module_id: "version+compute_hash"}` of the module nodes at the last save. */
+  pins: Record<string, string>;
+}
+
+/** `POST /flows`. `log_model` is fixed at creation. */
+export interface FlowCreate {
+  name: string;
+  description?: string | null;
+  log_model?: FlowLogModel;
+  graph?: FlowGraph;
+}
+
+/** `PUT /flows/{id}`: replaces name, description and graph. */
+export interface FlowUpdate {
+  name: string;
+  description?: string | null;
+  graph: FlowGraph;
+}
+
+/** `POST /flows/{id}/validate` with `{log_id?}` (also checks the log: yours - else 404 -,
+ *  ready, of the flow's model). Always 200. */
+export interface FlowValidation {
+  ok: boolean;
+  errors: FlowProblem[];
+}
+
+/** `skipped`: an upstream node failed, or the run was cancelled before it ran. */
+export type FlowNodeRunStatus = "queued" | "running" | "ready" | "failed" | "skipped" | "cancelled";
+
+export interface FlowNodeRunState {
+  status: FlowNodeRunStatus;
+  /** A module node's run variant key; null when the node is the module's default run
+   *  (no params, no input but what its ports read unconnected). */
+  variant: string | null;
+  /** A module node's job: its variant job (a child of the run's `job_id`), or its
+   *  default run's job (not a child). */
+  job_id: string | null;
+  error: string | null;
+  /** What the node produced: a module node its typed outputs, an artifact source its
+   *  ref, an output node the artifact it saved. Open one in the workspace by `ref`. */
+  refs: { dataset_id: string | null; artifact_type: string; ref: string }[];
+  /** A module node whose fresh result was reused - nothing ran. */
+  reused: boolean;
+  /** An output node: the workspace `Artifact.id` it named / pinned. */
+  artifact_id: string | null;
+}
+
+/** `POST /flows/{id}/runs {log_id}` (202; 404 for a log that is not yours, 422 +
+ *  `FlowInvalidDetail` when it cannot run), `GET /flows/{id}/runs` (newest first,
+ *  `?limit=` ≤ 100), `GET /flows/{id}/runs/{run_id}`, `POST …/runs/{run_id}/cancel`
+ *  (returns the run; it turns `cancelled` once the job has stopped - poll or listen). */
+export interface FlowRun extends FlowRunSummary {
+  flow_id: string;
+  /** The parent `flow.run` job in the jobs drawer (cancellable there too). */
+  job_id: string | null;
+  error: string | null;
+  /** By node id; empty while queued. */
+  nodes: Record<string, FlowNodeRunState>;
+}
+
+/** `flow_run.updated` bus event (SSE `?topic=flow_run.updated`). Always carries
+ *  `user_id`. `node_id` null: the run's own status changed. */
+export interface FlowRunUpdatedPayload {
+  flow_id: string;
+  run_id: string;
+  node_id: string | null;
+  status: FlowRunStatus | FlowNodeRunStatus;
+}
+
+export interface FlowPalettePort {
+  id: string;
+  artifact_type: string;
+  required: boolean;
+  /** The producer it reads when unconnected. */
+  from: string | null;
+  /** Unconnected, it reads `from`'s default result (installed + resolvable) - a
+   *  required port like that needs no edge. */
+  default_bound: boolean;
+  description: string | null;
+}
+
+/** One installed module usable as a node (it has a precompute and fits the log model). */
+export interface FlowPaletteModule {
+  module_id: string;
+  name: string;
+  description: string;
+  category: string;
+  inputs: FlowPalettePort[];
+  /** Typed, cached datasets: the output handles. */
+  outputs: { dataset_id: string; artifact_type: string; title: string }[];
+  /** SchemaForm schema of the `ui.scope: "dataset"` params. */
+  params: { type: "object"; properties: Record<string, Record<string, unknown>> };
+}
+
+/** "Insert converter": `module_id`'s `input` port takes `from_type`, its `output`
+ *  dataset is `to_type`. */
+export interface FlowConverter {
+  from_type: string;
+  to_type: string;
+  module_id: string;
+  input: string;
+  output: string;
+}
+
+/** `GET /flows/palette?log_model=`. */
+export interface FlowPalette {
+  /** The log source's type: `event_log` or `ocel`. */
+  log_artifact_type: string;
+  modules: FlowPaletteModule[];
+  converters: FlowConverter[];
 }
 
 // ── Events / Variants / Data quality / Edits ────────────────────────────────

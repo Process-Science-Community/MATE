@@ -230,7 +230,7 @@ function envelope(
 
 // ── graph ──────────────────────────────────────────────────────────────────
 
-function graphFromDfg(json: Json): GraphData {
+export function graphFromDfg(json: Json): GraphData {
   const activities = Array.isArray(json.activities) ? (json.activities as Json[]) : [];
   const edges = Array.isArray(json.edges) ? (json.edges as Json[]) : [];
   const nodes: GraphNode[] = activities.map((a) => ({
@@ -362,9 +362,25 @@ const arrayOr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 // ── public entry ───────────────────────────────────────────────────────────
 
-/** Normalize a module route's response into the declared shape. `shape` comes
- * from the dataset catalog entry; `json` is the raw route response. */
-export function normalize(shape: DatasetShape, json: unknown): DatasetEnvelope {
+/** `petri_net@1` → `petri_net`; null/empty → null. */
+export function artifactTypeId(artifactType: string | null | undefined): string | null {
+  return artifactType ? artifactType.split("@")[0]! : null;
+}
+
+/** Normalize a module route's response into the declared shape. `shape` and
+ * `artifactType` come from the dataset catalog entry; `json` is the raw route
+ * response, kept as the artifact payload when the dataset is typed. */
+export function normalize(
+  shape: DatasetShape,
+  json: unknown,
+  artifactType?: string | null,
+): DatasetEnvelope {
+  const env = normalizeShape(shape, json);
+  const type = artifactTypeId(artifactType);
+  return type ? { ...env, artifact: { type, payload: json } } : env;
+}
+
+function normalizeShape(shape: DatasetShape, json: unknown): DatasetEnvelope {
   const obj: Json = isObject(json) ? json : {};
   const kind = typeof obj.kind === "string" ? obj.kind : "";
 

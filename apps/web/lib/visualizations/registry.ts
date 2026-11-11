@@ -6,10 +6,15 @@
  * `config_schema` dialect), default sizing, and the React component. Rendered
  * by dashboard generic-viz cards. Entries live next to their components in
  * `components/visualizations/<group>/specs.ts`; this file concatenates them.
+ * Artifact viewers (`acceptsArtifactTypes`) are offered – and picked by
+ * default – only for datasets that declare a matching `artifact_type`; untyped
+ * datasets keep the shape-based vizzes.
  */
 
+import { artifactTypeId } from "./adapters";
 import type { DatasetShape, VizSpec } from "./types";
 
+import { artifactSpecs } from "@/components/visualizations/artifacts/specs";
 import { chartSpecs } from "@/components/visualizations/charts/specs";
 import { graphSpecs } from "@/components/visualizations/graphs/specs";
 import { kpiSpecs } from "@/components/visualizations/kpi/specs";
@@ -23,12 +28,22 @@ export const vizSpecs: VizSpec[] = [
   ...kpiSpecs,
   ...chartSpecs,
   ...graphSpecs,
+  ...artifactSpecs,
   ...textSpecs,
 ];
 
 export const vizRegistry: Record<string, VizSpec> = Object.fromEntries(
   vizSpecs.map((v) => [v.id, v]),
 );
+
+/** Can `spec` render a dataset of `shape` (typed as `artifactType`)? */
+export function vizAccepts(spec: VizSpec, shape: DatasetShape, artifactType?: string | null): boolean {
+  if (spec.acceptsArtifactTypes) {
+    const type = artifactTypeId(artifactType);
+    return type !== null && spec.acceptsArtifactTypes.includes(type);
+  }
+  return spec.accepts.includes(shape);
+}
 
 /** The viz auto-selected when a dataset of `shape` is first dropped (needs no
  * field-mapping, so it renders immediately). */
@@ -45,7 +60,20 @@ export function defaultVizForShape(shape: DatasetShape): string {
   }
 }
 
-/** Every viz that can render a dataset of `shape` - powers the viz picker. */
+/** Every untyped viz that can render a dataset of `shape`. */
 export function vizzesForShape(shape: DatasetShape): VizSpec[] {
-  return vizSpecs.filter((v) => v.accepts.includes(shape));
+  return vizzesFor(shape);
+}
+
+/** The viz auto-selected for a dropped dataset: its artifact viewer when the
+ * dataset is typed and one exists, else the shape default. */
+export function defaultVizFor(shape: DatasetShape, artifactType?: string | null): string {
+  const type = artifactTypeId(artifactType);
+  const viewer = type && vizSpecs.find((v) => v.acceptsArtifactTypes?.includes(type));
+  return viewer ? viewer.id : defaultVizForShape(shape);
+}
+
+/** Every viz that can render a dataset - powers the viz picker. */
+export function vizzesFor(shape: DatasetShape, artifactType?: string | null): VizSpec[] {
+  return vizSpecs.filter((v) => vizAccepts(v, shape, artifactType));
 }

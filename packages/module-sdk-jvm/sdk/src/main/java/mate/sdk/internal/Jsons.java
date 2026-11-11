@@ -2,7 +2,9 @@ package mate.sdk.internal;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.Map;
 
 /**
@@ -32,6 +34,15 @@ public final class Jsons {
         } catch (Exception exc) {
             throw new UncheckedIOException(
                     new java.io.IOException("malformed JSON frame: " + exc.getMessage(), exc));
+        }
+    }
+
+    /** A whole JSON document from a file, as plain Map/List/String/Number/Boolean (or null). */
+    public static Object read(Path path) {
+        try {
+            return MAPPER.readValue(path.toFile(), Object.class);
+        } catch (IOException exc) {
+            throw new UncheckedIOException("cannot read JSON file " + path + ": " + exc.getMessage(), exc);
         }
     }
 

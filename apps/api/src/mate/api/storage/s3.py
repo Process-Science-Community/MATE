@@ -84,25 +84,31 @@ def head_bucket(s: StorageSettings | None = None) -> None:
         raise StorageError(str(exc)) from exc
 
 
-def upload_dir(local_dir: Path, key_prefix: str, s: StorageSettings | None = None) -> int:
+def upload_dir(
+    local_dir: Path,
+    key_prefix: str,
+    s: StorageSettings | None = None,
+    skip: Callable[[str], bool] | None = None,
+) -> int:
     """Upload every file under ``local_dir`` to ``key_prefix`` (mirroring the tree).
 
     Files transfer in parallel; ``client.upload_file`` auto-switches to multipart
-    above boto3's threshold (~8 MB), so large Parquet uploads correctly. Returns
+    above boto3's threshold (~8 MB), so large Parquet uploads correctly.
+    ``skip(rel)`` (relative POSIX path) returning True leaves that file out. Returns
     the number of objects written.
     """
     s = s or get_storage_settings()
     client = make_client(s)
     bucket = _bucket(s)
     base = key_prefix.rstrip("/")
-    files = [p for p in local_dir.rglob("*") if p.is_file()]
+    rels = [(p, p.relative_to(local_dir).as_posix()) for p in local_dir.rglob("*") if p.is_file()]
+    files = [(p, rel) for p, rel in rels if skip is None or not skip(rel)]
 
-    def _upload(path: Path) -> None:
-        rel = path.relative_to(local_dir).as_posix()
+    def _upload(path: Path, rel: str) -> None:
         client.upload_file(str(path), bucket, f"{base}/{rel}")
 
     try:
-        _run_parallel([lambda p=path: _upload(p) for path in files])
+        _run_parallel([lambda p=path, r=rel: _upload(p, r) for path, rel in files])
     except Exception as exc:
         raise StorageError(str(exc)) from exc
     return len(files)
@@ -158,8 +164,13 @@ def download_prefix(
     return len(objects)
 
 
-def delete_prefix(key_prefix: str, s: StorageSettings | None = None) -> int:
-    """Delete every object under ``key_prefix``. Returns the count removed."""
+def delete_prefix(
+    key_prefix: str,
+    s: StorageSettings | None = None,
+    keep: Callable[[str], bool] | None = None,
+) -> int:
+    """Delete every object under ``key_prefix`` - except those whose relative POSIX
+    path ``keep(rel)`` spares. Returns the count removed."""
     s = s or get_storage_settings()
     client = make_client(s)
     bucket = _bucket(s)
@@ -168,7 +179,11 @@ def delete_prefix(key_prefix: str, s: StorageSettings | None = None) -> int:
     try:
         paginator = client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=bucket, Prefix=base):
-            batch = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            batch = [
+                {"Key": obj["Key"]}
+                for obj in page.get("Contents", [])
+                if keep is None or not keep(obj["Key"][len(base) :])
+            ]
             if batch:
                 client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
                 count += len(batch)
@@ -237,6 +252,19 @@ def prefix_nonempty(key_prefix: str, s: StorageSettings | None = None) -> bool:
     except Exception as exc:
         raise StorageError(str(exc)) from exc
     return int(resp.get("KeyCount", 0)) > 0
+
+
+def key_exists(key: str, s: StorageSettings | None = None) -> bool:
+    """True iff ``key`` exists. Unlike :func:`object_exists`, a failed check raises
+    StorageError - for a caller that must not delete on a guess."""
+    s = s or get_storage_settings()
+    client = make_client(s)
+    try:
+        # Keys list in order, so an exact match is the first one under its own prefix.
+        resp = client.list_objects_v2(Bucket=_bucket(s), Prefix=key, MaxKeys=1)
+    except Exception as exc:
+        raise StorageError(str(exc)) from exc
+    return any(obj["Key"] == key for obj in resp.get("Contents", []))
 
 
 def download_object(key: str, dest: Path, s: StorageSettings | None = None) -> None:

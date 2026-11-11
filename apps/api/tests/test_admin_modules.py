@@ -84,6 +84,18 @@ async def test_dashboard_lists_owners_and_uploader(admin_client: AsyncClient) ->
 
 
 @pytest.mark.asyncio
+async def test_symlinked_module_folder_is_bundled(tmp_path) -> None:
+    """A defaults-root entry that is a symlink (a symlinked module folder) is still
+    a bundled default - the loader used to compare the *resolved* folder."""
+    async with _sample_mod_client(tmp_path, seed=False, admin=True, symlink=True) as c:
+        resp = await c.get("/api/v1/modules")
+        assert [m["id"] for m in resp.json()] == ["sample_mod"]
+        row = _row((await c.get("/api/v1/admin/modules")).json(), "sample_mod")
+        assert row is not None
+        assert row["is_bundled"] is True
+
+
+@pytest.mark.asyncio
 async def test_bundled_cannot_be_undefaulted(admin_client: AsyncClient) -> None:
     resp = await admin_client.put(
         "/api/v1/admin/modules/sample_mod/default", json={"is_default": False}

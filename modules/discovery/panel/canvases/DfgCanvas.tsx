@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 import { formatDuration, formatNumber } from "@/lib/format";
 
-import { runAfterPaint } from "../after-paint";
+import { runAfterPaint } from "@/components/visualizations/artifacts/layout";
 import { celonisFlowLayout } from "../layout/celonis-flow";
 import { ActivityNode, type ActivityNodeData } from "../nodes/activity-node";
 import { TerminalNode, type TerminalNodeData } from "../nodes/terminal-node";

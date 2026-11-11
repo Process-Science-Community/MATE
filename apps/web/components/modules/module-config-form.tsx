@@ -24,11 +24,13 @@ export function ModuleConfigForm({
   values,
   onChange,
   disabled = false,
+  fieldExtra,
 }: {
   properties: Record<string, PropSchema>;
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
   disabled?: boolean;
+  fieldExtra?: (key: string, prop: PropSchema) => React.ReactNode;
 }) {
   return (
     <SchemaForm
@@ -37,6 +39,7 @@ export function ModuleConfigForm({
       onChange={onChange}
       disabled={disabled}
       density="comfortable"
+      fieldExtra={fieldExtra}
     />
   );
 }

@@ -13,9 +13,12 @@ import {
   type Edge,
   type EdgeMouseHandler,
   type EdgeTypes,
+  type IsValidConnection,
   type Node,
   type NodeMouseHandler,
   type NodeTypes,
+  type OnConnect,
+  type OnConnectEnd,
   type OnEdgesChange,
   type OnNodeDrag,
   type OnNodesChange,
@@ -72,6 +75,19 @@ interface CanvasShellProps extends CanvasSettingsSlotProps, CanvasResetSlotProps
    *  Pass `[1, 2]` to restrict panning to middle + right buttons. */
   panOnDrag?: boolean | number[];
   onSelectionChange?: (params: { nodes: Node[]; edges: Edge[] }) => void;
+  /** Opt-in edge drawing between node handles. Off by default – every
+   *  analysis canvas is read-only; editors pass this with `onConnect`. */
+  connectable?: boolean;
+  onConnect?: OnConnect;
+  isValidConnection?: IsValidConnection<Edge>;
+  /** Fires when a connection drag ends, valid or not – an editor explains a
+   *  rejected drop (`isValid === false`) here. */
+  onConnectEnd?: OnConnectEnd;
+  /** Keys that delete the selection; React Flow's default (Backspace) when unset. */
+  deleteKeyCode?: ReactFlowProps["deleteKeyCode"];
+  /** Zoom ceiling of every fit (else `maxZoom`): an editor starting with one
+   *  node would otherwise open at 2×. */
+  fitMaxZoom?: number;
 }
 
 // All minimap nodes use a single neutral grey so the minimap reads as a
@@ -82,6 +98,11 @@ const minimapNodeColor = (_node: Node): string => "rgb(148, 163, 184)"; // slate
 
 /** Movement below this (px, canvas space) is a click, not a drag – see below. */
 const DRAG_PERSIST_THRESHOLD_PX = 2;
+
+/** Viewport tween length; 0 under `prefers-reduced-motion` (JS-driven, so the
+ *  global CSS kill-switch doesn't reach it). */
+const tween = (ms: number) =>
+  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : ms;
 
 function CanvasInner({
   nodes,
@@ -105,6 +126,12 @@ function CanvasInner({
   selectionOnDrag = false,
   panOnDrag = true,
   onSelectionChange,
+  connectable = false,
+  onConnect,
+  isValidConnection,
+  onConnectEnd,
+  deleteKeyCode,
+  fitMaxZoom,
   settings,
   settingsLabel,
   settingsClassName,
@@ -130,10 +157,12 @@ function CanvasInner({
     if (fitViewKey !== lastKey.current) {
       lastKey.current = fitViewKey;
       // Defer to next paint so dagre positions are committed first.
-      const id = requestAnimationFrame(() => fitView({ duration: 200, padding: 0.2 }));
+      const id = requestAnimationFrame(() =>
+        fitView({ duration: tween(200), padding: 0.2, maxZoom: fitMaxZoom }),
+      );
       return () => cancelAnimationFrame(id);
     }
-  }, [fitViewKey, fitView]);
+  }, [fitViewKey, fitView, fitMaxZoom]);
 
   // Exact initial framing. The `fitView` prop (and any mount-time rAF) can run
   // before React Flow's ResizeObserver has measured node dimensions — the fit
@@ -145,9 +174,9 @@ function CanvasInner({
   useEffect(() => {
     if (!nodesInitialized || didInitFit.current) return;
     didInitFit.current = true;
-    const id = requestAnimationFrame(() => fitView({ padding: 0.2 }));
+    const id = requestAnimationFrame(() => fitView({ padding: 0.2, maxZoom: fitMaxZoom }));
     return () => cancelAnimationFrame(id);
-  }, [nodesInitialized, fitView]);
+  }, [nodesInitialized, fitView, fitMaxZoom]);
 
   // Re-fit when entering/leaving fullscreen (the viewport just resized). Skip
   // the initial run – the `fitView` prop already frames the graph on mount.
@@ -157,11 +186,16 @@ function CanvasInner({
       didMountFs.current = true;
       return;
     }
-    const id = requestAnimationFrame(() => fitView({ duration: 200, padding: 0.2 }));
+    const id = requestAnimationFrame(() =>
+      fitView({ duration: tween(200), padding: 0.2, maxZoom: fitMaxZoom }),
+    );
     return () => cancelAnimationFrame(id);
-  }, [isFullscreen, fitView]);
+  }, [isFullscreen, fitView, fitMaxZoom]);
 
-  const onFit = useCallback(() => fitView({ duration: 200, padding: 0.2 }), [fitView]);
+  const onFit = useCallback(
+    () => fitView({ duration: tween(200), padding: 0.2, maxZoom: fitMaxZoom }),
+    [fitView, fitMaxZoom],
+  );
 
   // Persist-on-drag guard, applied for every canvas. A plain click can end as a
   // zero-distance "drag" (React Flow still fires onNodeDragStop), and a canvas
@@ -215,7 +249,7 @@ function CanvasInner({
         // positions then freeze a node wherever it happened to be, including
         // mid-layout-animation. Require real movement before drag semantics.
         nodeDragThreshold={2}
-        nodesConnectable={false}
+        nodesConnectable={connectable}
         nodesFocusable
         edgesFocusable
         elementsSelectable
@@ -226,6 +260,7 @@ function CanvasInner({
         zoomOnScroll
         panOnScroll
         fitView
+        fitViewOptions={fitMaxZoom ? { maxZoom: fitMaxZoom } : undefined}
         minZoom={0.1}
         maxZoom={2}
         onNodeClick={onNodeClick}
@@ -237,6 +272,10 @@ function CanvasInner({
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         onSelectionChange={onSelectionChange}
+        onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        onConnectEnd={onConnectEnd}
+        {...(deleteKeyCode !== undefined ? { deleteKeyCode } : {})}
         defaultEdgeOptions={{
           interactionWidth: 24,
           focusable: true,
@@ -274,8 +313,8 @@ function CanvasInner({
       </ReactFlow>
 
       <CanvasControlCluster
-        onZoomIn={() => zoomIn({ duration: 150 })}
-        onZoomOut={() => zoomOut({ duration: 150 })}
+        onZoomIn={() => zoomIn({ duration: tween(150) })}
+        onZoomOut={() => zoomOut({ duration: tween(150) })}
         onFit={onFit}
         isFullscreen={isFullscreen}
         onToggleFullscreen={onToggleFullscreen}

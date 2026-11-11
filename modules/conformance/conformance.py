@@ -103,6 +103,32 @@ def validate_bpmn_file(path: str) -> int:
     return sum(1 for t in net.transitions if t.label is not None)
 
 
+def petri_net_to_bpmn_file(net_json: dict[str, Any], path: str) -> None:
+    """Write a ``petri_net`` artifact (discovery's serialised Petri net) to *path* as
+    BPMN, so a discovered model runs through the same BPMN path as an uploaded one."""
+    import pm4py
+    from pm4py.objects.petri_net.obj import Marking, PetriNet
+    from pm4py.objects.petri_net.utils.petri_utils import add_arc_from_to
+
+    net = PetriNet("reference_model")
+    im, fm = Marking(), Marking()
+    nodes: dict[str, Any] = {}
+    for p in net_json["places"]:
+        place = nodes[p["id"]] = PetriNet.Place(p["id"])
+        net.places.add(place)
+        if p.get("is_initial"):
+            im[place] = int(p.get("tokens") or 1)
+        if p.get("is_final"):
+            fm[place] = 1
+    for t in net_json["transitions"]:
+        # An empty label is an invisible (tau) transition.
+        transition = nodes[t["id"]] = PetriNet.Transition(t["id"], t["label"] or None)
+        net.transitions.add(transition)
+    for a in net_json["arcs"]:
+        add_arc_from_to(nodes[a["source"]], nodes[a["target"]], net, int(a.get("weight") or 1))
+    pm4py.write_bpmn(pm4py.convert_to_bpmn(net, im, fm), path, auto_layout=False)
+
+
 def _aggregate_tbr_fitness(diagnostics: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate per-trace token-replay diagnostics into the dict
     ``fitness_token_based_replay`` would return - WITHOUT replaying again.

@@ -1,6 +1,6 @@
 id: actor_performance
 name: Actor Performance
-version: 1.0.0
+version: 1.0.1
 category: advanced
 description: >-
   Decomposes waiting times between process steps by actor behavior: did the same
@@ -23,7 +23,7 @@ source:
       E. L. Klijn, I. Tentina, D. Fahland, and F. Mannhardt, "Decomposing
       process performance based on actor behavior," in Proc. ICPM, 2024
     url: https://doi.org/10.1109/ICPM63005.2024.10680657
-artifacts:
+links:
   - name: Reference implementation (E. L. Klijn) - EKG BPIC17 decomposition
     url: https://github.com/multi-dimensional-process-mining/ekg_bpic17_decomposing_performance_by_actor_behavior
   - name: PromG - the Event Knowledge Graph library the pipeline builds on

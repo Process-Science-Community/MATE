@@ -28,7 +28,7 @@ public final class ConformanceWorker {
                 .route("cache_pickle", RouteSpec.get("/cache-pickle"), ConformanceWorker::cachePickle)
                 .route("bus_emit", RouteSpec.post("/bus"), ConformanceWorker::busEmit)
                 .route("progress_ticks", RouteSpec.post("/progress"), ConformanceWorker::progressTicks)
-                .route("log_lines", RouteSpec.post("/log"), ConformanceWorker::logLines)
+                .route("log_lines", RouteSpec.post("/log").viewerSafe(), ConformanceWorker::logLines)
                 .route("duckdb", RouteSpec.get("/duckdb"), ConformanceWorker::duckdb)
                 .route("materialize_info", RouteSpec.get("/materialize"), ConformanceWorker::materializeInfo)
                 .route("datawall_events_path", RouteSpec.get("/datawall"), ConformanceWorker::datawall)
@@ -73,6 +73,7 @@ public final class ConformanceWorker {
         out.put("log_id", ctx.logId());
         out.put("module_id", ctx.moduleId());
         out.put("workdir_exists", Files.isDirectory(ctx.workdir()));
+        out.put("read_only", ctx.readOnly());
         out.put("config", ctx.config());
         out.put("capabilities", ctx.registry().visible());
         return out;

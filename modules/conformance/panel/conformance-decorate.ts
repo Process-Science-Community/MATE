@@ -7,11 +7,7 @@
  * deviation, amber-dashed = a model task whose label never appears in the log
  * (the #1 conformance gotcha - a naming mismatch, not a real deviation).
  *
- * `CONF_COLORS` / `devColor` are the single source of truth for these colours:
- * the injected canvas CSS *and* the panel legend both read them, so the legend
- * can never drift from what is actually painted. (They are plain inline values
- * on purpose - Tailwind only compiles classes it sees in `apps/web`, so utility
- * classes that exist only in module sources silently produce no CSS.)
+ * The colours live in `colors.ts` (shared with the legend and the widgets).
  *
  * Label matching is EXACT after canonicalisation (trim + collapse whitespace +
  * case-fold), mirroring the backend. There is deliberately no fuzzy matching:
@@ -22,9 +18,9 @@
  * model dirty and is excluded from export.
  */
 
-// bpmn-js' own default stroke/fill literals - see BPMN_THEME_COLORS.
-import { black, white } from "bpmn-js/lib/draw/BpmnRenderUtil";
+import { BPMN_BLACK } from "@/components/visualizations/artifacts/bpmn";
 
+import { CONF_COLORS, DEV_BUCKETS, devColor } from "./colors";
 import type { PerActivityDeviation } from "./types";
 
 export type BpmnModelerLike = { get<T = unknown>(name: string): T };
@@ -44,29 +40,7 @@ interface Overlays {
 interface Canvas {
   addMarker(id: string, cls: string): void;
   removeMarker(id: string, cls: string): void;
-  scrollToElement(el: BElement | string): void;
 }
-
-/** Number of discrete red deviation buckets. Mirrored by the injected CSS. */
-export const DEV_BUCKETS = 5;
-
-/**
- * Exact colours painted on the canvas, echoed by the panel legend and tables.
- * Inline values, not Tailwind classes: module sources sit outside the host
- * app's Tailwind scan, so panel-only utility classes compile to no CSS at all.
- */
-export const CONF_COLORS = {
-  /** Task in the model that the log replays without deviations. */
-  ok: { fill: "hsl(151 55% 93%)", stroke: "hsl(151 48% 40%)" },
-  /** Model task whose label never occurs in the log (name mismatch / never executed). */
-  unmatched: { fill: "hsl(38 92% 92%)", stroke: "hsl(33 92% 45%)" },
-  /** Deviation-count badge pill. */
-  badge: "hsl(0 72% 42%)",
-  /** "not in log" warning badge pill. */
-  badgeWarn: "hsl(33 90% 42%)",
-  /** Red used by deviation bar charts / severity bars. */
-  chart: "hsl(0 72% 51%)",
-} as const;
 
 /**
  * Canonical key for activity-label matching: trim, collapse internal
@@ -209,115 +183,21 @@ export function applyConformanceOverlay(
   }
 }
 
-/** Centre an activity by (case-insensitive substring) name, with a transient
- *  highlight. Returns false when nothing matches. */
-export function locateActivity(modeler: BpmnModelerLike, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return false;
-  const registry = modeler.get<ElementRegistry>("elementRegistry");
-  const canvas = modeler.get<Canvas>("canvas");
-
-  let hit: BElement | undefined;
-  for (const el of registry.getAll()) {
-    if (!isTask(el)) continue;
-    const name = nameOf(el)?.toLowerCase();
-    if (name && name.includes(q)) {
-      hit = el;
-      break;
-    }
-  }
-  if (!hit) return false;
-
-  canvas.scrollToElement(hit);
-  canvas.addMarker(hit.id, "ff-conf-hit");
-  const id = hit.id;
-  window.setTimeout(() => {
-    try {
-      canvas.removeMarker(id, "ff-conf-hit");
-    } catch {
-      /* canvas torn down before the timeout fired - ignore. */
-    }
-  }, 2200);
-  return true;
-}
-
-// diagram-js-minimap ships a top-right, light-only panel with an orange
-// viewport box. Restyle it to match the React Flow minimap: bottom-right at
-// 15px, 200x150 card surface, rounded, neutral viewport stroke (themed for
-// dark to mirror the RF mask). The canvas fades it via the `ff-minimap-hidden`
-// class (opacity gate); we drive open/close ourselves, so the toggle is hidden.
-const MINIMAP_CSS = `
-.djs-minimap{top:auto!important;bottom:15px!important;right:15px!important;background:var(--card)!important;border:1px solid var(--border)!important;border-radius:6px!important;box-shadow:0 1px 2px rgba(0,0,0,.08)!important;transition:opacity .3s ease!important;}
-.djs-minimap .map{width:200px;height:150px;}
-.djs-minimap .toggle{display:none!important;}
-.djs-minimap .viewport-dom{border:2px solid rgba(0,0,0,.4)!important;border-radius:3px!important;}
-.dark .djs-minimap .viewport-dom{border-color:rgba(255,255,255,.5)!important;}
-.djs-minimap.ff-minimap-hidden{opacity:0!important;pointer-events:none!important;}
-`;
-
 /**
- * `bpmnRenderer` config making the diagram follow the app theme. Pass it to
- * every `NavigatedViewer` that renders through this decorator.
- *
- * bpmn-js resolves each element's fill/stroke/label colour once, at import
- * time, and tiny-svg writes the result into that node's **inline style**
- * (`node.style.stroke = ...` - these are not presentation attributes, so no
- * ordinary stylesheet can re-theme them). Its built-in defaults are `black` on
- * `white`, which on a dark canvas paints near-black lines on a near-black
- * background.
- *
- * So we hand bpmn-js CSS *variables* instead of colours: it writes
- * `stroke: var(--ff-bpmn-stroke)` into the inline style, and `themeCss()`
- * re-points that variable per theme. The canvas then re-themes live on a theme
- * toggle - no viewer rebuild, no second `layoutProcess`, no lost pan/zoom.
- *
- * These are only *defaults*: `getFillColor`/`getStrokeColor` read the diagram's
- * own BPMN DI (`color:background-color` / `bioc:fill`) first, so theming can
- * never override a colour a model declares for itself. That would matter here,
- * where the reference model is a user-uploaded file - except `ensureLayout`
- * regenerates DI through bpmn-auto-layout, which drops an upload's `bioc:*`
- * long before the renderer sees it. Uploaded colours are already lost today;
- * theming is not what loses them.
- */
-export const BPMN_THEME_COLORS = {
-  defaultFillColor: "var(--ff-bpmn-fill)",
-  defaultStrokeColor: "var(--ff-bpmn-stroke)",
-  defaultLabelColor: "var(--ff-bpmn-label)",
-} as const;
-
-/**
- * Resolve the variables behind `BPMN_THEME_COLORS`. Light mode restates
- * bpmn-js' own `black`/`white`, so it renders exactly as it did before any of
- * this existed; dark mode swaps in the app's surface/foreground tokens.
- *
- * @param litShapeClasses Decoration markers that paint a *light* fill in both
- *   themes (the deviation ramp plus the ok/unmatched states - their lightness
- *   range is tuned to keep dark labels readable). Their labels must therefore
- *   stay dark, so they re-assert bpmn-js' default label colour over the themed
- *   inline style.
+ * `BpmnView` themes the diagram via CSS variables (dark mode = app tokens).
+ * Decoration markers that paint a *light* fill in both themes (the deviation
+ * ramp plus the ok/unmatched states - their lightness range is tuned to keep
+ * dark labels readable) must keep dark labels, so they re-assert bpmn-js'
+ * default label colour.
  */
 function themeCss(litShapeClasses: string[]): string {
   const litLabels = litShapeClasses
     .map((c) => `.dark .djs-element.${c} .djs-visual text`)
     .join(",");
-  return `
-.djs-container{--ff-bpmn-fill:${white};--ff-bpmn-stroke:${black};--ff-bpmn-label:${black};}
-.dark .djs-container{--ff-bpmn-fill:var(--card);--ff-bpmn-stroke:var(--foreground);--ff-bpmn-label:var(--foreground);}
-${litLabels}{fill:${black}!important;}
-`;
+  return `${litLabels}{fill:${BPMN_BLACK}!important;}`;
 }
 
 const STYLE_ID = "ff-conformance-styles";
-
-/** Map a 0..1 deviation ratio to a red fill/stroke pair. Exported so the
- *  legend can render exactly the same ramp the canvas paints. */
-export function devColor(ratio: number): { fill: string; stroke: string } {
-  const r = Math.max(0, Math.min(1, ratio));
-  const sat = 70 + r * 25; // 70% → 95%
-  const fillL = 95 - r * 30; // 95% → 65% (keep dark labels readable)
-  const strokeL = 55 - r * 25; // 55% → 30%
-  return { fill: `hsl(0 ${sat}% ${fillL}%)`, stroke: `hsl(0 ${sat}% ${strokeL}%)` };
-}
 
 /** Idempotently inject the overlay stylesheet (the module bundler has no CSS
  *  loader, so we ship CSS as a <style> tag rather than an import). */
@@ -335,11 +215,9 @@ export function injectConformanceStyles(): void {
   const css = `
 .djs-element.ff-conf-ok .djs-visual > :nth-child(1){fill:${CONF_COLORS.ok.fill}!important;stroke:${CONF_COLORS.ok.stroke}!important;}
 .djs-element.ff-conf-unmatched .djs-visual > :nth-child(1){fill:${CONF_COLORS.unmatched.fill}!important;stroke:${CONF_COLORS.unmatched.stroke}!important;stroke-dasharray:4 3!important;}
-.djs-element.ff-conf-hit .djs-outline{stroke:#2563eb!important;stroke-width:3px!important;stroke-dasharray:none!important;display:block!important;}
 ${devRules.join("\n")}
 .ff-conf-badge{font:600 10px/1.35 ui-sans-serif,system-ui,sans-serif;background:${CONF_COLORS.badge};color:#fff;padding:1px 5px;border-radius:6px;white-space:nowrap;pointer-events:none;box-shadow:0 1px 2px rgba(0,0,0,.25);}
 .ff-conf-badge-warn{background:${CONF_COLORS.badgeWarn};}
-${MINIMAP_CSS}
 ${themeCss([...DEV_CLASSES, ...STATE_CLASSES])}
 `;
   const style = document.createElement("style");

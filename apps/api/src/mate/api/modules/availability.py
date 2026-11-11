@@ -65,7 +65,7 @@ def evaluate(
     if min_cases is not None and (cases_count or 0) < min_cases:
         reasons.append(f"Needs at least {min_cases} cases; this log has {cases_count or 0}.")
 
-    missing_hard = [m for m in manifest.requirements.modules if m not in installed_module_ids]
+    missing_hard = [m for m in manifest.requirements.module_ids if m not in installed_module_ids]
     if missing_hard:
         reasons.append(f"Requires module(s) not installed: {', '.join(missing_hard)}.")
 

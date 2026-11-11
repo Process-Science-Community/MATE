@@ -1,6 +1,6 @@
 id: performance_over_time
 name: Performance Over Time
-version: 1.0.0
+version: 1.0.1
 category: advanced
 description: >-
   Tracks how process performance changes over time. It splits the log into
@@ -128,3 +128,4 @@ config_schema:
       ui:
         widget: number
         affects: compute
+        scope: dataset

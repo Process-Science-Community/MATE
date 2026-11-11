@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
 import { formatDurationShort, formatNumber } from "@/lib/format";
@@ -175,4 +175,26 @@ export function ProcessMapViz({ dataset, options }: VizComponentProps) {
     return <VizEmpty message={dataset.meta?.note ?? "No process model."} />;
   }
   return <ElkCanvas nodes={built.nodes} edges={built.edges} direction={o.direction} />;
+}
+
+/** Default-styled process map for a raw `graph` (the DFG artifact viewer, a
+ * runtime external for module panels). `graph` must be a stable reference. */
+export function ProcessMap({
+  graph,
+  emptyMessage,
+  settings,
+  busy,
+}: {
+  graph: GraphData | null;
+  emptyMessage?: string;
+  /** Popover body of the canvas control cluster. */
+  settings?: ReactNode;
+  /** A refetch is in flight while the current map stays on screen. */
+  busy?: boolean;
+}) {
+  const built = useMemo(() => (graph ? build(graph, readOptions({})) : null), [graph]);
+  if (!graph || graph.nodes.length === 0 || !built) {
+    return <VizEmpty message={emptyMessage ?? "No process model."} />;
+  }
+  return <ElkCanvas nodes={built.nodes} edges={built.edges} settings={settings} busy={busy} />;
 }

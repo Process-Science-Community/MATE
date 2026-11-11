@@ -1,17 +1,22 @@
 package mate.sdk;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import mate.sdk.internal.ProxyContext;
 import mate.sdk.internal.RpcTransport;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Context behaviour against a recording stub transport - no socket needed. */
 class ProxyContextTest {
@@ -66,6 +71,11 @@ class ProxyContextTest {
         assertEquals("conformance", ctx.moduleId());
         assertEquals(3, ctx.config().get("threshold"));
         assertTrue(ctx.registry().has("discovery"));
+        // `read_only` absent (an older host) reads as false; present, it is served locally.
+        assertEquals(false, ctx.readOnly());
+        Map<String, Object> shared = meta();
+        shared.put("read_only", true);
+        assertTrue(new ProxyContext(transport, "tok", shared).readOnly());
         assertEquals(0, transport.calls.size());
     }
 
@@ -126,6 +136,44 @@ class ProxyContextTest {
         Map<String, Object> payload = (Map<String, Object>) logParams.get("payload");
         assertEquals("did_thing", payload.get("event"));
         assertEquals(2, payload.get("n"));
+    }
+
+    private static Map<String, Object> port(String type, String format, Path path, String ref) {
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("artifact_type", type);
+        entry.put("format", format);
+        entry.put("path", path == null ? null : path.toString());
+        entry.put("ref", ref);
+        return entry;
+    }
+
+    @Test
+    void inputsReadSnapshotPaths(@TempDir Path dir) throws Exception {
+        Path model = Files.writeString(dir.resolve("petri_net.json"), "{\"places\": [{\"id\": \"p1\"}]}");
+        Path blob = Files.write(dir.resolve("raw.bin"), new byte[] {1, 2});
+        Path table = dir.resolve("table.parquet");
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        inputs.put("model", port("petri_net", "json", model, "log1/discovery/petri_net"));
+        inputs.put("raw", port("table", "bytes", blob, "log1/other/raw"));
+        inputs.put("table", port("table", "parquet", table, "log1/other/table"));
+        inputs.put("unbound", port("dfg", null, null, null));
+        Map<String, Object> m = meta();
+        m.put("inputs", inputs);
+        StubTransport transport = new StubTransport();
+        Inputs in = new ProxyContext(transport, "tok", m).inputs();
+
+        assertEquals(List.of("model", "raw", "table", "unbound"), in.ports());
+        assertEquals(Optional.of("log1/discovery/petri_net"), in.ref("model"));
+        assertEquals(Map.of("places", List.of(Map.of("id", "p1"))), in.get("model").orElseThrow());
+        assertArrayEquals(new byte[] {1, 2}, (byte[]) in.get("raw").orElseThrow());
+        assertEquals(Optional.of(table), in.path("table"));
+        assertThrows(IllegalStateException.class, () -> in.get("table"));
+        assertTrue(in.get("unbound").isEmpty() && in.ref("unbound").isEmpty());
+        assertTrue(in.get("undeclared").isEmpty());
+        assertEquals(0, transport.calls.size());
+
+        // An older host sends no `inputs` key: no ports.
+        assertEquals(List.of(), new ProxyContext(transport, "tok", meta()).inputs().ports());
     }
 
     @Test

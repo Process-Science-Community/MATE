@@ -4,8 +4,22 @@ import type { NextConfig } from "next";
 const webDir = __dirname;
 const modulesDir = path.resolve(__dirname, "../../modules");
 
+// bpmn-moddle is a transitive dep (of bpmn-js), so resolve it from there.
+const bpmnModdleDir = path.dirname(
+  require.resolve("bpmn-moddle/package.json", {
+    paths: [path.dirname(require.resolve("bpmn-js/package.json"))],
+  }),
+);
+
 const config: NextConfig = {
   reactStrictMode: true,
+  // Dev only (`next dev --turbo`): see lib/visualizations/bpmn-moddle-umd.ts.
+  turbopack: {
+    resolveAlias: {
+      "bpmn-moddle": "./lib/visualizations/bpmn-moddle-umd.ts",
+      "bpmn-moddle-umd": `./${path.relative(webDir, path.join(bpmnModdleDir, "dist/bpmn-moddle.umd.prod.js"))}`,
+    },
+  },
   experimental: {
     // Client Router Cache. Every (platform) page is a client shell whose data
     // freshness is owned by React Query, so the RSC payload of a route is

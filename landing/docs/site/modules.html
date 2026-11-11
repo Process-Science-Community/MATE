@@ -858,6 +858,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><ul class="side-sub"><li><a data-toc href="#module-library">Module library</a></li><li><a data-toc href="#how-to-use">How to use</a></li><li><a data-toc href="#availability">Availability</a></li><li><a data-toc href="#bundled-modules">Bundled modules</a></li><li><a data-toc href="#ownership">Ownership</a></li></ul></li>
         <li><a class="side-link" href="jobs-and-the-interface.html">Jobs and the interface</a></li>
         <li><a class="side-link" href="dashboards.html">Dashboards</a></li>
+        <li><a class="side-link" href="flows.html">Flows</a></li>
         <li><a class="side-link" href="mate-ai.html">MATE AI</a></li>
         <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
       </ul>
@@ -876,6 +877,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="guide-cv4cdd.html">CV4CDD - Concept Drift Detection</a></li>
         <li><a class="side-link" href="guide-discovery.html">Discovery</a></li>
         <li><a class="side-link" href="guide-log-evolution.html">Log Evolution</a></li>
+        <li><a class="side-link" href="guide-interop.html">Model Interop</a></li>
         <li><a class="side-link" href="guide-ocel-discovery.html">Object-Centric Discovery</a></li>
         <li><a class="side-link" href="guide-pcomp.html">Pcomp</a></li>
         <li><a class="side-link" href="guide-performance.html">Performance</a></li>
@@ -949,7 +951,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <h2 id="module-library">Module library<a class="h-anchor" href="#module-library" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Element</th><th>Detail</th></tr></thead><tbody><tr><td>Row</td><td>Name, version, description, a <em>Configure</em> link, and the enable switch. Modules are grouped under category headings.</td></tr><tr><td>Enable switch</td><td>Turns the module on or off for your account; disabled modules disappear from grids and dashboards.</td></tr><tr><td>Configure</td><td>The settings form generated from the module's schema.</td></tr><tr><td>Import</td><td>Upload an archive — <code>.zip</code>, <code>.tar</code>, <code>.tar.gz</code>, or <code>.tgz</code>.</td></tr></tbody></table></div></div>
 <p>Installation runs as a job: unpack, validate the manifest, <code>uv sync</code>, bundle the frontend, mount. A failed install rolls back, so nothing is left half-installed, and no restart is needed.</p>
-<p>The module detail page shows an About popover (description, longer <em>about</em>, cited works, artifacts), the <em>Provides</em>/<em>Consumes</em> lists, the configuration forms, a live tail of that module's log lines, and the <em>Uninstall</em> action in its danger zone.</p>
+<p>The module detail page shows an About popover (description, longer <em>about</em>, cited works, links), the <em>Provides</em>/<em>Consumes</em> lists, the configuration forms, a live tail of that module's log lines, and the <em>Uninstall</em> action in its danger zone.</p>
 <h2 id="how-to-use">How to use<a class="h-anchor" href="#how-to-use" aria-label="Link to this section">#</a></h2>
 <p>Every module ships a guide: when to use it, what it needs, every setting, how to read each view, its limits and its method. On a module page (and on the module's detail page) the <strong>How to use</strong> button in the top bar, beside <strong>MATE AI</strong>, opens it in a panel that stays next to the page, so you can read it while you work. The panel shares that column with MATE AI (opening one closes the other), follows you from one module to the next, and closes on pages that have no guide. The same text is published here under <em>Module guides</em>, one page per bundled module.</p>
 <p>A module installed before guides became compulsory may have none; it works as before and simply shows no button.</p>

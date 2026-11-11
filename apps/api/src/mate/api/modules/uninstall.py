@@ -13,9 +13,12 @@ import asyncio
 import shutil
 from typing import TYPE_CHECKING
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.config import get_settings
+from mate.api.db.models import Artifact
+from mate.api.modules.install_jobs import forget_versions
 from mate.api.modules.installer import remove_module_artifacts
 from mate.api.modules.installs import owner_count, remove_install
 from mate.api.storage.module_archive import delete_module_archive_sync
@@ -36,10 +39,15 @@ async def uninstall_for_user(
     artifact iff it was the last owner and the id isn't in *protected_ids*.
 
     *protected_ids* is the effective default set (bundled + admin-declared) - a
-    default's shared code is never deleted even by its last owner. Publishes a
-    ``module.uninstalled`` event scoped to *user_id*.
+    default's shared code is never deleted even by its last owner. Drops the user's
+    artifact-workspace rows of the module (its cached files stay; a reinstall's next
+    list re-indexes the default results). Publishes a ``module.uninstalled`` event
+    scoped to *user_id*.
     """
     await remove_install(session, user_id, module_id)
+    await session.execute(
+        delete(Artifact).where(Artifact.user_id == user_id, Artifact.module_id == module_id)
+    )
     await session.commit()
 
     if module_id not in protected_ids and await owner_count(session, module_id) == 0:
@@ -48,6 +56,8 @@ async def uninstall_for_user(
         if target.exists():
             remove_module_artifacts(target)
             shutil.rmtree(target, ignore_errors=True)
+        # Its kept previous version and install history go with it.
+        forget_versions(target.parent, module_id)
         # Drop the S3 source archive too (no-op in local mode) so a later boot
         # doesn't re-materialise a module the last owner just removed.
         await asyncio.to_thread(delete_module_archive_sync, module_id)

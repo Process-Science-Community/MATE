@@ -1,6 +1,6 @@
 id: conformance
 name: Conformance Checking
-version: 1.0.0
+version: 1.1.0
 category: advanced
 description: >-
   Upload a reference BPMN model and check your event log against it. Computes
@@ -44,7 +44,15 @@ requirements:
     min_cases: 2
   optional_modules:
     - id: discovery
-      reason: Provides a discovered BPMN you can download and re-upload as a reference model.
+      reason: Its mined Petri net is the reference model whenever no BPMN is uploaded.
+
+# Discovery's Inductive-miner Petri net, read straight from its cache. Used only
+# while no BPMN is uploaded - an uploaded model always takes precedence.
+inputs:
+  - id: reference_model
+    artifact_type: petri_net
+    from: discovery
+    description: Discovered Petri net used as the reference model when none is uploaded.
 
 provides:
   # Bus topic emitted when a run finishes (carries user_id for tenant fan-out).
@@ -125,6 +133,7 @@ datasets:
     icon: ShieldCheck
     shape: kpi
     route: /results
+    artifact_type: conformance_result
   - id: per_activity
     title: Per-activity deviations
     description: Conformance deviations broken down by activity.
@@ -149,6 +158,8 @@ config_schema:
         - token_replay
         - alignments
       default: token_replay
+      # Module-wide only: the panel always sends its own technique, so a per-log
+      # override would change nothing on the log's page.
       ui:
         widget: select
         affects: compute
@@ -163,6 +174,7 @@ config_schema:
       ui:
         widget: slider
         affects: compute
+        scope: dataset
     precision_max_events:
       type: integer
       title: Precision – max events

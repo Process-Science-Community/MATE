@@ -865,6 +865,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="modules.html">Modules</a></li>
         <li><a class="side-link" href="jobs-and-the-interface.html">Jobs and the interface</a></li>
         <li><a class="side-link" href="dashboards.html">Dashboards</a></li>
+        <li><a class="side-link" href="flows.html">Flows</a></li>
         <li><a class="side-link" href="mate-ai.html">MATE AI</a></li>
         <li><a class="side-link" href="settings-and-admin.html">Settings and admin</a></li>
       </ul>
@@ -884,6 +885,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="guide-cv4cdd.html">CV4CDD - Concept Drift Detection</a></li>
         <li><a class="side-link" href="guide-discovery.html">Discovery</a></li>
         <li><a class="side-link" href="guide-log-evolution.html">Log Evolution</a></li>
+        <li><a class="side-link" href="guide-interop.html">Model Interop</a></li>
         <li><a class="side-link" href="guide-ocel-discovery.html">Object-Centric Discovery</a></li>
         <li><a class="side-link" href="guide-pcomp.html">Pcomp</a></li>
         <li><a class="side-link" href="guide-performance.html">Performance</a></li>
@@ -967,7 +969,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <p><strong>Recreate Pinecone index</strong> deletes the index and creates an empty one with the saved dimension, after you confirm, so save the AI models first. All indexed passages are lost. The uploaded documents stay on the server, so index them again afterwards.</p>
 <h3 id="configuration-card">Configuration card<a class="h-anchor" href="#configuration-card" aria-label="Link to this section">#</a></h3>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Setting</th><th>Default</th><th>What it changes</th></tr></thead><tbody><tr><td>Pinecone API key</td><td>none</td><td>The key from your Pinecone account. It is stored encrypted and is needed to index documents and to look up evidence.</td></tr><tr><td>Pinecone index name</td><td><code>conceptdriftexplainer</code></td><td>The index that holds the passages. It is created at the first indexing if it does not exist, as a serverless index on AWS in us-east-1. Every process uses its own section of the index, so processes do not mix.</td></tr><tr><td>Maximum ranked causes</td><td>3</td><td>The most causes shown for one drift (1 to 10). An analysis uses at most four documents and writes one cause for each, so four is the practical limit.</td></tr><tr><td>Cause confidence threshold</td><td>0.25</td><td>Causes with a confidence below this value are dropped (0 to 1 in steps of 0.05).</td></tr></tbody></table></div></div>
-<p>Both limits apply when an analysis runs and are stored with its result. Changing them does not change an explanation that already exists; run the analysis again.</p>
+<p>Both limits apply when an analysis runs and are stored with its result. Changing them does not change an explanation that already exists; run the analysis again. Cause confidence threshold is the default for every process; <strong>Parameters for this log</strong> on the module's page for a process overrides it there.</p>
 <h2 id="reading-the-results">Reading the results<a class="h-anchor" href="#reading-the-results" aria-label="Link to this section">#</a></h2>
 <p>If CV4CDD found no drifts, the page reads &quot;No drifts to explain yet&quot;. Otherwise the panel shows four cards: <strong>Detected drifts</strong>, <strong>Context documents</strong>, <strong>Explanation</strong> and <strong>Follow-up chat</strong>.</p>
 <h3 id="detected-drifts">Detected drifts<a class="h-anchor" href="#detected-drifts" aria-label="Link to this section">#</a></h3>

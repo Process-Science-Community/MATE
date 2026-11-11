@@ -1,10 +1,12 @@
-"""``mate-module``: scaffold, check and test modules from a shell.
+"""``mate-module``: scaffold, check, test, try and pack modules from a shell.
 
     mate-module new my_module [--name "My module"] [--panel] [--dir modules]
     mate-module validate [PATH ...]      # default: every module under ./modules
     mate-module list [PATH ...]          # id, version, name, runtime, UI, folder
     mate-module test my_module [--dir modules] [PYTEST_ARGS ...]
     mate-module widget my_module my-widget [--dir modules] [--title T] [--dataset D]
+    mate-module run HANDLER [PATH] [--log FILE] [--param KEY=VALUE ...] [--input PORT=FILE ...]
+    mate-module pack [PATH] [-o OUT]     # zip for POST /api/v1/modules/install
 
 ``widget`` writes ``widgets/MyWidget.tsx`` and adds its ``frontend.widgets`` entry to
 ``manifest.yaml`` as text (comments kept); on any failure the manifest is restored.
@@ -14,25 +16,67 @@
 that every card points at one of the module's own manifest ``datasets`` /
 ``frontend.widgets`` (a viz card without data is a problem), that ``controls`` keys are declared
 (``params_schema`` / ``config_schema``) and that ``action`` routes exist in the source.
+It also checks the artifact contract (``mate.sdk.artifacts.check_contract``) against the
+modules in the sibling folders: an input's ``from:`` module must be one of them, and a
+``requirements.modules`` specifier (``discovery>=1,<2``) must accept the sibling's version.
 Exit status 0 when all pass, else 1.
+
+``run`` invokes one handler against ``mate.sdk.testing``'s fake context (the bundled
+sample log unless ``--log`` names a CSV/Parquet log) and prints the result and the
+cache as JSON. A route gets ``--param`` values as arguments, validated against each
+parameter's annotation like the platform does; an event handler gets them in its
+payload, parsed as JSON, else kept as strings. ``--input`` feeds a manifest ``inputs:``
+port from a ``.json`` or ``.parquet`` file, as the producer would have cached it.
+
+``pack`` keeps ``.dist/``: the platform serves an uploaded module's frontend from the
+bundles in the archive and never builds them itself.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
+import importlib
+import inspect
 import json
+import os
 import re
 import subprocess
 import sys
-from collections.abc import Sequence
+import zipfile
+from collections.abc import Callable, Sequence
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, get_type_hints
 
+from pydantic import TypeAdapter, ValidationError
+from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
+from structlog.testing import capture_logs
+
+from mate.sdk.artifacts import check_contract
+from mate.sdk.decorators import get_event_sub, get_job_spec, get_route_spec
 from mate.sdk.errors import ModuleManifestError
 from mate.sdk.guide import _module_dirs, check_guide  # pyright: ignore[reportPrivateUsage]
 from mate.sdk.layout import LAYOUT_FILENAME, ModuleLayout
 from mate.sdk.manifest import Manifest
+from mate.sdk.testing import MemoryCache, build_test_context, load_log, load_module, sample_log
+
+# BUILD_ARTIFACT_NAMES in apps/api/src/mate/api/storage/module_archive.py minus `.dist`
+# (an upload is never bundled server-side, so the archive must carry it), plus tool caches.
+PACK_EXCLUDE = {
+    ".venv",
+    "node_modules",
+    ".installed-hash",
+    "__pycache__",
+    ".git",
+    ".gradle",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".DS_Store",
+}
 
 # Stricter than the manifest's check (ASCII, starts with a letter) so the id is also a
 # valid Python identifier part and folder name; every id it accepts passes the manifest.
@@ -199,14 +243,15 @@ def _widget(args: argparse.Namespace) -> int:
     title: str = args.title or " ".join(widget_id.split("-")).capitalize()
     route_note = (
         f"Reads the `{dataset.id}` dataset's route (manifest `datasets`)."
-        if dataset
+        if dataset and dataset.route
         else "TODO: point this at one of your module's @route.get paths."
     )
     values = {
         "__MODULE_ID__": args.module_id,
         "__WIDGET_ID__": widget_id,
         "__COMPONENT__": component,
-        "__ROUTE__": dataset.route if dataset else "/TODO",
+        # A cache-only dataset has no route to read.
+        "__ROUTE__": dataset.route if dataset and dataset.route else "/TODO",
         "__ROUTE_NOTE__": route_note,
         "__TITLE__": title,
     }
@@ -256,7 +301,37 @@ def check_module(folder: Path) -> list[str]:
         for key, rel in (("entry", w.entry), ("settings_entry", w.settings_entry))
         if rel and not (folder / rel).is_file()
     ]
-    return check_guide(folder, manifest.name) + missing + _layout_problems(folder, manifest)
+    return (
+        check_guide(folder, manifest.name)
+        + missing
+        + _layout_problems(folder, manifest)
+        + _sibling_problems(folder, manifest)
+    )
+
+
+def _sibling_problems(folder: Path, manifest: Manifest) -> list[str]:
+    """*manifest*'s artifact-contract problems and unmet `requirements.modules`
+    version specifiers, looked up among the modules in the sibling folders (a broken
+    sibling manifest is skipped; a hard dep that isn't a sibling is the platform's
+    to check at load)."""
+    others: list[Manifest] = []
+    for path in sorted(folder.resolve().parent.glob("*/manifest.yaml")):
+        with contextlib.suppress(ModuleManifestError, OSError):
+            other = Manifest.load_yaml(path)
+            if other.id != manifest.id:
+                others.append(other)
+    prefix = f"{manifest.id}: "
+    problems = [
+        p.removeprefix(prefix) for p in check_contract([manifest, *others]) if p.startswith(prefix)
+    ]
+    versions = {m.id: m.version for m in others}
+    for req in manifest.requirements.module_requirements:
+        found = versions.get(req.id)
+        if found is not None and not req.allows(found):
+            problems.append(
+                f"requirements.modules: {req} is not met by the sibling {req.id} {found}."
+            )
+    return problems
 
 
 # shortcut: mirrors the first `accepts` shape of the web vizzes (lib/visualizations);
@@ -270,6 +345,10 @@ _VIZ_SHAPE = {
     "petri-net": "graph",
     "tree": "tree",
     "tree-diagram": "tree",
+    "dfg-view": "graph",
+    "petri-net-view": "graph",
+    "process-tree-view": "tree",
+    "bpmn-view": "blob",
 }
 
 
@@ -408,9 +487,182 @@ def _test(args: argparse.Namespace) -> int:
     return subprocess.call([*cmd, *args.pytest_args])
 
 
+class _UsageError(Exception):
+    pass
+
+
+def _param(text: str) -> tuple[str, str]:
+    key, sep, raw = text.partition("=")
+    if not key or not sep:
+        raise argparse.ArgumentTypeError(f"expected KEY=VALUE, got {text!r}")
+    return key, raw
+
+
+def _json_or_text(raw: str) -> Any:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _coerce(fn: Any, name: str, hints: dict[str, Any], raw: str) -> Any:
+    """*raw* validated against the parameter's annotation, as the platform does
+    (FastAPI coercion for query params, ``model_validate`` for a body model) - so a
+    ``str`` param keeps ``"007"`` and a model param gets a model, not a dict.
+    Unannotated: JSON, else the text."""
+    hint = hints.get(name)
+    if hint is None:
+        return _json_or_text(raw)
+    adapter: TypeAdapter[Any] = TypeAdapter(hint)
+    try:
+        return adapter.validate_python(raw)  # scalars: "5" -> 5, "true" -> True
+    except ValidationError:
+        try:
+            return adapter.validate_json(raw)  # lists, dicts, models
+        except ValidationError as exc:
+            msg = exc.errors()[0]["msg"]
+            raise _UsageError(f"handler {fn.__name__}: --param {name}: {msg}") from None
+
+
+def _bind(fn: Any, params: dict[str, str]) -> Callable[[Any], Any]:
+    """The call ``run`` makes with ``--param`` *params*: an event handler gets them in
+    its payload, a route as arguments (falling back to each parameter's default)."""
+    if get_event_sub(fn) is not None:
+        payload = {k: _json_or_text(v) for k, v in params.items()}
+        return lambda ctx: fn(ctx, {"log_id": ctx.log_id, "user_id": ctx.user_id, **payload})
+    signature = list(inspect.signature(fn).parameters.values())[1:]
+    try:
+        hints = get_type_hints(fn)
+    except Exception:  # an unresolvable annotation - pass values through untyped
+        hints = {}
+    kwargs: dict[str, Any] = {}
+    for p in signature:
+        if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
+            continue
+        default = p.default
+        if isinstance(default, FieldInfo):  # FastAPI's Query(...) / Body(...)
+            default = default.get_default(call_default_factory=True)
+        if p.name in params:
+            kwargs[p.name] = _coerce(fn, p.name, hints, params[p.name])
+        elif default is p.empty or default is PydanticUndefined:
+            raise _UsageError(f"handler {fn.__name__} needs --param {p.name}=...")
+        else:
+            kwargs[p.name] = default
+    unknown = [k for k in params if k not in kwargs]
+    if unknown and not any(p.kind is p.VAR_KEYWORD for p in signature):
+        raise _UsageError(f"handler {fn.__name__} takes no parameter {', '.join(unknown)}.")
+    kwargs.update({k: _json_or_text(v) for k, v in params.items() if k not in kwargs})
+    return lambda ctx: fn(ctx, **kwargs)
+
+
+def _load_inputs(manifest: Manifest, raw: dict[str, str]) -> dict[str, Any]:
+    """``--input PORT=FILE`` values: a declared port's value read from JSON or Parquet."""
+    ports = [p.id for p in manifest.inputs]
+    values: dict[str, Any] = {}
+    for port, file in raw.items():
+        if port not in ports:
+            raise _UsageError(
+                f"{manifest.id} has no input port {port!r} (ports: {', '.join(ports) or 'none'})."
+            )
+        path = Path(file)
+        if path.suffix == ".json":
+            values[port] = json.loads(path.read_text(encoding="utf-8"))
+        elif path.suffix == ".parquet":
+            values[port] = importlib.import_module("pandas").read_parquet(path)
+        else:
+            raise _UsageError(f"--input {port}: {path.name} must be a .json or .parquet file.")
+    return values
+
+
+def _run(args: argparse.Namespace) -> int:
+    module = load_module(Path(args.path))
+    handlers = sorted(
+        name
+        for name in dir(module)
+        if not name.startswith("_")
+        and any(get(getattr(module, name)) for get in (get_route_spec, get_event_sub, get_job_spec))
+    )
+    if args.handler not in handlers:
+        print(
+            f"error: {module.id} has no handler {args.handler!r} "
+            f"(handlers: {', '.join(handlers) or 'none'}).",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        call = _bind(getattr(module, args.handler), dict(args.param))
+        log = load_log(args.log) if args.log else sample_log()
+        inputs = _load_inputs(
+            Manifest.load_yaml(Path(args.path) / "manifest.yaml"), dict(args.input)
+        )
+    except (_UsageError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    async def go() -> tuple[Any, MemoryCache]:
+        ctx = await build_test_context(log, module_id=module.id, inputs=inputs)
+        out = call(ctx)
+        result = await out if inspect.isawaitable(out) else out
+        assert isinstance(ctx.cache, MemoryCache)
+        return result, ctx.cache
+
+    # Captured so module log lines don't interleave with the JSON on stdout.
+    with capture_logs() as logs:
+        result, cache = asyncio.run(go())
+    print(json.dumps({"result": result, "cache": cache.data, "logs": logs}, indent=2, default=str))
+    return 0
+
+
+def _bundles(manifest: Manifest) -> list[str]:
+    """The ``.dist/`` files apps/web/scripts/bundle-modules.mjs builds for *manifest*."""
+    fe = manifest.frontend
+    names = ["panel.js"] if fe.panel else []
+    for w in fe.widgets:
+        names.append(f"widget-{w.id}.js")
+        if w.settings_entry:
+            names.append(f"widget-{w.id}-settings.js")
+    return names
+
+
+def _pack(args: argparse.Namespace) -> int:
+    folder = Path(args.path)
+    problems = check_module(folder)
+    if problems:
+        print(f"FAIL {folder.resolve().name}")
+        for problem in problems:
+            print(f"  - {problem}")
+        return 1
+    manifest = Manifest.load_yaml(folder / "manifest.yaml")
+    missing = [n for n in _bundles(manifest) if not (folder / ".dist" / n).is_file()]
+    if missing:
+        print(
+            f"error: .dist/ lacks {', '.join(missing)} - the platform serves an uploaded "
+            "module's frontend from the archive and never bundles it. Build it from a Mate "
+            "checkout (after `pnpm install`), then pack again:\n"
+            f"  FF_MODULES_DIR={folder.resolve().parent} "
+            f"node apps/web/scripts/bundle-modules.mjs {manifest.id}",
+            file=sys.stderr,
+        )
+        return 1
+    out = Path(args.output or f"{manifest.id}-{manifest.version}.zip").resolve()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(folder):
+            dirs[:] = sorted(d for d in dirs if d not in PACK_EXCLUDE)
+            for name in sorted(files):
+                path = Path(root) / name
+                rel = path.relative_to(folder)
+                # Older archives left in the module folder (the default output lands
+                # there when pack runs inside it) never ride along.
+                stale_zip = len(rel.parts) == 1 and rel.suffix.lower() == ".zip"
+                if name not in PACK_EXCLUDE and not stale_zip and path.resolve() != out:
+                    zf.write(path, rel.as_posix())
+    print(f"wrote {out}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="mate-module", description="Scaffold, check and test Mate modules."
+        prog="mate-module", description="Scaffold, check, test, try and pack Mate modules."
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -441,6 +693,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     test.add_argument("id")
     test.add_argument("--dir", default="modules", help="modules root (default: modules)")
     test.set_defaults(func=_test)
+
+    run = sub.add_parser("run", help="invoke one handler against a fake context")
+    run.add_argument("handler", help="route or job method name, e.g. recount")
+    run.add_argument("path", nargs="?", default=".")
+    run.add_argument("--log", help="a .csv or .parquet log with canonical columns")
+    run.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        type=_param,
+        metavar="KEY=VALUE",
+        help="handler argument, VALUE parsed as JSON else a string (repeatable)",
+    )
+    run.add_argument(
+        "--input",
+        action="append",
+        default=[],
+        type=_param,
+        metavar="PORT=FILE",
+        help="feed an input port from a .json or .parquet file (repeatable)",
+    )
+    run.set_defaults(func=_run)
+
+    pack = sub.add_parser("pack", help="zip the module for upload, with its .dist bundles")
+    pack.add_argument("path", nargs="?", default=".")
+    pack.add_argument("-o", "--output", help="archive path (default: <id>-<version>.zip)")
+    pack.set_defaults(func=_pack)
 
     # Unknown options after `test <id>` go to pytest (e.g. `-q`, `-k name`).
     args, extra = parser.parse_known_args(argv)

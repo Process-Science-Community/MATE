@@ -294,6 +294,27 @@ class Settings(BaseSettings):
         description="JOB_RETENTION_DAYS - prune terminal jobs older than N days (0=keep forever).",
     )
 
+    # Run variants (mate.api.modules.variants): before a new one is submitted, a
+    # user's least-recently-used finished variants are deleted until their total
+    # size is under this cap. `0` disables the GC.
+    run_variants_max_bytes_per_user: int = Field(
+        default=2 * 1024**3,
+        ge=0,
+        description="RUN_VARIANTS_MAX_BYTES_PER_USER - per-user run-variant disk cap (0=off).",
+    )
+    # Artifact workspace (routes/artifacts.py): the largest JSON artifact a user may
+    # upload, and the largest one `…/content` serves.
+    artifact_upload_max_bytes: int = Field(
+        default=20 * 1024**2,
+        ge=1,
+        description="ARTIFACT_UPLOAD_MAX_BYTES - max size of an uploaded or served artifact.",
+    )
+    # Index, once at startup, the results computed before the workspace existed
+    # (`modules.artifacts.backfill`). The tests turn it off.
+    artifacts_backfill: bool = Field(
+        default=True, description="ARTIFACTS_BACKFILL - one-shot artifact index backfill."
+    )
+
     # Live system-resource sampler (Admin → System). A background task samples
     # CPU/RAM every ``metrics_sample_interval_seconds`` into a ring buffer of the
     # last ``metrics_history_samples`` points (default 90 x 2s = 3 min of history).
@@ -483,6 +504,10 @@ class Settings(BaseSettings):
 
     def module_results_dir_for(self, user_id: str) -> Path:
         return self.users_dir / user_id / "module_results"
+
+    def artifacts_dir_for(self, user_id: str) -> Path:
+        """Uploaded workspace artifacts, ``{id}.json`` each."""
+        return self.users_dir / user_id / "artifacts"
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
