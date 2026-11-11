@@ -42,6 +42,7 @@ Other targets:
 | `make lite-reset` | Delete `data/lite/` (DB, logs, results). Nothing else is touched. |
 | `make module-new ID=x [PANEL=1]` | Scaffold `modules/x/` (`mate-module new`) |
 | `make module-test ID=x` | Run `modules/x/tests` (`mate-module test`) |
+| `make module-list` | List every module: id, version, name, runtime (isolation/execution or jvm), UI (panel, layout, widgets, datasets), folder (`mate-module list`) |
 | `make module-validate` | Check every module's manifest, `HOW_TO_USE.md` and `layout.json` (`mate-module validate`) |
 
 ## Why no Docker

@@ -36,6 +36,21 @@ def test_new_then_validate_passes(tmp_path: Path) -> None:
     assert main(["validate", str(folder)]) == 0
 
 
+def test_list_shows_modules_and_flags_invalid(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["new", MOD, "--panel", "--dir", str(tmp_path)]) == 0
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / "manifest.yaml").write_text("id: [not, valid\n")
+    assert main(["list", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    line = next(ln for ln in out.splitlines() if ln.startswith(MOD))
+    assert "in_process/thread" in line and "panel, layout, 1 dataset" in line
+    assert "invalid manifest" in out and "2 module(s)." in out
+    assert main(["list", str(tmp_path / "missing")]) == 1
+
+
 def test_new_without_panel_has_no_frontend(tmp_path: Path) -> None:
     assert main(["new", MOD, "--name", 'Probe: "quoted"', "--dir", str(tmp_path)]) == 0
     assert not (tmp_path / MOD / "panel").exists()

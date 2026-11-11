@@ -2,6 +2,7 @@
 
     mate-module new my_module [--name "My module"] [--panel] [--dir modules]
     mate-module validate [PATH ...]      # default: every module under ./modules
+    mate-module list [PATH ...]          # id, version, name, runtime, UI, folder
     mate-module test my_module [--dir modules] [PYTEST_ARGS ...]
 
 ``validate`` checks ``manifest.yaml``, ``HOW_TO_USE.md`` (``mate.sdk.guide``) and, when
@@ -179,6 +180,39 @@ def _validate(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}{'' if n == 1 else 's'}" if n else ""
+
+
+def _list(args: argparse.Namespace) -> int:
+    rows = [("ID", "VERSION", "NAME", "RUNTIME", "UI", "FOLDER")]
+    for folder in _module_dirs(args.paths or ["modules"]):
+        try:
+            m = Manifest.load_yaml(folder / "manifest.yaml")
+        except (ModuleManifestError, OSError):
+            rows.append((folder.name, "?", "invalid manifest (see validate)", "", "", str(folder)))
+            continue
+        py = m.dependencies.python
+        runtime = "jvm" if m.runtime.kind == "jvm" else f"{py.isolation}/{py.execution}"
+        ui = [
+            "panel" if m.frontend and m.frontend.panel else "",
+            "layout" if (folder / LAYOUT_FILENAME).is_file() else "",
+            _count(len(m.frontend.widgets) if m.frontend else 0, "widget"),
+            _count(len(m.datasets), "dataset"),
+        ]
+        rows.append(
+            (m.id, m.version, m.name, runtime, ", ".join(u for u in ui if u) or "-", str(folder))
+        )
+    if len(rows) == 1:
+        print("error: no module folder (with a manifest.yaml) found.", file=sys.stderr)
+        return 1
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]) - 1)]
+    for r in rows:
+        print("  ".join(c.ljust(w) for c, w in zip(r, widths, strict=False)) + "  " + r[-1])
+    print(f"\n{len(rows) - 1} module(s).")
+    return 0
+
+
 def _test(args: argparse.Namespace) -> int:
     tests = Path(args.dir) / args.id / "tests"
     if not tests.is_dir():
@@ -206,6 +240,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     validate = sub.add_parser("validate", help="check manifest, HOW_TO_USE.md and layout.json")
     validate.add_argument("paths", nargs="*", help="module folders or roots (default: modules)")
     validate.set_defaults(func=_validate)
+
+    lst = sub.add_parser("list", help="list modules: id, version, runtime, UI")
+    lst.add_argument("paths", nargs="*", help="module folders or roots (default: modules)")
+    lst.set_defaults(func=_list)
 
     test = sub.add_parser("test", help="run a module's tests with this Python (extra args: pytest)")
     test.add_argument("id")
