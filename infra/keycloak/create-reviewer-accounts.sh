@@ -471,7 +471,8 @@ echo "  Login URL:  $PUBLIC_URL/login/start?local=1"
 if [ "$REDIRECTOR_BLOCKS" = "1" ]; then
   echo "  ! Login is BLOCKED by the forced IdP redirect (see above) – fix that first." >&2
 fi
-echo "  Expiry:     run 'sudo ./infra/install-reviewer-expiry.sh' once (disables on $REVIEWER_EXPIRES)"
+echo "  Turn off:   ./infra/keycloak/create-reviewer-accounts.sh disable (no automatic expiry;"
+echo "              optional timer: sudo ./infra/install-reviewer-expiry.sh)"
 echo
 echo "  Add to the VM .env (once), then recreate the api so it seeds the sample content:"
 echo "    SAMPLE_CONTENT_MANIFEST=/app/data/$SAMPLE_REL/manifest.json"

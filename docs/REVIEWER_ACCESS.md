@@ -3,8 +3,9 @@
 Five local Keycloak accounts for the demo-track reviewers. They have no email
 address and no personal data. Each account is preloaded with sample logs and an
 example dashboard, nothing a reviewer does is usage-tracked, and every account
-sees only its own data. Access runs until **14 Dec 2026**; the accounts are
-disabled from **15 Dec 2026**.
+sees only its own data. The accounts stay active until you turn them off
+(`create-reviewer-accounts.sh disable`). An automatic expiry timer exists but is
+optional and not installed on the uni VM.
 
 ## For the reviewers
 
@@ -27,7 +28,7 @@ university login. On <https://mate.uni-muenster.de/login> the same door is the
 | Login door | `/login/start?local=1` (`apps/web/app/(auth)/login/start/route.ts`, already existed) | Starts the sign-in without `kc_idp_hint`, so Keycloak shows its own form. The normal **Login** button still sends `KEYCLOAK_IDP_HINT`, so university users keep going straight to SSO. |
 | Tracking exemption | `apps/api/src/mate/api/services/tracking_exemption.py` | Applies even under `USER_TRACKING_ONBOARDING=force`. An account is exempt if it holds a role from `USER_TRACKING_EXEMPT_ROLES` (default `reviewer`), is listed in `USER_TRACKING_EXEMPT_USERS`, or carries the persisted `analytics.exempt` flag. Nothing is recorded for an exempt account: no client events, request events, job outcomes or MCP audit. `GET /usage/config` returns `enabled: false`, so the browser does not capture either. Tests: `apps/api/tests/test_tracking_exemption.py`. |
 | Demo content | `apps/api/src/mate/api/services/sample_content.py`, `SAMPLE_CONTENT_MANIFEST` | At API start, each account in the manifest is seeded once. It imports the logs through the normal import job, so discovery precomputes eagerly, then creates the dashboard from the `process-overview` template. Only after all accounts have their logs does it warm the modules listed in the manifest (`warm_modules`: discovery, complexity, performance) on every sample log. Heavy modules such as cv4cdd compute when a reviewer first opens them; precomputing all 13 default modules for 15 logs would block the shared job queue for a long time. The script writes the manifest and the sample CSVs to `data/sample-content/reviewers/`. Tests: `apps/api/tests/test_sample_content.py`. |
-| Expiry | `infra/systemd/mate-reviewer-expiry.{service,timer}`, `infra/install-reviewer-expiry.sh` | Runs `create-reviewer-accounts.sh expire` daily. It does nothing before `REVIEWER_EXPIRES` (2026-12-15). From that date it disables the accounts and ends their sessions. |
+| Expiry (optional) | `infra/systemd/mate-reviewer-expiry.{service,timer}`, `infra/install-reviewer-expiry.sh` | Not installed by default; without it the accounts never expire on their own. Once installed, it runs `create-reviewer-accounts.sh expire` daily. It does nothing before `REVIEWER_EXPIRES` (2026-12-15). From that date it disables the accounts and ends their sessions. |
 | Sandbox | `SANDBOXED_ROLES` (default `reviewer`) | Reviewers can use every installed module, but cannot upload modules (that code runs inside the API process), create a watched folder on a custom host/bucket path (only the managed per-account folder), or mint API tokens (a token is checked against MATE only, so it would outlive the disabled Keycloak account). |
 
 `DEMO_MODE` is **not** reused. It bypasses Keycloak entirely and signs everyone
@@ -117,16 +118,18 @@ The VM checkout is `~/mate`; `DC="docker compose -f docker-compose.yml -f docker
    Seeding takes about a minute. Check it with
    `$DC logs api | grep sample_content`, which should show one
    `sample_content.seeded` per reviewer.
-5. Install the expiry timer:
+5. Optional – only if the accounts should switch off on a date by themselves:
    ```bash
-   sudo ./infra/install-reviewer-expiry.sh
+   sudo REVIEWER_EXPIRES=2026-12-15 ./infra/install-reviewer-expiry.sh
    ```
+   Without it, turn them off by hand when you decide to:
+   `KC_SERVER=http://localhost:8080/auth ./infra/keycloak/create-reviewer-accounts.sh disable`.
 6. Smoke test. In a private window, open the login URL and sign in as
    `reviewer1`. You should see three logs and the *Example dashboard*. Admin →
    Insights → Usage should show no events for it.
    `./infra/keycloak/create-reviewer-accounts.sh status` (with `KC_SERVER` as
-   above) lists the accounts, their roles, the expiry date and the redirect
-   check.
+   above) lists the accounts, their roles and the redirect check (the expiry
+   date it prints only matters if the optional timer is installed).
 
 After the review:
 
