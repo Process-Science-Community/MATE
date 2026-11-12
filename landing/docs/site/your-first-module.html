@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your first module - MATE Docs</title>
-<meta name="description" content="A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute…">
+<meta name="description" content="A module is a folder with a manifest, a handler class, and optionally a page. Scaffold one, run it on the lite stack, build its page in the…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -830,11 +830,12 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
         <a data-toc href="#module-folder">Module folder</a>
-        <a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a>
+        <a data-toc href="#create-a-module-in-six-steps">Create a module in six steps</a>
         <a data-toc href="#the-how-to-use-guide">The how-to-use guide</a>
         <a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a>
         <a data-toc href="#startup-sequence">Startup sequence</a>
         <a data-toc href="#development-loop">Development loop</a>
+        <a data-toc href="#debugging">Debugging</a>
         <a data-toc href="#constraints">Constraints</a>
     </div>
   </div>
@@ -898,7 +899,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
       <summary><span>Module development</span><svg class="caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></summary>
       <ul>
         <li><a class="side-link" href="your-first-module.html" aria-current="page">Your first module</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#module-folder">Module folder</a></li><li><a data-toc href="#create-a-module-in-five-steps">Create a module in five steps</a></li><li><a data-toc href="#the-how-to-use-guide">The how-to-use guide</a></li><li><a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a></li><li><a data-toc href="#startup-sequence">Startup sequence</a></li><li><a data-toc href="#development-loop">Development loop</a></li><li><a data-toc href="#constraints">Constraints</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#module-folder">Module folder</a></li><li><a data-toc href="#create-a-module-in-six-steps">Create a module in six steps</a></li><li><a data-toc href="#the-how-to-use-guide">The how-to-use guide</a></li><li><a data-toc href="#a-minimal-module-that-computes-a-result">A minimal module that computes a result</a></li><li><a data-toc href="#startup-sequence">Startup sequence</a></li><li><a data-toc href="#development-loop">Development loop</a></li><li><a data-toc href="#debugging">Debugging</a></li><li><a data-toc href="#constraints">Constraints</a></li></ul></li>
         <li><a class="side-link" href="the-manifest.html">The manifest</a></li>
         <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
         <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
@@ -945,7 +946,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Your first module</h1>
-      <p class="doc-lead">A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute something.</p>
+      <p class="doc-lead">A module is a folder with a manifest, a handler class, and optionally a page. Scaffold one, run it on the lite stack, build its page in the Studio, test it, and ship it.</p>
     </div>
     <div class="prose">
 <h2 id="module-folder">Module folder<a class="h-anchor" href="#module-folder" aria-label="Link to this section">#</a></h2>
@@ -957,26 +958,30 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <span class="t-glyph">├──</span> HOW_TO_USE.md           <span class="t-note"># required – the user guide, shown behind the &quot;How to use&quot; button</span>
 <span class="t-glyph">├──</span> events.py               <span class="t-note"># recommended – Pydantic payload shapes you emit</span>
 <span class="t-glyph">├──</span> tests/                  <span class="t-note"># pytest</span>
-<span class="t-glyph">├──</span> panel/index.tsx         <span class="t-note"># the module page entry</span>
+<span class="t-glyph">├──</span> layout.json             <span class="t-note"># the module page as a card grid, built in the Studio</span>
+<span class="t-glyph">├──</span> panel/index.tsx         <span class="t-note"># optional – a TSX module page, for custom interaction</span>
 <span class="t-glyph">├──</span> widgets/*.tsx           <span class="t-note"># dashboard cards</span>
 <span class="t-glyph">├──</span> uv.lock                 <span class="t-note"># commit it – pins your Python dependencies</span>
 <span class="t-glyph">├──</span> .venv/ · .dist/ · node_modules/   <span class="t-note"># created by the platform, gitignored</span>
 <span class="t-glyph">└──</span> README.md               <span class="t-note"># optional – developer notes (provenance, method, setup); not shown in the app</span></code></pre>
 </figure>
-<p>Commit the manifest, <code>module.py</code>, <code>HOW_TO_USE.md</code>, tests, frontend sources, and <code>uv.lock</code>. Everything else is rebuilt.</p>
-<h2 id="create-a-module-in-five-steps">Create a module in five steps<a class="h-anchor" href="#create-a-module-in-five-steps" aria-label="Link to this section">#</a></h2>
+<p>Commit the manifest, <code>module.py</code>, <code>HOW_TO_USE.md</code>, tests, <code>layout.json</code>, frontend sources, and <code>uv.lock</code>. Everything else is rebuilt.</p>
+<h2 id="create-a-module-in-six-steps">Create a module in six steps<a class="h-anchor" href="#create-a-module-in-six-steps" aria-label="Link to this section">#</a></h2>
+<p>Needs <code>uv</code>, <code>pnpm</code> (Node) and Python 3.12; see <a href="contributing.html#toolchains">Contributing</a>.</p>
 <ol class="steps">
-    <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p>Copy a small, complete example — <code>modules/performance_over_time</code> has a panel and a widget.</p><figure class="codeblock" data-lang="bash">
+    <li class="step"><span class="step-num" aria-hidden="true">1</span><div class="step-body"><p><strong>New</strong> — scaffold the folder. <code>PANEL=1</code> also writes <code>panel/index.tsx</code>; the id must be snake_case and the folder must not exist. The scaffold passes validation as written: a <code>manifest.yaml</code> (<code>in_process</code>, one <code>summary</code> table dataset with a <code>top</code> param), a <code>module.py</code> (<span class="mchip m-get">GET</span><code>/summary</code> plus a <span class="mchip m-post">POST</span><code>/recount</code> job), a <code>HOW_TO_USE.md</code>, a <code>layout.json</code> with one card of each common kind, and <code>tests/test_my_module.py</code>.</p><figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
-  <pre><code>cp -r modules/performance_over_time modules/my_module</code></pre>
+  <pre><code>make install                  # once: uv + pnpm dependencies
+make new ID=my_module         # = uv run mate-module new my_module [--panel]</code></pre>
 </figure></div></li>
-    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p>Rewrite the identity in <code>manifest.yaml</code>: <code>id</code>, <code>name</code>, <code>version</code>, <code>description</code>, and shrink <code>requirements</code> to what you need. The <code>id</code> is lowercase snake_case and globally unique. The copy also carries the example's <code>HOW_TO_USE.md</code>; rewrite it for your module as described under <a href="#the-how-to-use-guide">The how-to-use guide</a> below.</p></div></li>
-    <li class="step"><span class="step-num" aria-hidden="true">3</span><div class="step-body"><p>Rewrite <code>module.py</code>: set <code>id = &quot;my_module&quot;</code> on the class (it must match the manifest), delete the handlers you do not need, keep one route.</p></div></li>
-    <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p>Start the platform with hot reload.</p><figure class="codeblock" data-lang="bash">
+    <li class="step"><span class="step-num" aria-hidden="true">2</span><div class="step-body"><p><strong>Run</strong> — start the lite stack with only your module loaded and leave it running, then open the sample log and the module. No Docker and no <code>.env</code>: you are signed in as an admin demo user, a sample log (120 cases) is imported on first start, and data lives under <code>data/lite/</code>. Hard dependencies are added to <code>MODULES</code> automatically; leave it out to load every module.</p><figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
-  <pre><code>make dev</code></pre>
+  <pre><code>make lite MODULES=my_module   # API + bundler + web on :8000 / :3000; Ctrl-C stops all three</code></pre>
 </figure></div></li>
-    <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p>Import a log, open the module grid, click your module.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">3</span><div class="step-body"><p><strong>Build the page</strong> — open <strong>Dev</strong> in the sidebar (<code>/dev</code>), then <strong>Open Studio</strong>. <strong>Save</strong> writes <code>modules/my_module/layout.json</code> — see <a href="frontend-panels-widgets-and-datasets.html#the-studio">The Studio</a>. Edit <code>module.py</code>, <code>manifest.yaml</code> and <code>HOW_TO_USE.md</code> alongside. Saving <code>module.py</code> or <code>manifest.yaml</code> reloads the module; <code>HOW_TO_USE.md</code> is read fresh on every request.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">4</span><div class="step-body"><p><strong>Test</strong> — in a second terminal, <code>make test ID=my_module</code> runs <code>modules/my_module/tests</code> — see <a href="testing-and-publishing.html">Testing and publishing</a>.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p><strong>Validate</strong> — <code>make validate</code> checks every module's manifest, guide and <code>layout.json</code>, and exits <code>1</code> on any problem.</p></div></li>
+    <li class="step"><span class="step-num" aria-hidden="true">6</span><div class="step-body"><p><strong>Ship</strong> — commit the folder (it becomes a bundled module), or zip it and upload it under <strong>Modules → Install a module</strong>. A new bundled module also needs its manual page: run <code>make docs</code> and commit <code>landing/docs/site/</code>.</p></div></li>
   </ol>
 <h2 id="the-how-to-use-guide">The how-to-use guide<a class="h-anchor" href="#the-how-to-use-guide" aria-label="Link to this section">#</a></h2>
 <p>Every module ships <code>HOW_TO_USE.md</code> next to its manifest, in one fixed format. It is compulsory: an upload without a valid guide is rejected, and the test suite checks every bundled module. The platform shows that one file in two places: the <strong>How to use</strong> button on the module page, and the <em>Module guides</em> section of this manual.</p>
@@ -993,12 +998,13 @@ One short paragraph: the question the module answers and what you get back.
 <span class="t-note">## Tips and limits</span>
 <span class="t-note">## Method</span></code></pre>
 </figure>
-<p>Start from the template and check the result; the checker lists every problem with its line number and exits <code>1</code> if there is any.</p>
+<p><code>make new</code> writes a valid, filled-in <code>HOW_TO_USE.md</code>; edit it in place. Only a module not created with <code>make new</code> starts from the template. Then check it; the checker lists every problem with its line number and exits <code>1</code> if there is any.</p>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
-  <pre><code>cp modules/HOW_TO_USE.template.md modules/my_module/HOW_TO_USE.md
-uv run python -m mate.sdk.guide modules/my_module</code></pre>
+  <pre><code>cp modules/HOW_TO_USE.template.md modules/my_module/HOW_TO_USE.md   # only without make new
+uv run mate-module validate modules/my_module                        # or: make validate</code></pre>
 </figure>
+<p>A bundled module's guide is also its page in this manual: run <code>make docs</code> after changing it.</p>
 <p>The title must read <code># How to use &lt;the manifest name&gt;</code>, all six sections are required in this order, and <em>Settings</em> is a <code>Setting | Default | What it changes</code> table (or the sentence &quot;This module has no settings.&quot;). The same file renders in the app and here, so the format is a small markdown subset: absolute links only, no images, no HTML, no nested lists. <a href="https://github.com/Process-Science-Community/MATE/blob/main/modules/README.md"><code>modules/README.md</code></a> has the full rules and what belongs in each section.</p>
 <aside class="callout callout-note"><span class="callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></span><div class="callout-body"><span class="label">Note</span><p>Modules that were uploaded before guides became compulsory keep loading; they log a warning and show no <strong>How to use</strong> button until they are uploaded again with a guide.</p></div></aside>
 <h2 id="a-minimal-module-that-computes-a-result">A minimal module that computes a result<a class="h-anchor" href="#a-minimal-module-that-computes-a-result" aria-label="Link to this section">#</a></h2>
@@ -1066,7 +1072,10 @@ dependencies:
     <li class="step"><span class="step-num" aria-hidden="true">5</span><div class="step-body"><p><strong>Binding</strong> — routes mounted, event handlers subscribed, job handlers registered, capabilities added to the registry.</p></div></li>
   </ol>
 <h2 id="development-loop">Development loop<a class="h-anchor" href="#development-loop" aria-label="Link to this section">#</a></h2>
-<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>How</th></tr></thead><tbody><tr><td>Change a handler</td><td>Save; in <code>ENV=dev</code> the watchdog reloads the module in place.</td></tr><tr><td>Change requirements or dependencies</td><td>Save; gating re-evaluates, and a changed dependency block triggers <code>uv sync</code> for that module.</td></tr><tr><td>Change the frontend</td><td>The web dev server watches <code>modules/**</code> and rebuilds the bundle; hard-reload the page.</td></tr><tr><td>Debug a load failure</td><td>API log for the traceback, then the module detail page for its log tail.</td></tr></tbody></table></div></div>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Task</th><th>How</th></tr></thead><tbody><tr><td>Work on several modules</td><td><code>make lite MODULES=a,b</code>; each reloads on its own. A folder created while the stack runs is picked up without a restart if its id is in <code>MODULES</code> (or <code>MODULES</code> is empty); otherwise restart with the id added.</td></tr><tr><td>Change a handler</td><td>Save; in <code>ENV=dev</code> the watchdog reloads that module in place. Earlier results go stale and recompute on the next open.</td></tr><tr><td>Change requirements or dependencies</td><td>Save; gating re-evaluates, and a changed dependency block triggers <code>uv sync</code> for that module.</td></tr><tr><td>Change the page</td><td>A Studio <strong>Save</strong> rewrites <code>layout.json</code> without restarting anything. A panel or widget is rebuilt by the bundler; refocus the tab.</td></tr><tr><td>Change platform code</td><td>uvicorn restarts the API, which drops an attached debugger; attach again.</td></tr><tr><td>List modules</td><td><code>make modules</code>: id, version, name, runtime, UI (panel, layout, widgets, datasets).</td></tr><tr><td>Start from scratch</td><td><code>make reset</code> deletes <code>data/lite/</code> and nothing else.</td></tr><tr><td>Free a busy port</td><td>Lite never kills another process: <code>DEBUGPY_PORT=5679 make lite PORT=8001 WEB_PORT=3001</code>.</td></tr></tbody></table></div></div>
+<h2 id="debugging">Debugging<a class="h-anchor" href="#debugging" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>What</th><th>Where</th></tr></thead><tbody><tr><td>Logs</td><td>The terminal running <code>make lite</code> (API, bundler, Next.js). <code>LOG_LEVEL=debug make lite</code> is more verbose. <code>ctx.logger</code> lines also reach the job log and the <strong>Logs</strong> tail on <code>/modules/&lt;id&gt;</code>.</td></tr><tr><td>Tracebacks</td><td>A load failure shows on <code>/dev</code>. A handler that raises in a worker logs <code>modules.worker.handler_error</code> with the full traceback, also sent to the job log and the module's live tail.</td></tr><tr><td>Breakpoints</td><td>VS Code <strong>Python Debugger</strong> extension, launch config <strong>Attach: MATE API (lite)</strong> on <code>127.0.0.1:5678</code>. The API listens once at startup and never waits, so the stack runs the same without a debugger. <code>DEBUGPY_PORT=0</code> turns it off.</td></tr><tr><td><code>execution: worker</code> jobs</td><td>Lite sets <code>DEV_FORCE_THREAD=true</code>, so they run in the API process and breakpoints bind. <code>DEV_FORCE_THREAD=false make lite</code> tests the real worker path.</td></tr><tr><td><code>isolation: subprocess</code></td><td><code>DEBUGPY_WORKERS=true make lite</code>; each worker logs <code>MATE_DEBUGPY module=&lt;id&gt; pid=&lt;pid&gt; port=&lt;port&gt;</code>. Attach with <strong>Attach: module worker (pick port)</strong>. <code>debugpy</code> must be in the module's own venv while you debug.</td></tr><tr><td>Tests</td><td><strong>Python: module tests</strong> runs pytest on the folder of the open file under the debugger.</td></tr></tbody></table></div></div>
+<p>A job paused on a breakpoint keeps its wall clock running (<code>JOB_EXECUTION_TIMEOUT_SECONDS</code>, default 1800, <code>0</code> disables). JVM debugging, the full environment <code>make lite</code> sets, and a troubleshooting table are in <a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/DEV_LITE.md"><code>docs/DEV_LITE.md</code></a>.</p>
 <h2 id="constraints">Constraints<a class="h-anchor" href="#constraints" aria-label="Link to this section">#</a></h2>
 <ul><li>Do not import from <code>apps/api/*</code> or <code>apps/web/*</code> — the SDK is the contract.</li><li>Do not construct log paths yourself; the ones from <code>ctx</code> are ownership-checked.</li><li>Do not keep state on <code>self</code>; the instance is shared and jobs run concurrently.</li><li>Do not call <code>asyncio.run</code> inside a handler.</li></ul>
     </div>

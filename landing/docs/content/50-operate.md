@@ -13,6 +13,7 @@ Two deployments are supported: a local stack on one machine, and a production de
 | `make up` | `docker-compose.yml` | Local preview, workshops, single-user installations. |
 | `make up DEV=1` | `+ compose.dev.yml` | Development with hot reload inside containers. |
 | `make dev` | none | Host dev servers, fastest reload. |
+| `make lite [MODULES=a,b]` | none | Low-memory native stack for module work: no `.env`, demo login, data under `data/lite/`. |
 | Production | `+ docker-compose.prod.yml` | A VM behind an edge proxy, with TLS and resource caps. |
 
 The production overlay adds a Caddy container as the only published port, resets the app ports to unpublished, points every URL at the public origin, serves the landing page from `./landing`, enables server-side sessions, applies memory limits per service, and caps container logs (`10m` × 3 files). A one-shot `keycloak-config` service applies realm hardening on every deploy.

@@ -30,20 +30,25 @@ Four contribution paths: ship a module, report a bug, improve this manual, or wo
 git clone https://github.com/Process-Science-Community/MATE.git mate
 cd mate
 make install       # uv sync --extra dev + pnpm install
-make dev           # alembic upgrade head, then uvicorn --reload and next dev
+make lite          # no .env: native API + web, demo login, sample log, data under data/lite/
 ```
 
-`make dev` runs a preflight that frees port `8000` and clears stale processes, applies migrations, then starts both servers. A host API defaults to SQLite under `data/`.
+`make lite` needs no `.env` and never kills another process; a taken port stops it with a message. Against your own `.env` (`cp .env.example .env`), use `make dev` instead. It runs a preflight (`make preflight`) that validates the environment file, frees port `8000` and clears stale processes, applies migrations, then starts both servers. A host API defaults to SQLite under `data/`. `make checkenv` only checks that the root `.env` exists (`make up` runs it first); `make preflight` also rejects a placeholder `AUTH_SECRET` unless `DEMO_MODE` is on.
 
 ## Development loop
 
 | Task | Command |
 | --- | --- |
-| Both servers with reload | `make dev` (or `make api`, `make web`) |
+| Low-memory native stack, chosen modules only | `make lite [MODULES=a,b] [PORT=] [WEB_PORT=]`; `make reset` wipes `data/lite/` |
+| Both servers with reload, against `.env` | `make dev` (or one of them: `make api`, `make web`) |
 | Both servers in containers with reload | `make up DEV=1` |
 | API tests | `make test` |
 | One test | `uv run --extra dev pytest apps/api/tests/test_x.py::test_y -v` |
-| One module's tests | `uv run pytest modules/<folder>/tests` |
+| One module's tests | `make test ID=<module>` |
+| Scaffold a module or widget | `make new ID=<module> [PANEL=1]`, `make widget ID=<module> NAME=<widget>` |
+| Check or list every module | `make validate`, `make modules` |
+| Studio end-to-end check | `make e2e` |
+| JVM SDK, example and conformance jars | `make jvm` (JDK 17+) |
 | Python type check | `uv run pyright` (strict) |
 | Web type check | `make typecheck` |
 | Format Python | `make fmt` |
@@ -67,7 +72,9 @@ Never edit a migration that has been applied anywhere, keep DDL additive (add nu
 | --- | --- |
 | Routes | `httpx.ASGITransport` against the app, with a scoped SQLite database per session. |
 | Modules | The real loader with fixture module folders, plus Protocol-faithful fakes for unit tests. |
-| Isolation | Conformance tests that run the same expectations against Python and JVM workers. |
+| Isolation | Conformance tests that run the same expectations against Python and JVM workers (`make jvm` builds the jars). |
+| Module code | `make test ID=<module>` with `mate.sdk.testing` fakes; `make validate` for manifest, guide and `layout.json`. See [Testing and publishing](testing-and-publishing.html). |
+| Studio | `make e2e`: Playwright against a throwaway lite stack on ports 8777/3777 with a scaffolded module and a fixture module, checking that Studio cards sit where the module page puts them and that the visualization catalog renders. It downloads no browser; if Playwright finds none, run `pnpm --filter web exec playwright install chromium` once. |
 | AI and MCP | Tests that assert the data wall by attempting to read rows through an AI-scoped context. |
 | Storage | Quota, eviction, migration, and snapshot tests against a fake S3 layer. |
 

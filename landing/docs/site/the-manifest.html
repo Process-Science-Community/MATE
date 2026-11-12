@@ -1021,9 +1021,9 @@ config_schema:                      # renders the per-user settings form
 <ul><li>A package cannot be in both <code>packages</code> and <code>inherit</code>.</li><li>Declaring <code>author</code>, <code>author_url</code>, <code>authors</code>, <code>paper_url</code>, or <code>papers</code> is a hard error — credit belongs in <code>source[].fullCitation</code>, in IEEE style with the DOI omitted (the DOI goes in <code>url</code>).</li><li>A foreign <code>runtime</code> must not declare <code>packages</code>, <code>inherit</code>, or <code>requires-python</code>, and may not force <code>isolation: in_process</code>; its <code>jar</code> must be folder-relative.</li><li><code>log_model</code> is the single switch between the two log worlds: <code>case_centric</code> reads <code>ctx.event_log</code>, <code>object_centric</code> reads <code>ctx.object_log</code>, and a module never appears on the wrong kind of log.</li></ul>
 <figure class="codeblock" data-lang="bash">
   <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
-  <pre><code><span class="t-note"># validate before the platform does</span>
-uv run python -c &quot;from mate.sdk import Manifest; Manifest.load_yaml('modules/my_module/manifest.yaml')&quot;
-uv run python -m mate.sdk.guide modules/my_module        # the how-to-use guide</code></pre>
+  <pre><code><span class="t-note"># validate before the platform does: manifest, HOW_TO_USE.md and layout.json</span>
+make validate                                       # every module; exit 1 on any problem
+uv run mate-module validate modules/my_module       # one module</code></pre>
 </figure>
     </div>
   <nav class="pager" aria-label="Pagination">

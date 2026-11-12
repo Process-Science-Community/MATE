@@ -4,7 +4,7 @@
 
 # Your first module
 
-A module is a folder with a manifest, a handler class, and optionally a frontend. Start from a bundled module, rename it, and make it compute something.
+A module is a folder with a manifest, a handler class, and optionally a page. Scaffold one, run it on the lite stack, build its page in the Studio, test it, and ship it.
 
 ## Module folder
 
@@ -15,33 +15,42 @@ modules/my_module/
 ├── HOW_TO_USE.md           # required – the user guide, shown behind the "How to use" button
 ├── events.py               # recommended – Pydantic payload shapes you emit
 ├── tests/                  # pytest
-├── panel/index.tsx         # the module page entry
+├── layout.json             # the module page as a card grid, built in the Studio
+├── panel/index.tsx         # optional – a TSX module page, for custom interaction
 ├── widgets/*.tsx           # dashboard cards
 ├── uv.lock                 # commit it – pins your Python dependencies
 ├── .venv/ · .dist/ · node_modules/   # created by the platform, gitignored
 └── README.md               # optional – developer notes (provenance, method, setup); not shown in the app
 ```
 
-Commit the manifest, `module.py`, `HOW_TO_USE.md`, tests, frontend sources, and `uv.lock`. Everything else is rebuilt.
+Commit the manifest, `module.py`, `HOW_TO_USE.md`, tests, `layout.json`, frontend sources, and `uv.lock`. Everything else is rebuilt.
 
-## Create a module in five steps
+## Create a module in six steps
+
+Needs `uv`, `pnpm` (Node) and Python 3.12; see [Contributing](contributing.html#toolchains).
 
 :::steps
-1. Copy a small, complete example — `modules/performance_over_time` has a panel and a widget.
+1. **New** — scaffold the folder. `PANEL=1` also writes `panel/index.tsx`; the id must be snake_case and the folder must not exist.
 
    ```bash title="Terminal"
-   cp -r modules/performance_over_time modules/my_module
+   make install                  # once: uv + pnpm dependencies
+   make new ID=my_module         # = uv run mate-module new my_module [--panel]
    ```
 
-2. Rewrite the identity in `manifest.yaml`: `id`, `name`, `version`, `description`, and shrink `requirements` to what you need. The `id` is lowercase snake_case and globally unique. The copy also carries the example's `HOW_TO_USE.md`; rewrite it for your module as described under [The how-to-use guide](#the-how-to-use-guide) below.
-3. Rewrite `module.py`: set `id = "my_module"` on the class (it must match the manifest), delete the handlers you do not need, keep one route.
-4. Start the platform with hot reload.
+   The scaffold passes validation as written: a `manifest.yaml` (`in_process`, one `summary` table dataset with a `top` param), a `module.py` (`GET /summary` plus a `POST /recount` job), a `HOW_TO_USE.md`, a `layout.json` with one card of each common kind, and `tests/test_my_module.py`.
+
+2. **Run** — start the lite stack with only your module loaded and leave it running, then open the sample log and the module.
 
    ```bash title="Terminal"
-   make dev
+   make lite MODULES=my_module   # API + bundler + web on :8000 / :3000; Ctrl-C stops all three
    ```
 
-5. Import a log, open the module grid, click your module.
+   No Docker and no `.env`: you are signed in as an admin demo user, a sample log (120 cases) is imported on first start, and data lives under `data/lite/`. Hard dependencies are added to `MODULES` automatically; leave it out to load every module.
+
+3. **Build the page** — open **Dev** in the sidebar (`/dev`), then **Open Studio**. **Save** writes `modules/my_module/layout.json` — see [The Studio](frontend-panels-widgets-and-datasets.html#the-studio). Edit `module.py`, `manifest.yaml` and `HOW_TO_USE.md` alongside. Saving `module.py` or `manifest.yaml` reloads the module; `HOW_TO_USE.md` is read fresh on every request.
+4. **Test** — in a second terminal, `make test ID=my_module` runs `modules/my_module/tests` — see [Testing and publishing](testing-and-publishing.html).
+5. **Validate** — `make validate` checks every module's manifest, guide and `layout.json`, and exits `1` on any problem.
+6. **Ship** — commit the folder (it becomes a bundled module), or zip it and upload it under **Modules → Install a module**. A new bundled module also needs its manual page: run `make docs` and commit `landing/docs/site/`.
 :::
 
 ## The how-to-use guide
@@ -61,12 +70,14 @@ One short paragraph: the question the module answers and what you get back.
 ## Method
 ```
 
-Start from the template and check the result; the checker lists every problem with its line number and exits `1` if there is any.
+`make new` writes a valid, filled-in `HOW_TO_USE.md`; edit it in place. Only a module not created with `make new` starts from the template. Then check it; the checker lists every problem with its line number and exits `1` if there is any.
 
 ```bash title="Terminal"
-cp modules/HOW_TO_USE.template.md modules/my_module/HOW_TO_USE.md
-uv run python -m mate.sdk.guide modules/my_module
+cp modules/HOW_TO_USE.template.md modules/my_module/HOW_TO_USE.md   # only without make new
+uv run mate-module validate modules/my_module                        # or: make validate
 ```
+
+A bundled module's guide is also its page in this manual: run `make docs` after changing it.
 
 The title must read `# How to use <the manifest name>`, all six sections are required in this order, and *Settings* is a `Setting | Default | What it changes` table (or the sentence "This module has no settings."). The same file renders in the app and here, so the format is a small markdown subset: absolute links only, no images, no HTML, no nested lists. [`modules/README.md`](https://github.com/Process-Science-Community/MATE/blob/main/modules/README.md) has the full rules and what belongs in each section.
 
@@ -151,10 +162,27 @@ dependencies:
 
 | Task | How |
 | --- | --- |
-| Change a handler | Save; in `ENV=dev` the watchdog reloads the module in place. |
+| Work on several modules | `make lite MODULES=a,b`; each reloads on its own. A folder created while the stack runs is picked up without a restart if its id is in `MODULES` (or `MODULES` is empty); otherwise restart with the id added. |
+| Change a handler | Save; in `ENV=dev` the watchdog reloads that module in place. Earlier results go stale and recompute on the next open. |
 | Change requirements or dependencies | Save; gating re-evaluates, and a changed dependency block triggers `uv sync` for that module. |
-| Change the frontend | The web dev server watches `modules/**` and rebuilds the bundle; hard-reload the page. |
-| Debug a load failure | API log for the traceback, then the module detail page for its log tail. |
+| Change the page | A Studio **Save** rewrites `layout.json` without restarting anything. A panel or widget is rebuilt by the bundler; refocus the tab. |
+| Change platform code | uvicorn restarts the API, which drops an attached debugger; attach again. |
+| List modules | `make modules`: id, version, name, runtime, UI (panel, layout, widgets, datasets). |
+| Start from scratch | `make reset` deletes `data/lite/` and nothing else. |
+| Free a busy port | Lite never kills another process: `DEBUGPY_PORT=5679 make lite PORT=8001 WEB_PORT=3001`. |
+
+## Debugging
+
+| What | Where |
+| --- | --- |
+| Logs | The terminal running `make lite` (API, bundler, Next.js). `LOG_LEVEL=debug make lite` is more verbose. `ctx.logger` lines also reach the job log and the **Logs** tail on `/modules/<id>`. |
+| Tracebacks | A load failure shows on `/dev`. A handler that raises in a worker logs `modules.worker.handler_error` with the full traceback, also sent to the job log and the module's live tail. |
+| Breakpoints | VS Code **Python Debugger** extension, launch config **Attach: MATE API (lite)** on `127.0.0.1:5678`. The API listens once at startup and never waits, so the stack runs the same without a debugger. `DEBUGPY_PORT=0` turns it off. |
+| `execution: worker` jobs | Lite sets `DEV_FORCE_THREAD=true`, so they run in the API process and breakpoints bind. `DEV_FORCE_THREAD=false make lite` tests the real worker path. |
+| `isolation: subprocess` | `DEBUGPY_WORKERS=true make lite`; each worker logs `MATE_DEBUGPY module=<id> pid=<pid> port=<port>`. Attach with **Attach: module worker (pick port)**. `debugpy` must be in the module's own venv while you debug. |
+| Tests | **Python: module tests** runs pytest on the folder of the open file under the debugger. |
+
+A job paused on a breakpoint keeps its wall clock running (`JOB_EXECUTION_TIMEOUT_SECONDS`, default 1800, `0` disables). JVM debugging, the full environment `make lite` sets, and a troubleshooting table are in [`docs/DEV_LITE.md`](https://github.com/Process-Science-Community/MATE/blob/main/docs/DEV_LITE.md).
 
 ## Constraints
 
@@ -264,9 +292,9 @@ config_schema:                      # renders the per-user settings form
 - `log_model` is the single switch between the two log worlds: `case_centric` reads `ctx.event_log`, `object_centric` reads `ctx.object_log`, and a module never appears on the wrong kind of log.
 
 ```bash title="Terminal"
-# validate before the platform does
-uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/my_module/manifest.yaml')"
-uv run python -m mate.sdk.guide modules/my_module        # the how-to-use guide
+# validate before the platform does: manifest, HOW_TO_USE.md and layout.json
+make validate                                       # every module; exit 1 on any problem
+uv run mate-module validate modules/my_module       # one module
 ```
 
 # Handlers and the context
@@ -469,7 +497,39 @@ async def overlay(self, ctx: ModuleContext, payload: dict) -> None:
 
 # Frontend: panels, widgets and datasets
 
-Frontends are TypeScript regardless of the backend language. The platform bundles them with esbuild into `.dist/` at startup; the Next.js build never sees your sources, and a panel may only import the packages listed in `apps/web/lib/runtime-externals.json`.
+A module page is either a `layout.json` card grid built in the Studio, or a TSX panel. TSX (panels and widgets) is TypeScript regardless of the backend language; the platform bundles it with esbuild into `.dist/` at startup, the Next.js build never sees your sources, and it may only import the packages listed in `apps/web/lib/runtime-externals.json`.
+
+## Choosing a page
+
+| Use | When | What renders |
+| --- | --- | --- |
+| `layout.json` | Text, parameters, run buttons, charts, tables and tabs are enough. The default; no TSX. | The module page renders the grid, with the log filter bar. |
+| `panel/index.tsx` | The page needs custom interaction. `make new ID=x PANEL=1` scaffolds one. | With a layout too, the layout's tabs come first and the panel is the last tab, **Panel**. |
+| `widgets/*.tsx` | One card the catalog cannot draw, reusable on the module page and on dashboards. | A `widget` card in the layout, or a dashboard card. |
+
+## The Studio
+
+`/dev/studio/<id>` (from **Dev** → **Open Studio**, only with `ENV=dev` and `DEMO_MODE=true`; `make lite` sets both) edits `layout.json` inside the real module page: a 12-column grid of cards, the same grid dashboards use. **Edit** shows the palette and inspector as overlays; **Preview** renders the unsaved draft exactly as the module page will. **Save** writes `modules/<id>/layout.json`, **Reload** reloads the module like a hot reload, and clicking an **action** card runs the real route on the selected log.
+
+| Kind | Shows | Needs |
+| --- | --- | --- |
+| `text` | Markdown, frameless on the page. | `config.markdown` |
+| `controls` | A form over the page params (`source: params`, from datasets' `params_schema`) or the module config (`source: config`, with **Save**). | `module_id`; optional `config.keys` (omitted or `[]` = all) |
+| `action` | A button that POSTs a module route. A `@job` route shows progress, then refetches the page's cards. | `module_id`, `config.route` |
+| `viz` | A platform visualization of one of the module's datasets; chart and field mapping are set in the inspector. | `viz_id`, `dataset_ref` |
+| `widget` | One of the module's `frontend.widgets`. | `widget_id` (plus `module_id`) |
+
+`text`, `controls` and `action` exist only in `layout.json`; dashboards never offer them. Param values live on the page, shared by all tabs, and each viz card sends only the params its own dataset declares. **Tabs** adds, renames and deletes tabs (`"tabs": [{"id": "overview", "title": "Overview"}]`); a card without `tab` belongs to the first.
+
+The palette's **Visualizations** section is the catalog, in six groups: Charts, Process models & graphs, Matrices, KPIs, Tables & lists, Text & status. Each row shows `→ <dataset>` when the module has a dataset of a shape it accepts, else `needs data`. Adding a row binds the first compatible dataset; pick another under **Data** in the inspector. Without one, the card is a **Needs data** placeholder that shows the manifest `datasets:` item and the `@route.get` to paste. The Studio saves a placeholder, but `make validate` fails until it is bound.
+
+When nothing in the catalog fits, scaffold a TSX widget: it writes `widgets/MyWidget.tsx` (a bar chart over the first dataset's route) and adds the `frontend.widgets` entry to the manifest. It appears in the palette's module group within seconds.
+
+```bash title="Terminal"
+make widget ID=my_module NAME=my-widget   # = uv run mate-module widget my_module my-widget [--title T] [--dataset D]
+```
+
+Every `layout.json` rule — tabs, params, actions, validation, and the route shapes each dataset accepts — is in [`docs/DEV_LITE.md`](https://github.com/Process-Science-Community/MATE/blob/main/docs/DEV_LITE.md).
 
 ## Panels
 
@@ -655,57 +715,36 @@ The context offers `eventLog()` (with `duckdbFetch` running host-side and `mater
 
 # Testing and publishing
 
-Module tests are ordinary pytest. The SDK deliberately ships no test double: the context is defined by Protocols, so a test fakes exactly what a handler touches.
+Module tests are ordinary pytest in `modules/<id>/tests/`; `make new` writes a first one. `mate.sdk.testing` builds a fake `ModuleContext` over a small sample log, so a handler runs without the platform.
 
 ## Unit tests
 
-```python title="modules/my_module/tests/test_ranking.py"
+```python title="modules/my_module/tests/test_my_module.py"
 import asyncio
-import pandas as pd
+from pathlib import Path
 
-from modules.my_module.module import MyModule
+from mate.sdk.testing import build_test_context, load_module, sample_log
 
-
-class FakeEventLog:
-    def __init__(self, rows):
-        self._rows = rows
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return None
-
-    async def duckdb_fetch(self, sql, params=None):
-        return self._rows
+MODULE = load_module(Path(__file__).parents[1])  # imports module.py like the loader does
 
 
-class FakeCache:
-    def __init__(self):
-        self.values = {}
+def test_summary_counts_every_event() -> None:
+    async def check() -> None:
+        log = sample_log(rows=200)
+        ctx = await build_test_context(log_id=log.id, module_id="my_module")
+        out = await MODULE.summary(ctx)
+        assert sum(row["events"] for row in out["rows"]) == 200
 
-    async def get(self, key):
-        return self.values.get(key)
-
-    async def set(self, key, value):
-        self.values[key] = value
-
-
-class FakeContext:
-    log_id, module_id, user_id = "log-1", "my_module", "user-1"
-
-    def __init__(self, rows):
-        self.event_log = FakeEventLog(rows)
-        self.cache = FakeCache()
-
-
-def test_ranking_is_sorted_descending():
-    ctx = FakeContext([("a", 10), ("b", 4)])
-    out = asyncio.run(MyModule().ranking(ctx))
-    assert [row["activity"] for row in out["rows"]] == ["a", "b"]
+    asyncio.run(check())
 ```
 
-Mirror the Protocol signatures from `mate.sdk.context` so a fake cannot drift from the real contract, and name tests as expectations.
+| Helper | Gives you |
+| --- | --- |
+| `sample_log(rows=None)` | The bundled case-centric log (10 cases), tiled to exactly `rows` events; `.id` and `.frame` (pandas). |
+| `build_test_context(log=None, *, log_id=, module_id=, user_id=, config=, workdir=)` | `ctx.event_log` over that log; an in-memory `ctx.cache`; `ctx.progress` and `ctx.bus` that record their calls; a registry that knows no other module. Object-centric logs are not faked. |
+| `load_module(folder)` | An instance of `module.py`, checked against the manifest id. |
+
+Name tests as expectations.
 
 | Layer | Test with |
 | --- | --- |
@@ -714,18 +753,20 @@ Mirror the Protocol signatures from `mate.sdk.context` so a fake cannot drift fr
 | Dataset payloads | Shape assertions against the declared `shape`. |
 | Frontend | A manual pass: loading, empty, and error states; live updates; dark mode and compact density; the card at exactly `min_px_w` × `min_px_h`. |
 
-```bash title="Terminal"
-uv run pytest modules/my_module/tests -v         # your module
-make test                                        # the platform suite, incl. module fixtures
-uv run pyright                                   # strict types
-```
+| Make target | `mate-module` equivalent | Does |
+| --- | --- | --- |
+| `make test ID=my_module` | `uv run mate-module test my_module` | Runs `modules/my_module/tests`; the CLI passes extra arguments to pytest. |
+| `make validate` | `uv run mate-module validate [folders]` | Checks manifest, `HOW_TO_USE.md` and `layout.json`; exit `1` on any problem. |
+| `make modules` | `uv run mate-module list` | Lists every module: id, version, name, runtime, UI. |
+| `make new ID=x [PANEL=1]` | `uv run mate-module new x [--panel]` | Scaffolds `modules/x/`. |
+| `make widget ID=x NAME=y` | `uv run mate-module widget x y` | Adds a TSX widget and its manifest entry. |
+| `make test` | — | The platform suite, incl. module fixtures. |
 
 ```yaml title="CI for a module"
 - uses: astral-sh/setup-uv@v5
 - run: uv sync --extra dev
-- run: uv run python -c "from mate.sdk import Manifest; Manifest.load_yaml('modules/my_module/manifest.yaml')"
-- run: uv run python -m mate.sdk.guide modules/my_module
-- run: uv run pytest modules/my_module/tests
+- run: uv run mate-module validate modules/my_module
+- run: uv run mate-module test my_module
 ```
 
 Validating the manifest and the guide first is deliberate: they are the cheapest checks and the most common failures.
@@ -737,7 +778,7 @@ Validating the manifest and the guide first is deliberate: they are the cheapest
 | Upload | A `.zip`, `.tar`, `.tar.gz`, or `.tgz` of the folder | Private modules, one-off installs, air-gapped hosts. |
 | Installed package | A package exposing the `mate.modules` entry point | Modules shipped through your own infrastructure — discovery picks it up at boot; the UI has no registry browser. |
 
-Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, `HOW_TO_USE.md`, tests, and frontend sources — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`). An archive without a valid `HOW_TO_USE.md` is rejected before anything is written; the install job's error lists what is wrong.
+Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, `HOW_TO_USE.md`, tests, `layout.json`, frontend sources, and `uv.lock` — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`). An archive without a valid `HOW_TO_USE.md` is rejected before anything is written; the install job's error lists what is wrong.
 
 ## Versioning
 
@@ -745,7 +786,7 @@ Bump `version:` whenever results change, not only when code changes. A results-a
 
 ## Author checklist
 
-- [ ] `Manifest.load_yaml(...)` passes, and `id` matches `module.py`.
+- [ ] `make validate` passes (manifest, guide, `layout.json` with no unbound placeholder), and `id` matches `module.py`.
 - [ ] `log_model` matches the log the module can actually handle.
 - [ ] Every emitted topic is in `provides:`; every subscription and capability call is in `consumes:` or `optional_modules:`.
 - [ ] Precompute ordering uses `<module_id>.completed` (or `requirements.modules`), not hope; the handler is idempotent and rebuilds from `ctx.event_log`.
@@ -754,7 +795,8 @@ Bump `version:` whenever results change, not only when code changes. A results-a
 - [ ] No imports from `apps/api/*` or `apps/web/*`.
 - [ ] Widgets use the shared kit and declare `min_px_w`/`min_px_h` measured in a browser.
 - [ ] `.venv/`, `.dist/`, `node_modules/` are gitignored; `uv.lock` is committed.
-- [ ] `HOW_TO_USE.md` passes `python -m mate.sdk.guide modules/my_module`, and every label, default and limit in it was checked against the panel and the code.
+- [ ] `make test ID=my_module` passes.
+- [ ] Every label, default and limit in `HOW_TO_USE.md` was checked against the module page and the code.
 - [ ] `README.md`, if you keep one, holds developer notes only (provenance, method, any external dependency); what users need to know lives in the guide.
 
 The symptoms and fixes for the failures that remain are in [Troubleshooting](troubleshooting.html).

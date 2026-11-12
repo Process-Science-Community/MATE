@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Testing and publishing - MATE Docs</title>
-<meta name="description" content="Module tests are ordinary pytest. The SDK deliberately ships no test double: the context is defined by Protocols, so a test fakes exactly what a…">
+<meta name="description" content="Module tests are ordinary pytest in modules/&lt;id&gt;/tests/; make new writes a first one. mate.sdk.testing builds a fake ModuleContext over a small…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -942,80 +942,48 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Testing and publishing</h1>
-      <p class="doc-lead">Module tests are ordinary pytest. The SDK deliberately ships no test double: the context is defined by Protocols, so a test fakes exactly what a handler touches.</p>
+      <p class="doc-lead">Module tests are ordinary pytest in <code>modules/&lt;id&gt;/tests/</code>; <code>make new</code> writes a first one. <code>mate.sdk.testing</code> builds a fake <code>ModuleContext</code> over a small sample log, so a handler runs without the platform.</p>
     </div>
     <div class="prose">
 <h2 id="unit-tests">Unit tests<a class="h-anchor" href="#unit-tests" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="python">
-  <figcaption class="cb-head"><span class="cb-title">modules/my_module/tests/test_ranking.py</span></figcaption>
+  <figcaption class="cb-head"><span class="cb-title">modules/my_module/tests/test_my_module.py</span></figcaption>
   <pre><code>import asyncio
-import pandas as pd
+from pathlib import Path
 
-from modules.my_module.module import MyModule
+from mate.sdk.testing import build_test_context, load_module, sample_log
 
-
-class FakeEventLog:
-    def __init__(self, rows):
-        self._rows = rows
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return None
-
-    async def duckdb_fetch(self, sql, params=None):
-        return self._rows
+MODULE = load_module(Path(__file__).parents[1])  # imports module.py like the loader does
 
 
-class FakeCache:
-    def __init__(self):
-        self.values = {}
+def test_summary_counts_every_event() -&gt; None:
+    async def check() -&gt; None:
+        log = sample_log(rows=200)
+        ctx = await build_test_context(log_id=log.id, module_id=&quot;my_module&quot;)
+        out = await MODULE.summary(ctx)
+        assert sum(row[&quot;events&quot;] for row in out[&quot;rows&quot;]) == 200
 
-    async def get(self, key):
-        return self.values.get(key)
-
-    async def set(self, key, value):
-        self.values[key] = value
-
-
-class FakeContext:
-    log_id, module_id, user_id = &quot;log-1&quot;, &quot;my_module&quot;, &quot;user-1&quot;
-
-    def __init__(self, rows):
-        self.event_log = FakeEventLog(rows)
-        self.cache = FakeCache()
-
-
-def test_ranking_is_sorted_descending():
-    ctx = FakeContext([(&quot;a&quot;, 10), (&quot;b&quot;, 4)])
-    out = asyncio.run(MyModule().ranking(ctx))
-    assert [row[&quot;activity&quot;] for row in out[&quot;rows&quot;]] == [&quot;a&quot;, &quot;b&quot;]</code></pre>
+    asyncio.run(check())</code></pre>
 </figure>
-<p>Mirror the Protocol signatures from <code>mate.sdk.context</code> so a fake cannot drift from the real contract, and name tests as expectations.</p>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Helper</th><th>Gives you</th></tr></thead><tbody><tr><td><code>sample_log(rows=None)</code></td><td>The bundled case-centric log (10 cases), tiled to exactly <code>rows</code> events; <code>.id</code> and <code>.frame</code> (pandas).</td></tr><tr><td><code>build_test_context(log=None, *, log_id=, module_id=, user_id=, config=, workdir=)</code></td><td><code>ctx.event_log</code> over that log; an in-memory <code>ctx.cache</code>; <code>ctx.progress</code> and <code>ctx.bus</code> that record their calls; a registry that knows no other module. Object-centric logs are not faked.</td></tr><tr><td><code>load_module(folder)</code></td><td>An instance of <code>module.py</code>, checked against the manifest id.</td></tr></tbody></table></div></div>
+<p>Name tests as expectations.</p>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Layer</th><th>Test with</th></tr></thead><tbody><tr><td>Pure computation</td><td>Plain functions — fast, and where the subtle bugs live.</td></tr><tr><td>Handler wiring</td><td>Fakes for the two or three context members it uses.</td></tr><tr><td>Dataset payloads</td><td>Shape assertions against the declared <code>shape</code>.</td></tr><tr><td>Frontend</td><td>A manual pass: loading, empty, and error states; live updates; dark mode and compact density; the card at exactly <code>min_px_w</code> × <code>min_px_h</code>.</td></tr></tbody></table></div></div>
-<figure class="codeblock" data-lang="bash">
-  <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
-  <pre><code>uv run pytest modules/my_module/tests -v         # your module
-make test                                        # the platform suite, incl. module fixtures
-uv run pyright                                   # strict types</code></pre>
-</figure>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Make target</th><th><code>mate-module</code> equivalent</th><th>Does</th></tr></thead><tbody><tr><td><code>make test ID=my_module</code></td><td><code>uv run mate-module test my_module</code></td><td>Runs <code>modules/my_module/tests</code>; the CLI passes extra arguments to pytest.</td></tr><tr><td><code>make validate</code></td><td><code>uv run mate-module validate [folders]</code></td><td>Checks manifest, <code>HOW_TO_USE.md</code> and <code>layout.json</code>; exit <code>1</code> on any problem.</td></tr><tr><td><code>make modules</code></td><td><code>uv run mate-module list</code></td><td>Lists every module: id, version, name, runtime, UI.</td></tr><tr><td><code>make new ID=x [PANEL=1]</code></td><td><code>uv run mate-module new x [--panel]</code></td><td>Scaffolds <code>modules/x/</code>.</td></tr><tr><td><code>make widget ID=x NAME=y</code></td><td><code>uv run mate-module widget x y</code></td><td>Adds a TSX widget and its manifest entry.</td></tr><tr><td><code>make test</code></td><td>—</td><td>The platform suite, incl. module fixtures.</td></tr></tbody></table></div></div>
 <figure class="codeblock" data-lang="yaml">
   <figcaption class="cb-head"><span class="cb-title">CI for a module</span></figcaption>
   <pre><code>- uses: astral-sh/setup-uv@v5
 - run: uv sync --extra dev
-- run: uv run python -c &quot;from mate.sdk import Manifest; Manifest.load_yaml('modules/my_module/manifest.yaml')&quot;
-- run: uv run python -m mate.sdk.guide modules/my_module
-- run: uv run pytest modules/my_module/tests</code></pre>
+- run: uv run mate-module validate modules/my_module
+- run: uv run mate-module test my_module</code></pre>
 </figure>
 <p>Validating the manifest and the guide first is deliberate: they are the cheapest checks and the most common failures.</p>
 <h2 id="distribution-channels">Distribution channels<a class="h-anchor" href="#distribution-channels" aria-label="Link to this section">#</a></h2>
 <div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Channel</th><th>Input</th><th>Best for</th></tr></thead><tbody><tr><td>Upload</td><td>A <code>.zip</code>, <code>.tar</code>, <code>.tar.gz</code>, or <code>.tgz</code> of the folder</td><td>Private modules, one-off installs, air-gapped hosts.</td></tr><tr><td>Installed package</td><td>A package exposing the <code>mate.modules</code> entry point</td><td>Modules shipped through your own infrastructure — discovery picks it up at boot; the UI has no registry browser.</td></tr></tbody></table></div></div>
-<p>Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in <code>docs/INSTRUCTIONS.md</code> but not implemented yet. Package an archive with the manifest, <code>module.py</code>, <code>HOW_TO_USE.md</code>, tests, and frontend sources — exclude <code>.venv/</code>, <code>.dist/</code>, <code>node_modules/</code>, and large model files (those belong in <code>model_store</code>). An archive without a valid <code>HOW_TO_USE.md</code> is rejected before anything is written; the install job's error lists what is wrong.</p>
+<p>Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in <code>docs/INSTRUCTIONS.md</code> but not implemented yet. Package an archive with the manifest, <code>module.py</code>, <code>HOW_TO_USE.md</code>, tests, <code>layout.json</code>, frontend sources, and <code>uv.lock</code> — exclude <code>.venv/</code>, <code>.dist/</code>, <code>node_modules/</code>, and large model files (those belong in <code>model_store</code>). An archive without a valid <code>HOW_TO_USE.md</code> is rejected before anything is written; the install job's error lists what is wrong.</p>
 <h2 id="versioning">Versioning<a class="h-anchor" href="#versioning" aria-label="Link to this section">#</a></h2>
 <p>Bump <code>version:</code> whenever results change, not only when code changes. A results-affecting change should invalidate caches — version your cache keys or delete them on first run. Renaming a <code>config_schema</code> property orphans stored values, so add the new name and read both for one release.</p>
 <h2 id="author-checklist">Author checklist<a class="h-anchor" href="#author-checklist" aria-label="Link to this section">#</a></h2>
-<ul><li>[ ] <code>Manifest.load_yaml(...)</code> passes, and <code>id</code> matches <code>module.py</code>.</li><li>[ ] <code>log_model</code> matches the log the module can actually handle.</li><li>[ ] Every emitted topic is in <code>provides:</code>; every subscription and capability call is in <code>consumes:</code> or <code>optional_modules:</code>.</li><li>[ ] Precompute ordering uses <code>&lt;module_id&gt;.completed</code> (or <code>requirements.modules</code>), not hope; the handler is idempotent and rebuilds from <code>ctx.event_log</code>.</li><li>[ ] Long jobs use <code>@job(progress=True)</code> and check cancellation at loop boundaries.</li><li>[ ] Results live in <code>ctx.cache</code> under keys that encode the parameters that change them.</li><li>[ ] No imports from <code>apps/api/*</code> or <code>apps/web/*</code>.</li><li>[ ] Widgets use the shared kit and declare <code>min_px_w</code>/<code>min_px_h</code> measured in a browser.</li><li>[ ] <code>.venv/</code>, <code>.dist/</code>, <code>node_modules/</code> are gitignored; <code>uv.lock</code> is committed.</li><li>[ ] <code>HOW_TO_USE.md</code> passes <code>python -m mate.sdk.guide modules/my_module</code>, and every label, default and limit in it was checked against the panel and the code.</li><li>[ ] <code>README.md</code>, if you keep one, holds developer notes only (provenance, method, any external dependency); what users need to know lives in the guide.</li></ul>
+<ul><li>[ ] <code>make validate</code> passes (manifest, guide, <code>layout.json</code> with no unbound placeholder), and <code>id</code> matches <code>module.py</code>.</li><li>[ ] <code>log_model</code> matches the log the module can actually handle.</li><li>[ ] Every emitted topic is in <code>provides:</code>; every subscription and capability call is in <code>consumes:</code> or <code>optional_modules:</code>.</li><li>[ ] Precompute ordering uses <code>&lt;module_id&gt;.completed</code> (or <code>requirements.modules</code>), not hope; the handler is idempotent and rebuilds from <code>ctx.event_log</code>.</li><li>[ ] Long jobs use <code>@job(progress=True)</code> and check cancellation at loop boundaries.</li><li>[ ] Results live in <code>ctx.cache</code> under keys that encode the parameters that change them.</li><li>[ ] No imports from <code>apps/api/*</code> or <code>apps/web/*</code>.</li><li>[ ] Widgets use the shared kit and declare <code>min_px_w</code>/<code>min_px_h</code> measured in a browser.</li><li>[ ] <code>.venv/</code>, <code>.dist/</code>, <code>node_modules/</code> are gitignored; <code>uv.lock</code> is committed.</li><li>[ ] <code>make test ID=my_module</code> passes.</li><li>[ ] Every label, default and limit in <code>HOW_TO_USE.md</code> was checked against the module page and the code.</li><li>[ ] <code>README.md</code>, if you keep one, holds developer notes only (provenance, method, any external dependency); what users need to know lives in the guide.</li></ul>
 <p>The symptoms and fixes for the failures that remain are in <a href="troubleshooting.html">Troubleshooting</a>.</p>
     </div>
   <nav class="pager" aria-label="Pagination">

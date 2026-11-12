@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Frontend: panels, widgets and datasets - MATE Docs</title>
-<meta name="description" content="Frontends are TypeScript regardless of the backend language. The platform bundles them with esbuild into .dist/ at startup; the Next.js build…">
+<meta name="description" content="A module page is either a layout.json card grid built in the Studio, or a TSX panel. TSX (panels and widgets) is TypeScript regardless of the…">
 <link rel="icon" href="../../assets/mate-icon-black.svg" type="image/svg+xml">
 <script>document.documentElement.classList.add('js');(function(){try{var s=localStorage.getItem('pmmate-theme');if(s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
 <style>
@@ -829,6 +829,8 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <div class="xtoc-body">
     <div class="toc-list">
         <a data-toc href="#_top">Overview</a>
+        <a data-toc href="#choosing-a-page">Choosing a page</a>
+        <a data-toc href="#the-studio">The Studio</a>
         <a data-toc href="#panels">Panels</a>
         <a data-toc href="#widgets">Widgets</a>
         <a data-toc href="#canvases">Canvases</a>
@@ -900,7 +902,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
         <li><a class="side-link" href="module-communication.html">Module communication</a></li>
         <li><a class="side-link" href="frontend-panels-widgets-and-datasets.html" aria-current="page">Frontend: panels, widgets and datasets</a></li>
-        <li><ul class="side-sub"><li><a data-toc href="#panels">Panels</a></li><li><a data-toc href="#widgets">Widgets</a></li><li><a data-toc href="#canvases">Canvases</a></li><li><a data-toc href="#datasets">Datasets</a></li></ul></li>
+        <li><ul class="side-sub"><li><a data-toc href="#choosing-a-page">Choosing a page</a></li><li><a data-toc href="#the-studio">The Studio</a></li><li><a data-toc href="#panels">Panels</a></li><li><a data-toc href="#widgets">Widgets</a></li><li><a data-toc href="#canvases">Canvases</a></li><li><a data-toc href="#datasets">Datasets</a></li></ul></li>
         <li><a class="side-link" href="dependencies-isolation-and-runtimes.html">Dependencies, isolation and runtimes</a></li>
         <li><a class="side-link" href="testing-and-publishing.html">Testing and publishing</a></li>
       </ul>
@@ -942,9 +944,22 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     </nav>
     <div class="doc-head">
       <h1 class="doc-title" id="_top">Frontend: panels, widgets and datasets</h1>
-      <p class="doc-lead">Frontends are TypeScript regardless of the backend language. The platform bundles them with esbuild into <code>.dist/</code> at startup; the Next.js build never sees your sources, and a panel may only import the packages listed in <code>apps/web/lib/runtime-externals.json</code>.</p>
+      <p class="doc-lead">A module page is either a <code>layout.json</code> card grid built in the Studio, or a TSX panel. TSX (panels and widgets) is TypeScript regardless of the backend language; the platform bundles it with esbuild into <code>.dist/</code> at startup, the Next.js build never sees your sources, and it may only import the packages listed in <code>apps/web/lib/runtime-externals.json</code>.</p>
     </div>
     <div class="prose">
+<h2 id="choosing-a-page">Choosing a page<a class="h-anchor" href="#choosing-a-page" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Use</th><th>When</th><th>What renders</th></tr></thead><tbody><tr><td><code>layout.json</code></td><td>Text, parameters, run buttons, charts, tables and tabs are enough. The default; no TSX.</td><td>The module page renders the grid, with the log filter bar.</td></tr><tr><td><code>panel/index.tsx</code></td><td>The page needs custom interaction. <code>make new ID=x PANEL=1</code> scaffolds one.</td><td>With a layout too, the layout's tabs come first and the panel is the last tab, <strong>Panel</strong>.</td></tr><tr><td><code>widgets/*.tsx</code></td><td>One card the catalog cannot draw, reusable on the module page and on dashboards.</td><td>A <code>widget</code> card in the layout, or a dashboard card.</td></tr></tbody></table></div></div>
+<h2 id="the-studio">The Studio<a class="h-anchor" href="#the-studio" aria-label="Link to this section">#</a></h2>
+<p><code>/dev/studio/&lt;id&gt;</code> (from <strong>Dev</strong> → <strong>Open Studio</strong>, only with <code>ENV=dev</code> and <code>DEMO_MODE=true</code>; <code>make lite</code> sets both) edits <code>layout.json</code> inside the real module page: a 12-column grid of cards, the same grid dashboards use. <strong>Edit</strong> shows the palette and inspector as overlays; <strong>Preview</strong> renders the unsaved draft exactly as the module page will. <strong>Save</strong> writes <code>modules/&lt;id&gt;/layout.json</code>, <strong>Reload</strong> reloads the module like a hot reload, and clicking an <strong>action</strong> card runs the real route on the selected log.</p>
+<div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Kind</th><th>Shows</th><th>Needs</th></tr></thead><tbody><tr><td><code>text</code></td><td>Markdown, frameless on the page.</td><td><code>config.markdown</code></td></tr><tr><td><code>controls</code></td><td>A form over the page params (<code>source: params</code>, from datasets' <code>params_schema</code>) or the module config (<code>source: config</code>, with <strong>Save</strong>).</td><td><code>module_id</code>; optional <code>config.keys</code> (omitted or <code>[]</code> = all)</td></tr><tr><td><code>action</code></td><td>A button that POSTs a module route. A <code>@job</code> route shows progress, then refetches the page's cards.</td><td><code>module_id</code>, <code>config.route</code></td></tr><tr><td><code>viz</code></td><td>A platform visualization of one of the module's datasets; chart and field mapping are set in the inspector.</td><td><code>viz_id</code>, <code>dataset_ref</code></td></tr><tr><td><code>widget</code></td><td>One of the module's <code>frontend.widgets</code>.</td><td><code>widget_id</code> (plus <code>module_id</code>)</td></tr></tbody></table></div></div>
+<p><code>text</code>, <code>controls</code> and <code>action</code> exist only in <code>layout.json</code>; dashboards never offer them. Param values live on the page, shared by all tabs, and each viz card sends only the params its own dataset declares. <strong>Tabs</strong> adds, renames and deletes tabs (<code>&quot;tabs&quot;: [{&quot;id&quot;: &quot;overview&quot;, &quot;title&quot;: &quot;Overview&quot;}]</code>); a card without <code>tab</code> belongs to the first.</p>
+<p>The palette's <strong>Visualizations</strong> section is the catalog, in six groups: Charts, Process models &amp; graphs, Matrices, KPIs, Tables &amp; lists, Text &amp; status. Each row shows <code>→ &lt;dataset&gt;</code> when the module has a dataset of a shape it accepts, else <code>needs data</code>. Adding a row binds the first compatible dataset; pick another under <strong>Data</strong> in the inspector. Without one, the card is a <strong>Needs data</strong> placeholder that shows the manifest <code>datasets:</code> item and the <code>@route.get</code> to paste. The Studio saves a placeholder, but <code>make validate</code> fails until it is bound.</p>
+<p>When nothing in the catalog fits, scaffold a TSX widget: it writes <code>widgets/MyWidget.tsx</code> (a bar chart over the first dataset's route) and adds the <code>frontend.widgets</code> entry to the manifest. It appears in the palette's module group within seconds.</p>
+<figure class="codeblock" data-lang="bash">
+  <figcaption class="cb-head"><span class="cb-title">Terminal</span></figcaption>
+  <pre><code>make widget ID=my_module NAME=my-widget   # = uv run mate-module widget my_module my-widget [--title T] [--dataset D]</code></pre>
+</figure>
+<p>Every <code>layout.json</code> rule — tabs, params, actions, validation, and the route shapes each dataset accepts — is in <a href="https://github.com/Process-Science-Community/MATE/blob/main/docs/DEV_LITE.md"><code>docs/DEV_LITE.md</code></a>.</p>
 <h2 id="panels">Panels<a class="h-anchor" href="#panels" aria-label="Link to this section">#</a></h2>
 <figure class="codeblock" data-lang="tsx">
   <figcaption class="cb-head"><span class="cb-title">modules/my_module/panel/index.tsx</span></figcaption>

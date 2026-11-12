@@ -135,7 +135,7 @@ make lite MODULES=my_module,other_module
    modules with load errors, datasets, widgets and debug info. **Studio**
    (`/dev/studio/<id>`) edits the module's page as it will look (see
    [Studio](#studio-building-a-page-without-tsx)). **Save** writes
-   `modules/<id>/layout.json`; **Reload module** reloads it like hot reload does.
+   `modules/<id>/layout.json`; **Reload** reloads it like hot reload does.
    Write a `panel/` instead when the page needs custom interaction; the layout is
    the no-code alternative.
 4. **Test.** `make test ID=my_module`. Tests use `mate.sdk.testing`
@@ -192,7 +192,7 @@ automatically.
 ```
 
 A card without `tab` belongs to the first tab. Without `tabs`, no card may set
-`tab`. Tab ids are lowercase slugs. In the Studio, **Page** adds, renames and
+`tab`. Tab ids are lowercase slugs. In the Studio, **Tabs** adds, renames and
 deletes tabs; deleting one moves its cards to the first remaining tab.
 
 ### Params: controls -> datasets
@@ -308,7 +308,7 @@ make widget ID=my_module NAME=my-widget
    another; without datasets it points at a TODO route) and draws a bar chart.
    Imports must come from `apps/web/lib/runtime-externals.json`.
 3. In `make lite` it appears in the Studio palette's module group within a few
-   seconds; switch back to the tab or press **Reload module**. Then `make validate`.
+   seconds; switch back to the tab or press **Reload**. Then `make validate`.
 
 Direct use: `uv run mate-module widget <module> <widget-id> [--title T] [--dataset D] [--dir modules]`.
 Widget ids are kebab-case (`^[a-z][a-z0-9-]*$`); an existing id or file is
@@ -371,7 +371,7 @@ a warning and carries on (`make install` installs it with the dev extra).
 | `apps/web/node_modules missing` | `make install` |
 | My module is not in the list | Check `MODULES=` (typo, or not listed). Open `/dev` to see load errors. Folders starting with `_` or `.` are skipped. |
 | An edit has no effect | Check the terminal for a reload error. Changing a route's query parameters needs an API restart. A change in `pyproject.toml` is not watched; declare dependencies in `manifest.yaml`. |
-| Old results after a code change | They should go stale in dev. If not, press **Reload module** in Studio, or `make reset`. |
+| Old results after a code change | They should go stale in dev. If not, press **Reload** in Studio, or `make reset`. |
 | The panel shows old code | Refocus the browser window; in dev the panel bundle is checked again. Check the bundler output for build errors. |
 | Debugger does not connect | Is the banner showing the debugger port, and is `DEBUGPY_PORT` not `0`? After a platform code edit uvicorn restarts the API: attach again. |
 | First start hangs on "waiting for the API" | Modules with their own packages build a venv on first load; that can take minutes. Use `MODULES=` to load fewer. |

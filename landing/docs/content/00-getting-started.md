@@ -132,7 +132,8 @@ The API health check deliberately allows ten minutes for this. Later boots hash 
 | --- | --- |
 | `make up` | Base compose file: production-style images, detached. The default. |
 | `make up DEV=1` | Base plus `compose.dev.yml`: hot reload inside Docker. |
-| `make dev` | Host dev servers (API + web) with the fastest reload. Needs `uv`, `pnpm`, Python 3.12. |
+| `make dev` | Host dev servers (API + web) with the fastest reload, against your `.env`. Needs `uv`, `pnpm`, Python 3.12. |
+| `make lite [MODULES=a,b]` | Low-memory native stack for module work: no Docker, no `.env`, demo login, a sample log seeded, only the named modules loaded. Needs `uv`, `pnpm`, Python 3.12. See [Your first module](your-first-module.html). |
 | Prod overlay | `docker-compose.prod.yml`: Caddy with TLS, one public origin, no public app ports. See [Deployment](deployment.html). |
 
 ## Daily operations
@@ -143,7 +144,7 @@ make up                       # start again, reusing module environments
 docker compose logs -f api    # follow the API log (also: web, keycloak)
 ```
 
-`make clean` wipes event logs, module results, the metadata database, and the Keycloak volume. This cannot be undone.
+`make clean` wipes event logs, module results, the metadata database, and the Keycloak volume. This cannot be undone. `make reset` deletes only the lite stack's `data/lite/`. `make help` lists every target.
 
 > [!NOTE]
 > For a workshop without Keycloak, `DEMO_MODE=true` signs everyone in as a fixed local user. Never enable it on a shared deployment — the MCP server refuses the demo token by design.
