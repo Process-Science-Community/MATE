@@ -6,7 +6,8 @@
 # MATE
 
 **A modular process science platform.**
-Import event logs, run process mining analyses as plug-in modules, and combine their results on one dashboard. Self-hosted, every user in an isolated workspace.
+
+MATE is an open-source platform for process mining research and teaching. Analysis methods are packaged as modules, so that a method published in a paper becomes a tool that other researchers can apply to their own event logs.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
@@ -16,7 +17,7 @@ Import event logs, run process mining analyses as plug-in modules, and combine t
 [Website](https://process-science-community.github.io/MATE/) ·
 [User manual](https://process-science-community.github.io/MATE/docs/site/introduction.html) ·
 [Hosted instance](https://mate.uni-muenster.de) ·
-[Build a module](#develop-modules)
+[Module development](#module-development)
 
 </div>
 
@@ -27,32 +28,110 @@ Import event logs, run process mining analyses as plug-in modules, and combine t
 
 ## Contents
 
-- [Features](#features)
-- [Quick start](#quick-start)
-- [Prerequisites](#prerequisites)
-- [Signing in](#signing-in)
-- [Running modes](#running-modes)
-- [Develop modules](#develop-modules)
-- [Bundled modules](#bundled-modules)
-- [Configuration](#configuration)
-- [Data and persistence](#data-and-persistence)
-- [Tests](#tests)
-- [Repository layout](#repository-layout)
-- [Documentation](#documentation)
-- [License](#license)
+1. [Overview](#overview)
+2. [Choosing a setup](#choosing-a-setup)
+3. [Prerequisites](#prerequisites)
+4. [Running MATE locally with Docker](#running-mate-locally-with-docker)
+5. [Module development](#module-development)
+6. [Production deployment](#production-deployment)
+7. [Bundled modules](#bundled-modules)
+8. [Configuration](#configuration)
+9. [Data and persistence](#data-and-persistence)
+10. [Quality checks](#quality-checks)
+11. [Repository layout](#repository-layout)
+12. [Documentation](#documentation)
+13. [Crediting methods](#crediting-methods)
+14. [License](#license)
 
-## Features
+## Overview
 
-- **Event log import**: XES, XES.gz, CSV and OCEL (`.jsonocel`, `.xmlocel`, OCEL 2.0 SQLite), also inside `.gz`, `.bz2`, `.xz`, `.zip` and tar archives. Logs are stored as Parquet and queried with DuckDB.
-- **Analyses as modules**: discovery, performance, conformance, complexity, concept drift, simulation and more. Each module is a folder under [`modules/`](./modules/) and is picked up at startup.
-- **Isolated workspaces**: event logs, jobs, AI keys and module settings are scoped to the signed-in user.
-- **MATE AI**: a chat panel wired to an LLM provider you configure yourself.
-- **MCP server** (off by default): lets external AI clients use the platform. See [`docs/MCP.md`](./docs/MCP.md).
-- **Self-hosted**: FastAPI backend, Next.js frontend, Keycloak for login, all started with Docker Compose.
+MATE is developed at the European Research Center for Information Systems (ERCIS), University of Münster. It provides:
 
-## Quick start
+- **Event log management.** Import of XES, XES.gz, CSV and OCEL (`.jsonocel`, `.xmlocel`, OCEL 2.0 SQLite), also inside `.gz`, `.bz2`, `.xz`, `.zip` and tar archives. Logs are stored as Parquet files and queried with DuckDB.
+- **Analysis modules.** Discovery, conformance checking, performance, complexity, concept drift detection, simulation and further methods (see [Bundled modules](#bundled-modules)). Each module is a self-contained folder under [`modules/`](./modules/) and is loaded at startup.
+- **Dashboards.** Results of different modules can be combined on one canvas.
+- **Isolated workspaces.** Event logs, jobs, AI settings and module configuration are scoped to the signed-in user.
+- **MATE AI.** An optional chat assistant that uses an LLM provider configured by each user.
+- **MCP server.** An optional [Model Context Protocol](https://modelcontextprotocol.io) endpoint for external AI clients, disabled by default (see [`docs/MCP.md`](./docs/MCP.md)).
 
-With [Git, Docker and make installed](#prerequisites):
+The platform consists of a FastAPI backend, a Next.js frontend and Keycloak for authentication. All services run under Docker Compose.
+
+## Choosing a setup
+
+| Goal | Setup | Section |
+| --- | --- | --- |
+| Use MATE without installing anything | Hosted instance at <https://mate.uni-muenster.de> | – |
+| Evaluate the full platform on a workstation | Docker stack, `make up` | [Running MATE locally](#running-mate-locally-with-docker) |
+| Develop or adapt an analysis module | Native lite stack, `make lite` | [Module development](#module-development) |
+| Operate MATE for a research group or institution | Docker stack with the production overlay | [Production deployment](#production-deployment) |
+
+## Prerequisites
+
+| Tool | Required for | Check |
+| --- | --- | --- |
+| [Git](https://git-scm.com/downloads) | all setups | `git --version` |
+| `make` | all setups (optional for Docker, see below) | `make --version` |
+| [Docker](https://docs.docker.com/get-started/get-docker/) with Compose v2 | Docker stack, production | `docker compose version` |
+| [uv](https://docs.astral.sh/uv/) | module development | `uv --version` |
+| [Node.js](https://nodejs.org/) 22 and [pnpm](https://pnpm.io/) | module development | `node --version`, `pnpm --version` |
+| JDK 17 or newer | only for JVM modules (`make jvm`) | `java -version` |
+
+The Docker stack needs neither Python nor Node.js on the host. For module development, uv installs the Python version pinned in [`.python-version`](./.python-version) (3.12) automatically.
+
+### macOS
+
+```bash
+xcode-select --install                               # Git and make (Apple Command Line Tools)
+brew install --cask docker                           # Docker Desktop; start it once afterwards
+brew install uv node@22                              # module development only
+corepack enable pnpm                                 # module development only
+```
+
+### Ubuntu and Debian
+
+```bash
+sudo apt update && sudo apt install -y git make
+curl -fsSL https://get.docker.com | sh               # Docker Engine and the Compose plugin
+sudo usermod -aG docker "$USER"                      # use Docker without sudo; sign in again afterwards
+curl -LsSf https://astral.sh/uv/install.sh | sh      # module development only
+```
+
+For module development, install Node.js 22 from [nodejs.org](https://nodejs.org/en/download) or with a version manager such as [fnm](https://github.com/Schniz/fnm) (`fnm install 22`), then run `corepack enable pnpm`. For other distributions, follow the [Docker Engine installation guide](https://docs.docker.com/engine/install/).
+
+### Windows
+
+Use Docker Desktop with the WSL 2 backend and run all commands in a WSL 2 Linux shell (for example Ubuntu), following the Ubuntu instructions above:
+
+```powershell
+wsl --install                                        # once, then restart
+winget install -e --id Docker.DockerDesktop
+```
+
+Clone the repository into the WSL file system (for example `~/MATE`) rather than under `C:\`, because bind mounts from the Windows file system are considerably slower. The Windows setup has not been tested by the maintainers.
+
+## Running MATE locally with Docker
+
+### Resource requirements
+
+| Resource | Requirement |
+| --- | --- |
+| Free disk space | **At least 25 GB** for the first start; about 6 GB can be reclaimed afterwards (see below) |
+| Memory | At least 8 GB assigned to Docker |
+| Free ports | 3000 (web), 8000 (API), 8080 (Keycloak) |
+
+The disk requirement has three components, measured on a first start from a fresh clone:
+
+1. **Container images.** The API image contains Python 3.12, a Java runtime for JVM modules and the scientific Python stack (pm4py, DuckDB, PyArrow, SciPy and others). Together with the web, PostgreSQL and Keycloak images, the images amount to about 4 GB. Docker Desktop's containerd image store keeps images both compressed and unpacked, which increases the space they occupy on disk considerably.
+2. **Build cache.** Building the two images leaves about 6 GB of intermediate layers in Docker's build cache.
+3. **Module dependencies.** At first start, the API installs the Python dependencies of every bundled module into `modules/<id>/.venv/` (more than 3 GB; `cv4cdd` alone requires TensorFlow). The package cache used for this step resides inside the API container, so these packages occupy space twice until the container is removed.
+
+Once the stack is running, the build cache can be removed without affecting it:
+
+```bash
+docker builder prune -af
+```
+
+### Installation
 
 ```bash
 git clone https://github.com/Process-Science-Community/MATE.git
@@ -61,245 +140,246 @@ cp .env.example .env
 make up
 ```
 
-`make up` runs `docker compose up -d --build`. It builds the `api` and `web` images and starts five containers: `api`, `web`, `keycloak`, `keycloak-db` and `app-db`.
+`make up` executes `docker compose up -d --build`. It builds the `api` and `web` images and starts five containers: `api`, `web`, `keycloak`, `keycloak-db` and `app-db`. Without `make`, run `docker compose up -d --build` directly.
 
-The first start takes a while: the images are built, and the API installs every module's Python dependencies before it reports healthy (the healthcheck allows up to 10 minutes). Later starts reuse the cached images and dependencies.
-
-Open <http://localhost:3000> once the containers are healthy:
+The first start takes several minutes, because the API installs all module dependencies before it reports itself as healthy; the health check allows up to ten minutes for this step. Later starts reuse the installed dependencies and complete within seconds. To follow the progress:
 
 ```bash
-docker compose ps        # STATUS shows "(healthy)" for api and web when ready
+docker compose ps                  # api and web show "(healthy)" when ready
+docker compose logs -f api
 ```
 
-You are signed in automatically as a local demo user (see [Signing in](#signing-in)). Drop an event log on the **Processes** page to start.
+Then open <http://localhost:3000>.
 
-Stop the stack with `make down`. Your data stays in `./data/` and in the Docker volumes.
+### Signing in
 
-> **No `make`?** (for example on Windows) Run the commands directly:
-> `docker compose up -d --build` to start, `docker compose down` to stop.
+The configuration in `.env.example` sets `DEMO_MODE=true`. In this mode, MATE skips Keycloak and signs every visitor in as a fixed local demo user. The mode is intended for a single user on a workstation.
 
-## Prerequisites
-
-### For the Docker stack (`make up`)
-
-| Tool | Version | Check |
-| --- | --- | --- |
-| [Git](https://git-scm.com/downloads) | any recent | `git --version` |
-| [Docker](https://docs.docker.com/get-started/get-docker/) with Compose v2 | Docker Desktop, or Docker Engine + Compose plugin | `docker compose version` |
-| `make` | any (optional) | `make --version` |
-
-Also needed: free ports **3000** (web), **8000** (API) and **8080** (Keycloak), and enough disk and memory for the images (see [System requirements](#system-requirements)).
-
-No Python, Node.js, `uv` or `pnpm` is needed on the host for the Docker stack.
-
-**macOS**
-
-```bash
-xcode-select --install            # Git and make (Apple Command Line Tools)
-brew install --cask docker        # Docker Desktop (or download it from docker.com)
-open -a Docker                    # start Docker Desktop once, accept the terms
-```
-
-**Ubuntu / Debian**
-
-```bash
-sudo apt update && sudo apt install -y git make
-curl -fsSL https://get.docker.com | sh          # Docker Engine + Compose plugin
-sudo usermod -aG docker "$USER"                 # run docker without sudo; log out and back in
-```
-
-For other distributions, follow the [Docker Engine install guide](https://docs.docker.com/engine/install/).
-
-**Windows**
-
-Use Docker Desktop with the WSL 2 backend and run all commands inside a WSL 2 Linux shell (for example Ubuntu), following the Ubuntu steps above for Git and make:
-
-```powershell
-wsl --install                                  # once, then reboot
-winget install -e --id Docker.DockerDesktop
-```
-
-Clone the repository inside the WSL file system (for example `~/MATE`), not under `C:\`; bind mounts from the Windows file system are much slower. The Windows setup has not been tested by the maintainers.
-
-### System requirements
-
-| Resource | Recommendation |
-| --- | --- |
-| Free disk | **20 GB or more.** In a test from a fresh clone, Docker's disk image grew by about 12 GB (base images, the two built images, databases), and the module dependencies in `modules/<id>/.venv/` passed 3 GB (`cv4cdd` pulls TensorFlow, `agentsimulator` about 1 GB). |
-| Docker memory | 8 GB assigned to Docker Desktop (the setting used in testing on an Apple Silicon Mac). |
-
-## Signing in
-
-The default `.env.example` sets `DEMO_MODE=true`. Login then skips Keycloak and signs you in as a fixed local **Demo User**. This is meant for local use only.
-
-For real accounts, set in `.env`:
+To use individual accounts, set the following in `.env` and run `make up` again:
 
 ```bash
 DEMO_MODE=false
 AUTH_SECRET=<output of: openssl rand -base64 32>
 ```
 
-Then restart with `make up`. Login goes through Keycloak:
+Authentication then runs through the bundled Keycloak:
 
-The bundled Keycloak advertises itself as `keycloak:8080` (`KC_HOSTNAME` in [`docker-compose.yml`](./docker-compose.yml)), so the browser has to resolve that name. Add this line to `/etc/hosts` (on Windows: `C:\Windows\System32\drivers\etc\hosts`):
-
-```text
-127.0.0.1 keycloak
-```
-
-| What | Where | Credentials |
+| Service | Address | Initial credentials |
 | --- | --- | --- |
-| MATE | <http://localhost:3000> | `admin@flows-funds.local` / `flowsfunds` (you must set a new password on first login) |
-| Keycloak admin console | <http://localhost:8080/admin> | `admin` / `admin` (from `KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD`) |
+| MATE | <http://localhost:3000> | `admin@flows-funds.local` / `flowsfunds` (a new password is required at first sign-in) |
+| Keycloak administration | <http://localhost:8080/admin> | `admin` / `admin` (`KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD`) |
 
-Create further users in the Keycloak admin console, realm `flows-funds`. Admin pages in MATE (`/admin`) require the realm role `admin`; assign it under *Realm roles → admin → Users in role*. The seeded `admin@flows-funds.local` user does not have it by default.
+The local Keycloak announces itself under the host name `keycloak` (`KC_HOSTNAME` in [`docker-compose.yml`](./docker-compose.yml)). Add `127.0.0.1 keycloak` to `/etc/hosts` so that the browser can resolve it.
 
-> [!WARNING]
-> Before exposing the stack to anyone else, set `DEMO_MODE=false`, a strong `AUTH_SECRET`, and change `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_ADMIN_PASSWORD` and `KEYCLOAK_DB_PASSWORD`. Production deployments use the overlay described in [`docs/DEPLOY.md`](./docs/DEPLOY.md).
+Further users are created in the Keycloak administration console, realm `flows-funds`. The administration pages of MATE (`/admin`) require the realm role `admin`, which is assigned under *Realm roles → admin → Users in role*. The seeded user `admin@flows-funds.local` does not hold this role initially.
 
-## Running modes
-
-`make up` and `docker compose` are the same thing; what changes is which compose overlay is stacked on [`docker-compose.yml`](./docker-compose.yml), or whether Docker is used at all.
-
-| Command | Docker | `.env` | What you get |
-| --- | --- | --- | --- |
-| `make lite` | no | no | Low-memory native stack for module work: demo login with admin rights, SQLite under `data/lite/`, only the modules in `MODULES=a,b`, debugger on port 5678, sample log imported. See [`docs/DEV_LITE.md`](./docs/DEV_LITE.md). |
-| `make dev` | no | yes | API and web dev servers on the host with hot reload. Needs `uv` and `pnpm` (`make install` first). |
-| `make up` | yes | yes | Production-style images, detached, no reload. The quick-start mode. |
-| `make up DEV=1` | yes | yes | Adds [`compose.dev.yml`](./compose.dev.yml): `uvicorn --reload` and `next dev` with the source mounted. Runs in the foreground. |
-| Production | yes | yes | Adds [`docker-compose.prod.yml`](./docker-compose.prod.yml) (Caddy, TLS, single origin). No `make` target; see [`docs/DEPLOY.md`](./docs/DEPLOY.md). |
-
-Rule of thumb: build modules with `make lite`, work on the platform with `make up DEV=1` or `make dev`, check the production build with `make up`.
-
-## Develop modules
-
-Module work runs natively, without Docker or `.env`, and loads only the modules you name. With one module the whole stack (API, module bundler, Next.js dev server) used about 1 GB of RAM in testing and was up within 20 seconds after `make install`.
-
-### Prerequisites
-
-| Tool | Version | Install | Check |
-| --- | --- | --- | --- |
-| Git, `make` | any | see [above](#prerequisites) | `git --version` |
-| [uv](https://docs.astral.sh/uv/) | recent | `curl -LsSf https://astral.sh/uv/install.sh \| sh` or `brew install uv` | `uv --version` |
-| [Node.js](https://nodejs.org/) | 22 (as in the web image) | `brew install node@22`, or a version manager such as [fnm](https://github.com/Schniz/fnm): `fnm install 22` | `node --version` |
-| [pnpm](https://pnpm.io/) | any recent | `corepack enable pnpm` (ships with Node 22) | `pnpm --version` |
-| JDK 17+ | optional | only for JVM modules (`make jvm`) | `java -version` |
-
-uv installs the Python version pinned in [`.python-version`](./.python-version) (3.12) by itself.
-
-### Workflow
+### Stopping and updating
 
 ```bash
-git clone https://github.com/Process-Science-Community/MATE.git
-cd MATE
-make install                  # uv + pnpm dependencies, once
-make new ID=my_mod            # scaffold modules/my_mod/ (PANEL=1 adds a React panel)
-make lite MODULES=my_mod      # API + web with hot reload, demo login, sample log
+make down                          # stop; data in ./data and the Docker volumes is kept
+git pull && make up                # update to the latest version
 ```
 
-Then:
+## Module development
 
-1. Open <http://localhost:3000/dev> and choose **Open Studio** to build the module page visually. Cards are saved to `modules/my_mod/layout.json`.
-2. Edit `modules/my_mod/module.py`; the API reloads on save.
-3. Set breakpoints and attach VS Code with **Attach: MATE API (lite)** (port 5678).
-4. Run `make test ID=my_mod`, then `make validate` before you ship.
+Modules are developed with the **lite stack**: the API and the web frontend run natively with hot reload, without Docker and without a `.env` file. Only the modules named in `MODULES` are loaded.
 
-`make lite MODULES=a,b` loads several modules, `make modules` lists all modules, `make reset` wipes the lite data. To ship a module, commit its folder under `modules/`, or zip it and upload it under **Modules → Install a module** (`/modules/import`).
+### Resource requirements
 
-| Read | For |
+Measured with a fresh clone and empty package caches on an Apple Silicon Mac:
+
+| Resource | Requirement |
 | --- | --- |
-| [`docs/DEV_LITE.md`](./docs/DEV_LITE.md) | Lite mode details, Studio card kinds, debugging, troubleshooting |
-| [`modules/README.md`](./modules/README.md) | The module contract: manifest, `module.py`, context API, frontend, dependencies |
+| Disk space | About 2.5 GB: repository (66 MB), Python environment (0.6 GB), Node.js packages (0.6 GB) and the package caches of uv and pnpm (1.2 GB). Modules with large dependencies add to this, for example `cv4cdd` more than 1.5 GB. |
+| Memory | About 1.5 GB with one module loaded (API, module bundler and Next.js development server) |
+| Time | `make install` about 20 seconds on a fast connection; `make lite` ready after about 15 seconds |
+| Free ports | 3000 (web), 8000 (API), 5678 (Python debugger) |
+
+### Step by step
+
+1. **Install the dependencies** (once per clone):
+
+   ```bash
+   git clone https://github.com/Process-Science-Community/MATE.git
+   cd MATE
+   make install                    # uv sync --extra dev and pnpm install
+   ```
+
+2. **Create a module** (skip this step to work on an existing module):
+
+   ```bash
+   make new ID=my_module           # creates modules/my_module/
+   make new ID=my_module PANEL=1   # alternatively: with a custom React panel
+   ```
+
+   The scaffold contains `manifest.yaml` (metadata and dependencies), `module.py` (the analysis), `layout.json` (the module page), `HOW_TO_USE.md` (user documentation) and `tests/`.
+
+3. **Start the lite stack:**
+
+   ```bash
+   make lite MODULES=my_module
+   ```
+
+   The stack signs you in as a demo user with administrator rights and imports a sample event log (120 cases, about 1,000 events) at first start. `Ctrl-C` stops all processes.
+
+4. **Design the module page.** Open <http://localhost:3000/dev> and select **Open Studio**. Text, controls, run buttons, charts, tables and tabs are placed visually and saved to `modules/my_module/layout.json`.
+
+5. **Implement the analysis** in `modules/my_module/module.py`. The module is reloaded on every save.
+
+6. **Debug.** In VS Code, run the launch configuration **Attach: MATE API (lite)**, which connects to port 5678.
+
+7. **Test and validate** before publishing:
+
+   ```bash
+   make test ID=my_module          # the module's tests
+   make validate                   # manifest, HOW_TO_USE.md and layout.json of all modules
+   ```
+
+8. **Publish.** Commit the folder under `modules/` and open a pull request, or package it as a ZIP file and upload it in MATE under **Modules → Install a module** (`/modules/import`).
+
+### Command reference
+
+| Command | Purpose |
+| --- | --- |
+| `make install` | Install Python and Node.js dependencies |
+| `make new ID=x [PANEL=1]` | Create a module scaffold |
+| `make widget ID=x NAME=y` | Add a custom TSX widget to a module |
+| `make lite MODULES=a,b` | Start the lite stack with the listed modules; without `MODULES`, all modules are loaded |
+| `make lite PORT=8001 WEB_PORT=3001` | Use other ports, for example alongside a running Docker stack |
+| `make modules` | List all modules with version and runtime |
+| `make test ID=x` | Run the tests of one module |
+| `make validate` | Validate all modules |
+| `make reset` | Delete the data of the lite stack (`data/lite/`) |
+
+Further reading:
+
+| Document | Contents |
+| --- | --- |
+| [`docs/DEV_LITE.md`](./docs/DEV_LITE.md) | Lite stack in detail, Studio card types, debugging per execution mode, troubleshooting |
+| [`modules/README.md`](./modules/README.md) | Module contract: manifest, `module.py`, context API, frontend, dependencies |
 | [`modules/PROTOCOL.md`](./modules/PROTOCOL.md) | Wire protocol for subprocess and JVM modules |
-| [`modules/SIDECAR_SERVICES.md`](./modules/SIDECAR_SERVICES.md) | Modules that need their own container (for example Neo4j) |
+| [`modules/SIDECAR_SERVICES.md`](./modules/SIDECAR_SERVICES.md) | Modules that require an additional service such as Neo4j |
+
+## Production deployment
+
+A production instance adds the overlay [`docker-compose.prod.yml`](./docker-compose.prod.yml) to the base stack. The overlay adds a Caddy reverse proxy that terminates TLS and serves the web frontend, the API (`/api/v1`) and Keycloak (`/auth`) from a single origin; the individual service ports are no longer published. The complete runbook, including verification steps and updates, is [`docs/DEPLOY.md`](./docs/DEPLOY.md).
+
+> [!IMPORTANT]
+> The overlay and the Caddy configuration are written for the instance at `mate.uni-muenster.de`. Other institutions have to replace this host name in [`docker-compose.prod.yml`](./docker-compose.prod.yml) and [`infra/caddy/Caddyfile`](./infra/caddy/Caddyfile).
+
+### Requirements
+
+- A Linux server with Docker Engine and Compose v2.24 or newer.
+- A DNS name and a TLS certificate whose `fullchain.pem` and `privkey.pem` are readable by Docker.
+- Resources as for the [local Docker stack](#resource-requirements), plus storage for event logs. Event logs can alternatively be kept in S3-compatible object storage ([`docs/S3_OFFLOAD.md`](./docs/S3_OFFLOAD.md)).
+
+### Setup
+
+```bash
+git clone https://github.com/Process-Science-Community/MATE.git ~/mate
+cd ~/mate
+sudo apt install -y jq
+PUBLIC_URL=https://mate.example.org ./infra/bootstrap-vm.sh --no-start
+```
+
+[`infra/bootstrap-vm.sh`](./infra/bootstrap-vm.sh) generates a `.env` file with random values for `AUTH_SECRET`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_DB_PASSWORD` and `KEYCLOAK_ADMIN_PASSWORD`, and registers `PUBLIC_URL` in the Keycloak realm. Add the following to `.env`:
+
+```bash
+TLS_CERT_DIR=/etc/letsencrypt/live/<host name>   # required by the overlay
+APP_DB_PASSWORD=<random value>                   # otherwise the default "mate" is used
+```
+
+Then start the stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+### Checklist before going live
+
+| Item | Action |
+| --- | --- |
+| Demo login | `DEMO_MODE` must not be `true`. The bootstrap script does not set it, and the compose default is `false`. |
+| Secrets | All values generated by the bootstrap script; `APP_DB_PASSWORD` set |
+| Administrator | Assign the realm role `admin` to at least one account in Keycloak |
+| Institutional login | The realm contains a placeholder identity provider `keycloak-oidc`. Configure it ([`docs/DEPLOY.md`](./docs/DEPLOY.md), "University login") or set `KEYCLOAK_IDP_HINT=` (empty) to use Keycloak's own login form |
+| Usage tracking | The default `USER_TRACKING_ONBOARDING=force` records usage for every user without an opt-out. Choose `on` or `off` according to your data protection requirements |
+| `cv4cdd` | Requires a detection model, which MATE does not ship. Upload one on the module's settings page or pin one for all users under **Admin → Controls**, or disable the module |
+| `actor_performance` | Requires the Neo4j service: set `COMPOSE_PROFILES=graph` and `NEO4J_PASSWORD` in `.env` |
+| MCP server | Remains disabled unless `MCP_ENABLED` is set; see [`docs/DEPLOY.md`](./docs/DEPLOY.md), "MCP server" |
+| Backups | Back up `./data/` and the PostgreSQL database (see [Data and persistence](#data-and-persistence)) |
 
 ## Bundled modules
 
-Every folder under [`modules/`](./modules/) is discovered at startup. Enable, disable and configure modules on the **Modules** page (`/modules`); `make modules` lists them.
+All modules under [`modules/`](./modules/) are discovered at startup. They are enabled, disabled and configured on the **Modules** page (`/modules`); `make modules` lists them.
 
-| Module | What it does |
+| Module | Method |
 | --- | --- |
-| `discovery` | Process models as directly-follows graph, Petri net (Alpha or Inductive miner), process tree, heuristics net or BPMN |
-| `ocel_discovery` | Object types, activities and the object-centric directly-follows graph for OCEL logs |
-| `conformance` | Checks a log against an uploaded BPMN model: fitness, precision, per-activity deviations |
+| `discovery` | Process discovery: directly-follows graph, Petri net (Alpha or Inductive Miner), process tree, heuristics net, BPMN |
+| `ocel_discovery` | Object-centric discovery: object types, activities and the object-centric directly-follows graph |
+| `conformance` | Conformance checking against a BPMN model: fitness, precision and deviations per activity |
 | `performance` | Throughput, cycle and lead times, 90th-percentile cycle time, bottlenecks |
-| `performance_java` | Timing metrics from a JVM module: cycle time, throughput, longest waits, slowest hand-offs |
-| `performance_over_time` | The performance KPIs per time slice, as a trend |
-| `actor_performance` | Waiting times decomposed by actor behaviour (needs the Neo4j sidecar, see [`docs/DEPLOY.md`](./docs/DEPLOY.md)) |
-| `complexity` | Entropy-based variant and sequence complexity, Lempel-Ziv, affinity, structure, Pentland's task and process complexity |
-| `complexity_v2` | 28 complexity metrics (entropy, size, variation, trace distance) plus the transition-probability matrix |
-| `complexity_over_time`, `complexity_v2_over_time` | The complexity suites per time slice, as a trend |
-| `log_evolution` | Case arrivals vs. completions, work in progress, activity mix over time, dotted chart |
+| `performance_java` | Cycle time, throughput, longest waiting activities and slowest hand-offs (JVM module) |
+| `performance_over_time` | Performance indicators per time slice |
+| `actor_performance` | Decomposition of waiting times by actor behaviour, based on event knowledge graphs (requires Neo4j) |
+| `complexity` | Variant and sequence entropy, Lempel-Ziv complexity, affinity, structure, Pentland's task and process complexity |
+| `complexity_v2` | 28 complexity measures (entropy, size, variation, trace distance) and the transition-probability matrix |
+| `complexity_over_time`, `complexity_v2_over_time` | The two complexity suites per time slice |
+| `log_evolution` | Case arrivals and completions, work in progress, activity mix over time, dotted chart |
 | `temporal_mapper` | Recurring activity patterns across calendar periods |
-| `process_comparison` | Two filtered views side by side: DFG diff, variant differences, similarity scores |
-| `pcomp` | Statistical test whether two logs differ (Earth Mover's Distance, permutation or bootstrap test) |
-| `cv4cdd` | Concept drift detection (sudden, gradual, incremental, recurring) with a computer-vision model |
-| `concept_drift_explainer` | Ranked, cited explanations for detected drifts from your uploaded documents; sends data to an external LLM |
-| `agentsimulator` | Agent-based simulation that learns from a log and generates synthetic logs |
+| `process_comparison` | Comparison of two filtered views: directly-follows graph difference, variants, similarity measures |
+| `pcomp` | Statistical test for differences between two event logs (Earth Mover's Distance, permutation or bootstrap test) |
+| `cv4cdd` | Concept drift detection (sudden, gradual, incremental, recurring) with a computer vision model; requires a detection model |
+| `concept_drift_explainer` | Explanations for detected drifts based on uploaded documents; sends data to an external LLM provider |
+| `agentsimulator` | Agent-based simulation that learns from an event log and generates synthetic logs |
 
 ## Configuration
 
-All settings live in the root `.env`; [`.env.example`](./.env.example) documents every variable. The most important ones:
+All settings are read from the root `.env` file. [`.env.example`](./.env.example) documents every variable; the most relevant are:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DEMO_MODE` | `true` | Skip Keycloak and sign in as a local demo user. Never enable outside local development. |
-| `DEMO_ADMIN` | `false` | Give the demo user the `admin` role. |
-| `AUTH_SECRET` | empty | Encrypts the Auth.js session cookie. Required when `DEMO_MODE=false`. Generate with `openssl rand -base64 32`. |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | URL the browser uses to reach the API. Inlined at build time: rebuild after changing it (`make build`). |
-| `USER_TRACKING_ONBOARDING` | `force` | Usage tracking policy: `force` (always on, no opt-out), `on` (opt-out), `off` (opt-in). |
-| `STORAGE_MODE` | `local` | `local` keeps logs and results under `data/`; `s3` uses an S3-compatible bucket. See [`docs/S3_OFFLOAD.md`](./docs/S3_OFFLOAD.md). |
-| `MCP_ENABLED` | `false` | Enables the MCP endpoint at `/mcp`. See [`docs/MCP.md`](./docs/MCP.md). |
-| `KEYCLOAK_CLIENT_SECRET` | dev value | Secret of the `flows-funds-web` client. Change it before any non-local deployment. |
-| `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD` | `admin`, `admin` | Keycloak admin console login. |
-
-The browser origin allowed by the API (`CORS_ORIGINS`) is set to `http://localhost:3000` in [`docker-compose.yml`](./docker-compose.yml); change it there if the web origin changes.
+| `DEMO_MODE` | `true` in `.env.example` | Sign in as a local demo user without Keycloak. Local use only |
+| `DEMO_ADMIN` | `false` | Grant the demo user the `admin` role |
+| `AUTH_SECRET` | empty | Encryption key of the session cookie. Required when `DEMO_MODE=false`; generate with `openssl rand -base64 32` |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | API address used by the browser. Compiled into the web image; run `make build` after a change |
+| `USER_TRACKING_ONBOARDING` | `force` | Usage tracking: `force` (always on, no opt-out), `on` (opt-out), `off` (opt-in) |
+| `STORAGE_MODE` | `local` | `local` stores event logs under `data/`; `s3` uses an S3-compatible bucket ([`docs/S3_OFFLOAD.md`](./docs/S3_OFFLOAD.md)) |
+| `MCP_ENABLED` | `false` | Enables the MCP endpoint at `/mcp` ([`docs/MCP.md`](./docs/MCP.md)) |
+| `KEYCLOAK_CLIENT_SECRET` | development value | Secret of the `flows-funds-web` client; must match the realm configuration |
+| `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD` | `admin`, `admin` | Credentials of the Keycloak administration console |
 
 ### MATE AI
 
-The chat panel on the right uses an LLM provider you configure under **Settings → AI**. The provider, model and API key are stored per user in the metadata database. Requests go only to the provider you configure.
+The chat assistant uses an LLM provider that each user configures under **Settings → AI**. Provider, model and API key are stored per user in the metadata database. Requests are sent only to the configured provider.
 
-### Privacy and usage tracking
+### Usage tracking
 
-Usage events are recorded in the local metadata database; nothing is sent to an external analytics service. With the default `USER_TRACKING_ONBOARDING=force`, tracking is on for everyone and the **Settings → Privacy** tab is hidden. Accounts with a role listed in `USER_TRACKING_EXEMPT_ROLES` (default `reviewer`) are never tracked.
+Usage events are stored in the metadata database of the instance; no external analytics service is involved. With `USER_TRACKING_ONBOARDING=force`, tracking applies to every user and the **Settings → Privacy** tab is hidden. Accounts holding a role listed in `USER_TRACKING_EXEMPT_ROLES` (default `reviewer`) are never tracked.
 
 ## Data and persistence
 
-| What | Docker stack (`make up`) | Host modes (`make dev`, `make lite`) |
+| Data | Docker stack | Lite stack (`make lite`) |
 | --- | --- | --- |
-| Metadata (users, jobs, settings) | PostgreSQL 16 in the `app-db-data` volume | SQLite: `data/metadata.db` (`make dev`), `data/lite/metadata.db` (`make lite`) |
-| Event logs (Parquet) and module results | `data/users/<user_id>/` | `data/users/<user_id>/` (`make lite`: under `data/lite/`) |
-| Keycloak users and realm | PostgreSQL 16 in the `kc-data` volume | not used in demo mode |
-| Python runtimes and module dependencies | `data/uv-python/`, `modules/<id>/.venv/` | host `uv` cache, `modules/<id>/.venv/` |
+| Metadata (users, jobs, settings) | PostgreSQL 16, volume `app-db-data` | SQLite, `data/lite/metadata.db` |
+| Event logs (Parquet) and module results | `data/users/<user id>/` | `data/lite/users/<user id>/` |
+| Keycloak users and realm | PostgreSQL 16, volume `kc-data` | not used |
+| Module dependencies | `modules/<id>/.venv/` | `modules/<id>/.venv/` |
 
-- `./data/` and `./modules/` are bind-mounted into the containers. To back up the Docker stack, copy `./data/` **and** dump the `app-db` database (or use **Admin → Export**, which downloads a `pg_dump` file; on SQLite it is a `.db` copy).
-- Modules uploaded through the UI land in `data/uploaded_modules/<id>/`, separate from the bundled ones in `modules/`. Each user gets the default modules on first login; **Restore defaults** on the Modules page re-adds removed ones.
-- Each user's event logs and results live under `data/users/<user_id>/`, keyed by the Keycloak user id; the API filters jobs and live events by user.
+- `./data/` and `./modules/` are mounted into the containers. A complete backup of the Docker stack consists of `./data/` and a dump of the `app-db` database. Administrators can download such a dump under **Admin → Export** (a `pg_dump` file on PostgreSQL, a copy of the database file on SQLite).
+- Modules uploaded through the user interface are stored in `data/uploaded_modules/<id>/`, separate from the bundled modules in `modules/`. Each user receives the bundled modules at first sign-in; **Restore defaults** on the Modules page adds removed modules again.
+- Event logs and results are stored per user, keyed by the Keycloak user ID; the API delivers jobs and live updates only to their owner.
 
-## Tests
+## Quality checks
 
 ```bash
-make install       # once: uv + pnpm dependencies on the host
-make test          # Python test suite (pytest, on the host)
-make typecheck     # TypeScript check of the web app
-make validate      # validate every module's manifest and layout
+make install       # once
+make test          # Python test suite
+make typecheck     # TypeScript type check of the web frontend
+make validate      # validation of all modules
 ```
 
-## Common commands
-
-Run `make` (or `make help`) for the full list.
-
-| Command | What it does |
-| --- | --- |
-| `make up` / `make down` | Start / stop the Docker stack |
-| `make up DEV=1` | Docker stack with hot reload |
-| `make build` | Rebuild both images |
-| `docker compose logs -f api` | Follow the API logs (`web`, `keycloak` likewise) |
-| `make lite MODULES=a,b` | Native low-memory stack for module work |
-| `make new ID=x` | Scaffold a module |
-| `make modules` | List modules |
-| `make docs` | Rebuild the user manual from `landing/docs/content/` |
-| `make clean` | Delete event logs, module results, user data and the SQLite metadata under `data/`. Irreversible. |
+`make` without arguments lists all available targets.
 
 ## Repository layout
 
@@ -308,32 +388,38 @@ MATE/
 ├── apps/
 │   ├── api/                 # FastAPI backend (Python 3.12)
 │   └── web/                 # Next.js 15 frontend
-├── modules/                 # Bundled modules, one folder each
+├── modules/                 # Bundled analysis modules, one folder each
 ├── packages/
 │   ├── module-sdk-py/       # Python SDK for module authors
 │   ├── module-sdk-ts/       # TypeScript SDK for module frontends
-│   ├── module-sdk-jvm/      # JVM SDK for Java modules
+│   ├── module-sdk-jvm/      # SDK for JVM modules
 │   └── shared-types/        # TypeScript types generated from the OpenAPI schema
-├── infra/                   # Keycloak realm, theme and setup scripts
+├── infra/                   # Keycloak realm and theme, Caddy, setup scripts
 ├── landing/                 # Website and user manual (GitHub Pages)
-├── docs/                    # Design spec, deploy runbook, MCP reference
+├── docs/                    # Design specification, deployment, MCP reference
 ├── scripts/                 # Helper scripts used by the Makefile
 ├── docker-compose.yml       # Base stack
-├── compose.dev.yml          # Dev overlay: hot reload (make up DEV=1)
-└── docker-compose.prod.yml  # Prod overlay: Caddy and TLS
+├── compose.dev.yml          # Development overlay with hot reload (make up DEV=1)
+└── docker-compose.prod.yml  # Production overlay (Caddy, TLS)
 ```
+
+For work on the platform itself, `make up DEV=1` runs the Docker stack with hot reload, and `make dev` runs the API and the web frontend natively with the configuration in `.env`.
 
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
-| [User manual](https://process-science-community.github.io/MATE/docs/site/introduction.html) | Using MATE: import, analyses, dashboards. Source in [`landing/docs/`](./landing/docs/). |
-| [`docs/README.md`](./docs/README.md) | Index of all documentation in the repository |
-| [`docs/INSTRUCTIONS.md`](./docs/INSTRUCTIONS.md) | Design spec and architecture rationale |
-| [`docs/DEV_LITE.md`](./docs/DEV_LITE.md) | Module development with `make lite` |
-| [`docs/DEPLOY.md`](./docs/DEPLOY.md) | Production deployment |
+| [User manual](https://process-science-community.github.io/MATE/docs/site/introduction.html) | Working with MATE: import, analyses, dashboards. Source in [`landing/docs/`](./landing/docs/), rebuilt with `make docs` |
+| [`docs/README.md`](./docs/README.md) | Index of all documentation in this repository |
+| [`docs/INSTRUCTIONS.md`](./docs/INSTRUCTIONS.md) | Design specification and architectural rationale |
+| [`docs/DEV_LITE.md`](./docs/DEV_LITE.md) | Module development with the lite stack |
+| [`docs/DEPLOY.md`](./docs/DEPLOY.md) | Production deployment runbook |
 | [`docs/MCP.md`](./docs/MCP.md) | MCP server for AI clients |
 | [`modules/README.md`](./modules/README.md) | Module authoring contract |
+
+## Crediting methods
+
+Each module cites the publications it implements in the `source` field of its manifest, and MATE displays these citations in the module's information popover. When publishing results obtained with a module, please cite the publications listed there.
 
 ## License
 
