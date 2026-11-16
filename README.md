@@ -173,7 +173,7 @@ Rule of thumb: build modules with `make lite`, work on the platform with `make u
 
 ## Develop modules
 
-Module work runs natively, without Docker or `.env`, and loads only the modules you name.
+Module work runs natively, without Docker or `.env`, and loads only the modules you name. With one module the whole stack (API, module bundler, Next.js dev server) used about 1 GB of RAM in testing and was up within 20 seconds after `make install`.
 
 ### Prerequisites
 
