@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install checkenv preflight dev api web lite reset e2e new widget modules validate up down build test jvm typecheck fmt clean codegen docs deploy
+.PHONY: ci check-changed ci-plan ci-static ci-api ci-modules ci-web ci-jvm help install checkenv preflight dev api web lite reset e2e new widget modules validate up down build test jvm typecheck fmt clean codegen docs deploy
 
 # Tab indentation is required for Make recipes.
 
@@ -87,6 +87,47 @@ endif
 
 jvm: ## Build the JVM module SDK + example + conformance jars (needs JDK 17+)
 	cd packages/module-sdk-jvm && ./gradlew build shadowJar :examples:performance-metrics:copyExampleJar
+
+# --- CI lanes (docs/ci/README.md). GitHub Actions runs exactly these targets. ---------
+BASE ?= origin/main
+MODULES_TO_TEST ?= $(notdir $(patsubst %/tests,%,$(wildcard modules/*/tests)))
+
+check-changed: ## Run only the CI lanes this branch's diff selects (vs $(BASE)); run before pushing
+	@python3 scripts/ci/run_lanes.py --base $(BASE)
+
+ci: ## Run every CI lane locally (the full suite)
+	@python3 scripts/ci/run_lanes.py --full
+
+ci-plan: ## Show which CI lanes the diff vs $(BASE) selects, and why
+	@python3 scripts/ci/run_lanes.py --base $(BASE) --dry-run
+
+ci-static: ## Lane: ruff, format, module manifests + guides, pyright ratchet, planner tests
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run --extra dev mate-module validate
+	uv run python -m mate.sdk.guide modules
+	uv run --extra dev pytest scripts/ci/test_plan.py -q -p no:cacheprovider
+	uv run --extra dev python scripts/ci/pyright_ratchet.py
+
+API_TESTS ?= apps/api/tests
+ci-api: ## Lane: API test suite, parallel (-n auto); API_TESTS="file ..." narrows it
+	uv run --extra dev pytest $(API_TESTS) -q -p no:cacheprovider -n auto --durations=10
+
+ci-modules: ## Lane: module test suites (MODULES_TO_TEST="a b", default all)
+	@fail=0; for m in $(MODULES_TO_TEST); do \
+	  echo "--- module $$m"; \
+	  uv run --extra dev mate-module test $$m -q; rc=$$?; \
+	  if [ $$rc -eq 5 ]; then echo "::warning title=$$m::no module tests ran (all skipped: module-only deps missing from the platform env)"; \
+	  elif [ $$rc -ne 0 ]; then echo "::error title=$$m::module tests failed (rc=$$rc)"; fail=1; fi; \
+	done; exit $$fail
+
+ci-web: ## Lane: web typecheck + module panel bundles
+	cd apps/web && pnpm typecheck
+	cd apps/web && node scripts/bundle-modules.mjs
+
+ci-jvm: ## Lane: JVM SDK build + cross-runtime conformance (needs JDK 17+)
+	$(MAKE) jvm
+	uv run --extra dev pytest apps/api/tests/test_worker_conformance.py -q -p no:cacheprovider
 
 typecheck: ## Type-check the web app
 	cd apps/web && pnpm typecheck

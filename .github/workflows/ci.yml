@@ -1,0 +1,191 @@
+# CI for Mate. Design, rules and measurements: docs/ci/README.md.
+#
+#   plan  -> decides which lanes this change can affect (scripts/ci/plan.py)
+#   lanes -> static | api | modules | web | jvm, each one `make ci-<lane>` (same as local)
+#   gate  -> "CI gate", the single check to mark required in branch protection
+#
+# PRs run the selected lanes. Pushes to main, the weekly schedule and manual runs
+# always run the full suite. Repository variable MATE_CI_SELECTION=full turns PR
+# selection off without editing this file (rollback switch).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly full run on main: catches toolchain/runner drift no diff triggers.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a PR supersedes the running check; main runs are never cancelled
+  # so every main commit keeps its own evidence.
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.11.32"
+  PNPM_VERSION: "10.28.0"
+  NODE_VERSION: "22"
+  FORCE_COLOR: "1"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_static: ${{ steps.plan.outputs.run_static }}
+      run_api: ${{ steps.plan.outputs.run_api }}
+      run_modules: ${{ steps.plan.outputs.run_modules }}
+      run_web: ${{ steps.plan.outputs.run_web }}
+      run_jvm: ${{ steps.plan.outputs.run_jvm }}
+      modules_json: ${{ steps.plan.outputs.modules_json }}
+      api_targets: ${{ steps.plan.outputs.api_targets }}
+    steps:
+      # PR checkouts are the test-merge commit; depth 2 fetches it plus both parents,
+      # which is all the diff needs (HEAD^1 = the base tip GitHub merged onto).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          MATE_CI_SELECTION: ${{ vars.MATE_CI_SELECTION }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            python3 scripts/ci/plan.py --full --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+          elif [ "$(git rev-list --parents -n1 HEAD | wc -w)" -ne 3 ]; then
+            # Not a merge commit: the diff base is unknown, so widen.
+            echo "::warning::PR checkout is not a merge commit; running the full suite"
+            python3 scripts/ci/plan.py --full --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+          else
+            python3 scripts/ci/plan.py --base HEAD^1 --head HEAD --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+          fi
+          cat "$GITHUB_STEP_SUMMARY"
+
+  static:
+    needs: plan
+    if: needs.plan.outputs.run_static == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - run: make ci-static
+
+  api:
+    needs: plan
+    if: needs.plan.outputs.run_api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      # Empty api_targets = whole suite; otherwise the planner narrowed it (reasons in the plan summary).
+      - env:
+          API_TARGETS: ${{ needs.plan.outputs.api_targets }}
+        run: make ci-api ${API_TARGETS:+API_TESTS="$API_TARGETS"}
+
+  modules:
+    needs: plan
+    if: needs.plan.outputs.run_modules == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      # All selected module suites in one job: together they take about a minute,
+      # less than the setup a per-module matrix would repeat.
+      - env:
+          MODULES_JSON: ${{ needs.plan.outputs.modules_json }}
+        run: make ci-modules MODULES_TO_TEST="$(python3 -c 'import json,os; print(" ".join(json.loads(os.environ["MODULES_JSON"])))')"
+
+  web:
+    needs: plan
+    if: needs.plan.outputs.run_web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: make ci-web
+
+  jvm:
+    needs: plan
+    if: needs.plan.outputs.run_jvm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Only main writes the Gradle cache; PRs restore it.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - run: make ci-jvm
+
+  gate:
+    # The one required check. Passes only if the plan ran and every lane the plan
+    # selected succeeded; a lane the plan skipped is fine, a lane that was selected
+    # but skipped/cancelled is not.
+    name: CI gate
+    needs: [plan, static, api, modules, web, jvm]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS"])
+          plan = needs["plan"]
+          if plan["result"] != "success":
+              print(f"::error::plan job {plan['result']}"); sys.exit(1)
+          out, bad = plan["outputs"], []
+          for lane in ("static", "api", "modules", "web", "jvm"):
+              selected = out.get(f"run_{lane}") == "true"
+              result = needs[lane]["result"]
+              print(f"{lane:8} selected={selected!s:5} result={result}")
+              if selected and result != "success":
+                  bad.append(f"{lane}={result}")
+          if bad:
+              print(f"::error::selected lanes did not pass: {', '.join(bad)}"); sys.exit(1)
+          EOF
