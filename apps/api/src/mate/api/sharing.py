@@ -126,3 +126,61 @@ async def user_can_access_log(session: AsyncSession, log_id: str, user_id: str) 
     if row is None or row.deleted_at is not None:
         return False
     return row.user_id == user_id or await user_can_read_log(session, log_id, user_id)
+
+
+def _dashboard_module_ids(layout_json: object) -> set[str]:
+    """Module ids referenced by the cards of a dashboard ``layout_json`` blob.
+
+    Decoded in Python (portable across Postgres/SQLite). Tolerant of shape drift:
+    anything that isn't a list of dict items with a string ``module_id`` is ignored.
+    """
+    ids: set[str] = set()
+    items = layout_json.get("items") if isinstance(layout_json, dict) else None
+    if isinstance(items, list):
+        for it in items:
+            if isinstance(it, dict):
+                mid = it.get("module_id")
+                if isinstance(mid, str) and mid:
+                    ids.add(mid)
+    return ids
+
+
+async def user_can_read_log_module(
+    session: AsyncSession, log_id: str, user_id: str, module_id: str
+) -> bool:
+    """Cross-account read of ONE module's outputs for ``log_id`` via sharing.
+
+    Tighter than :func:`user_can_read_log`: a shared dashboard grants the
+    recipient read access only to the modules it actually places as cards, not to
+    every module's outputs for the whole log. The owner case is handled by the
+    caller. See the security note in ``user_can_access_log_module``.
+    """
+    team_ids = await user_team_ids(session, user_id)
+    rows = (
+        await session.execute(
+            select(Dashboard.layout_json)
+            .join(DashboardShare, DashboardShare.dashboard_id == Dashboard.id)
+            .where(
+                Dashboard.event_log_id == log_id,
+                _share_target_clause(user_id, team_ids),
+            )
+        )
+    ).all()
+    return any(module_id in _dashboard_module_ids(layout_json) for (layout_json,) in rows)
+
+
+async def user_can_access_log_module(
+    session: AsyncSession, log_id: str, user_id: str, module_id: str
+) -> bool:
+    """Owner, or a share recipient for a board that actually places ``module_id``.
+
+    The module-scoped read gate: a dashboard shared with the user exposes only the
+    modules it shows, not the log's every module output (which ``user_can_read_log``
+    would otherwise grant). Raw event rows stay owner-only regardless.
+    """
+    row = await session.get(EventLog, log_id)
+    if row is None or row.deleted_at is not None:
+        return False
+    if row.user_id == user_id:
+        return True
+    return await user_can_read_log_module(session, log_id, user_id, module_id)

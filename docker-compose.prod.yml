@@ -145,6 +145,11 @@ services:
       # prod box reloads modules mid-job and can self-loop on build-artifact
       # writes (`.installed-hash`, `__pycache__`). Never run the VM in dev.
       ENV: prod
+      # Hard-pin the demo bypass off on the VM, regardless of the operator's
+      # .env. The demo sentinel token is unauthenticated; the API also refuses
+      # to boot with ENV=prod + DEMO_MODE (config._refuse_demo_in_prod).
+      DEMO_MODE: "false"
+      DEMO_ADMIN: "false"
       CORS_ORIGINS: '["https://mate.uni-muenster.de"]'
       KEYCLOAK_ISSUER: https://mate.uni-muenster.de/auth/realms/flows-funds
       # Internal (container -> container) fetch of the signing keys. Note the

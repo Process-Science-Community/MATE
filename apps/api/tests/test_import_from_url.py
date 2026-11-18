@@ -43,7 +43,7 @@ async def test_gzip_encoded_download_is_stored_raw(
 
     _serve(monkeypatch, handler)
     dest = tmp_path / "original.csv"
-    await log_aggregates._download("https://logs.example/log.csv", dest)  # pyright: ignore[reportPrivateUsage]
+    await log_aggregates._download("https://93.184.216.34/log.csv", dest)  # pyright: ignore[reportPrivateUsage]
 
     # Still compressed: the importer unpacks it later, behind the zip-bomb guards.
     assert dest.read_bytes() == bomb
@@ -57,7 +57,7 @@ async def test_download_is_capped(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     _serve(monkeypatch, lambda _request: httpx.Response(200, stream=httpx.ByteStream(b"x" * 4096)))
 
     with pytest.raises(HTTPException) as caught:
-        await log_aggregates._download("https://logs.example/log.csv", tmp_path / "o.csv")  # pyright: ignore[reportPrivateUsage]
+        await log_aggregates._download("https://93.184.216.34/log.csv", tmp_path / "o.csv")  # pyright: ignore[reportPrivateUsage]
     assert caught.value.status_code == 413
     assert len((tmp_path / "o.csv").read_bytes()) <= 1024
 
@@ -71,10 +71,10 @@ async def test_undecodable_encoding_and_http_errors_are_refused(
         lambda _request: httpx.Response(200, content=b"\x1b", headers={"content-encoding": "br"}),
     )
     with pytest.raises(HTTPException) as caught:
-        await log_aggregates._download("https://logs.example/log.csv", tmp_path / "a.csv")  # pyright: ignore[reportPrivateUsage]
+        await log_aggregates._download("https://93.184.216.34/log.csv", tmp_path / "a.csv")  # pyright: ignore[reportPrivateUsage]
     assert caught.value.status_code == 415
 
     _serve(monkeypatch, lambda _request: httpx.Response(404))
     with pytest.raises(HTTPException) as caught:
-        await log_aggregates._download("https://logs.example/log.csv", tmp_path / "b.csv")  # pyright: ignore[reportPrivateUsage]
+        await log_aggregates._download("https://93.184.216.34/log.csv", tmp_path / "b.csv")  # pyright: ignore[reportPrivateUsage]
     assert caught.value.status_code == 400

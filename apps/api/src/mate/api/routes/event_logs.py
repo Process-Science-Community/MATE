@@ -79,6 +79,27 @@ def _runtime_dep() -> JobRuntime:
 
 _RuntimeDep = Annotated[JobRuntime, Depends(_runtime_dep)]
 
+# A mapping probe only needs a sample of the file; cap the streamed upload so a
+# hostile multi-GB body can't exhaust the parser/disk. The real import has its
+# own (larger) decompression cap; this is just for the cheap wizard probe.
+_PROBE_MAX_UPLOAD_BYTES = 256 * 1024 * 1024
+
+
+async def _stream_upload_capped(
+    file: UploadFile, dest: Path, limit: int = _PROBE_MAX_UPLOAD_BYTES
+) -> None:
+    """Stream an upload to ``dest``, rejecting with 413 once it exceeds ``limit``."""
+    written = 0
+    async with aiofiles.open(dest, "wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            written += len(chunk)
+            if written > limit:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File is larger than {human_bytes(limit)}; upload a smaller sample.",
+                )
+            await out.write(chunk)
+
 
 @router.post(
     "/stage",
@@ -579,10 +600,14 @@ async def create_event_log_from_url(
 
 @router.post("/probe-xml", response_model=XmlProbeResponse)
 async def probe_xml_upload(
+    user: CurrentUserDep,
     file: Annotated[UploadFile, File(description="XML file to probe for fields")],
 ) -> XmlProbeResponse:
     """Inspect an uploaded XML file and return its candidate event element +
     field list. Drives the import-form mapping wizard before the actual upload.
+
+    Authenticated like every other route (login is mandatory), and the sample
+    stream is capped so an anonymous/giant upload can't exhaust the parser.
     """
     # Stream the upload to a temp file so the probe can use lxml's path-based
     # parsing without holding the whole document in memory twice.
@@ -590,9 +615,7 @@ async def probe_xml_upload(
     os.close(fd)
     tmp_path = Path(tmp_name)
     try:
-        async with aiofiles.open(tmp_path, "wb") as out:
-            while chunk := await file.read(1024 * 1024):
-                await out.write(chunk)
+        await _stream_upload_capped(file, tmp_path)
         # Avoid the late import of xml_parser at module-load time - lxml's
         # iterparse is sync and CPU-bound, so this runs in a thread. The probe
         # accepts compressed uploads (gz/bz2/xz/zip) - same contract as import.
@@ -628,18 +651,19 @@ async def probe_xml_upload(
 
 @router.post("/probe-json", response_model=JsonProbeResponse)
 async def probe_json_upload(
+    user: CurrentUserDep,
     file: Annotated[UploadFile, File(description="JSON file to probe for fields")],
 ) -> JsonProbeResponse:
     """Inspect an uploaded JSON file and return its candidate event array +
     field list (or flag it as OCEL). Drives the import-form mapping wizard.
+
+    Authenticated, with the same capped sample stream as probe-xml.
     """
     fd, tmp_name = tempfile.mkstemp(suffix=".json", prefix="ff-json-probe-")
     os.close(fd)
     tmp_path = Path(tmp_name)
     try:
-        async with aiofiles.open(tmp_path, "wb") as out:
-            while chunk := await file.read(1024 * 1024):
-                await out.write(chunk)
+        await _stream_upload_capped(file, tmp_path)
         from mate.api.ingest.json_parser import autodetect_mapping, probe_json
 
         def _probe_plain(p: Path) -> dict[str, Any]:
