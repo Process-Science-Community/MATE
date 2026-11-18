@@ -104,17 +104,29 @@ Re-run it after changing rules. A `MISS` is a rule bug: fix the rule or widen it
   `concept_drift_explainer` collects nothing on the platform env (its deps live only
   in the module's own venv); the lane reports this as a warning, never as a pass.
 
-## 4. Cost and feedback-time model
+## 4. Cost and feedback time
 
-Estimates from measured local lane times, plus an **assumed** 40 s per job for
-runner start, checkout and cached dependency install. Not measured on GitHub yet;
-replace them with real numbers once runs exist (§6).
+**Measured on GitHub** (run [44275332842](https://github.com/Process-Science-Community/MATE/actions/runs/44275332842),
+full suite, ubuntu-latest, warm caches, 2026-11-18):
 
-- Full suite: ~223 s of lane work in 5 jobs. The critical path is the API lane:
-  ~1.7 min with xdist versus ~3.6 min serial.
-- Replaying the 87 commits: always-full ≈ 614 runner-min / 435 jobs; with selection
-  ≈ 217 runner-min / 174 jobs, **about 65% less compute and 60% fewer jobs**.
-- Docs-only PRs (18% of history): plan + gate only, a few seconds of compute.
+| Job | Job wall time | of which the `make` step | Queue |
+|---|---|---|---|
+| plan | 5 s | - | 3 s |
+| static | 30 s | 15 s | 3 s |
+| web | 28 s | 9 s | 3 s |
+| modules | 55 s | 42 s | 3 s |
+| jvm | 84 s | 66 s | 3 s |
+| api | 97 s | 84 s | 3 s |
+| CI gate | 4 s | - | 3 s |
+
+- Feedback time for a full run: about **1 min 50 s** from push to gate (critical path
+  plan → api → gate). The API lane is the critical path; serial it would be ~3 min longer.
+- Compute for a full run: ~5 runner-minutes. Per-job overhead (start, checkout, cached
+  `uv sync`/`pnpm install`) is **13-19 s**, not the 40 s I assumed before measuring.
+- Replaying the 87 commits with these measured job times: always-full ≈ 454
+  runner-min, with selection ≈ 168 runner-min (**63% less**), and 60% fewer jobs.
+  Conservative: a partial module selection is still priced as the full 55 s job. A docs-only PR (18% of
+  history) costs plan + gate, about 10 s.
 
 Compute for public repositories on GitHub-hosted runners is free. The cost here is
 mainly **feedback time**, and the shared queue when agents push in parallel.
@@ -165,5 +177,7 @@ mainly **feedback time**, and the shared queue when agents push in parallel.
   skip. Running each suite in its materialised module venv would close that gap.
 - **Playwright e2e (`make e2e`)** is not in CI: it needs a running lite stack.
   A scheduled or `workflow_dispatch` lane is the cheapest next step.
-- Collect real numbers from the first GitHub runs (queue, setup, per-lane time,
-  PR-open to merge) and replace the estimates in §4.
+- Track PR-open to merge (agent cycle time) next to the per-lane times in §4, so
+  CI changes are judged on delivery and not only on runner-minutes.
+- Actions on Node 20 (`checkout@v4`, `setup-uv@v6`, `setup-java@v4`,
+  `setup-gradle@v4`) emit a deprecation warning; bump them when Node-24 majors are verified.
