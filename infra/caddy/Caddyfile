@@ -61,6 +61,22 @@
 	@prm path /.well-known/oauth-protected-resource
 	reverse_proxy @prm api:8000
 
+	# Keycloak's admin console and the `master` realm (the admin login) are not
+	# for the internet: anyone could otherwise guess passwords against the account
+	# that controls every user. The app never needs them publicly - the API and
+	# the keycloak-config job talk to keycloak:8080 on the internal network.
+	#
+	# Admins reach the console through an SSH tunnel to the VM (docs/DEPLOY.md,
+	# "Keycloak admin console"). A tunnelled connection enters via the host's
+	# loopback, so Caddy sees it coming from the Docker bridge gateway
+	# (172.16.0.0/12); requests through the university edge proxy come from its
+	# own address and get a 404. Must stay ABOVE the @kc proxy below.
+	@kcAdminPublic {
+		path /auth/admin /auth/admin/* /auth/realms/master /auth/realms/master/*
+		not remote_ip 172.16.0.0/12
+	}
+	respond @kcAdminPublic 404
+
 	# Keycloak, served under the /auth relative path (KC_HTTP_RELATIVE_PATH).
 	@kc path /auth/*
 	reverse_proxy @kc keycloak:8080

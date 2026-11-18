@@ -165,9 +165,10 @@ Two things must line up or login fails:
 
 The realm imports from `infra/keycloak/realm-export/flows-funds-realm.json`
 **only on the first boot** (empty Keycloak DB). On a re-deploy the import is
-skipped – change realm settings in the admin console at
-`https://mate.uni-muenster.de/auth/admin` (login = `KEYCLOAK_ADMIN` /
-`KEYCLOAK_ADMIN_PASSWORD`) instead.
+skipped – change realm settings in the admin console (login = `KEYCLOAK_ADMIN` /
+`KEYCLOAK_ADMIN_PASSWORD`) instead. The console is **not reachable from the
+internet**; open it through an SSH tunnel, see
+[Keycloak admin console](#keycloak-admin-console-ssh-tunnel-only).
 
 <details>
 <summary>Manual alternative (no script)</summary>
@@ -854,7 +855,60 @@ also guarantees the realm never loses its last admin here). For a **WWU-brokered
 user, deleting the Keycloak account is clean but not a permanent ban — a later
 university login mints a **new** `sub` = a fresh empty account.
 
+## Keycloak admin console (SSH tunnel only)
+
+Caddy answers 404 for `/auth/admin*` and `/auth/realms/master*` unless the
+request enters through the VM's own loopback (`@kcAdminPublic` in
+`infra/caddy/Caddyfile`). The admin login controls every account, so it is not
+exposed to password guessing from outside. The app is unaffected: the API and the
+`keycloak-config` job talk to `keycloak:8080` on the internal network.
+
+To open the console from your laptop:
+
+```bash
+# Terminal 1 – forward a local port to the VM's :443 (leave it running)
+ssh -p "$DEPLOY_PORT" -N -L 8443:127.0.0.1:443 "$DEPLOY_USER@$DEPLOY_HOST"
+```
+
+```bash
+# Terminal 2 (macOS) – a separate Chrome window that sends the site's hostname
+# through the tunnel, so Keycloak's redirects keep working
+open -na "Google Chrome" --args --user-data-dir=/tmp/mate-kc-admin \
+  --host-resolver-rules="MAP mate.uni-muenster.de 127.0.0.1:8443"
+```
+
+Then open `https://mate.uni-muenster.de/auth/admin/` in that window. If the VM's
+certificate does not match the hostname, the browser warns once; that hop is your
+own SSH tunnel. Close the window and stop the `ssh` command when done.
+
+Check from the VM that the block and the tunnel path both work:
+
+```bash
+curl -s -o /dev/null -w 'public:  %{http_code} (want 404)\n' https://mate.uni-muenster.de/auth/realms/master
+curl -sk -o /dev/null -w 'loopback: %{http_code} (want 200)\n' --resolve mate.uni-muenster.de:443:127.0.0.1 https://mate.uni-muenster.de/auth/realms/master
+```
+
+If `loopback` is also 404, the Docker network's gateway is outside
+`172.16.0.0/12`: read it with
+`docker network inspect mate_default -f '{{(index .IPAM.Config 0).Gateway}}'` and
+put that address into the `not remote_ip` line.
+
 ## Backup
+
+**Databases (hosted instance, Postgres).** `scripts/backup-db.sh` dumps the app
+database and the Keycloak database to `~/backups` (owner-only, 14 days kept).
+Install it once as a nightly job:
+
+```bash
+(crontab -l 2>/dev/null; echo '17 3 * * * $HOME/mate/scripts/backup-db.sh >> $HOME/backups/backup.log 2>&1') | crontab -
+```
+
+Restore one with
+`gunzip -c ~/backups/mate-<stamp>.sql.gz | docker exec -i mate-app-db psql -U mate mate`
+(into an empty database). The dumps hold personal data; keep them off the repo
+and copy them off the VM regularly, since a backup on the same disk does not
+survive losing the VM.
+
 
 `./data/` (SQLite metadata + Parquet logs + module results + cached runtimes)
 is bind-mounted – back it up by copying the directory. Keycloak users live in
