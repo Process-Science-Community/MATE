@@ -29,12 +29,17 @@ from mate.api.db.engine import get_sessionmaker
 def _apply(demo_mode: bool, demo_admin: bool) -> None:
     os.environ["DEMO_MODE"] = "true" if demo_mode else "false"
     os.environ["DEMO_ADMIN"] = "true" if demo_admin else "false"
+    # Demo mode is a dev-only bypass; Settings refuses ENV=prod + DEMO_MODE
+    # (config._refuse_demo_in_prod), so pin dev whenever the demo user is on.
+    if demo_mode:
+        os.environ["ENV"] = "dev"
     cfg.get_settings.cache_clear()
 
 
 def _restore() -> None:
     os.environ.pop("DEMO_MODE", None)
     os.environ.pop("DEMO_ADMIN", None)
+    os.environ.pop("ENV", None)
     cfg.get_settings.cache_clear()
 
 

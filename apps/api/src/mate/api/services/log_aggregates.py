@@ -41,6 +41,7 @@ from mate.api.modules.event_filters import validate_filters
 from mate.api.modules.event_log_access import EventLogAccess, file_identity
 from mate.api.modules.object_centric_log_access import ObjectCentricLogAccess
 from mate.api.modules.processing import log_imported_payload
+from mate.api.net_guard import assert_public_url
 from mate.api.schemas.common import utc_isoformat
 from mate.api.schemas.event_log_data import (
     ActivityCase,
@@ -790,42 +791,65 @@ async def ocel_object_type_counts(log_id: str, user_id: str) -> list[OcelObjectT
 _STORABLE_ENCODINGS = frozenset({"", "identity", "gzip", "x-gzip"})
 
 
+_MAX_DOWNLOAD_REDIRECTS = 5
+
+
 async def _download(url: str, dest: Path) -> None:
     """Stream ``url`` to ``dest``, capped at the upload unpack limit.
 
     Raw bytes only: httpx would otherwise undo a ``Content-Encoding`` in memory
     with no bound, so a few KB of gzip or brotli from a hostile server could
     inflate to gigabytes before a single byte reached the disk.
+
+    SSRF guard: every URL — the original and each redirect hop — is validated by
+    ``assert_public_url`` before the request, and redirects are followed manually
+    so an external URL can't 302 to an internal one. See mate.api.net_guard.
     """
     limit = get_settings().ingest_max_decompressed_bytes
+    current = url
     try:
-        async with (
-            httpx.AsyncClient(timeout=120, follow_redirects=True) as client,
-            client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as resp,
-        ):
-            if resp.status_code >= 400:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Remote server returned HTTP {resp.status_code} for the given URL.",
-                )
-            encoding = resp.headers.get("content-encoding", "").strip().lower()
-            if encoding not in _STORABLE_ENCODINGS:
-                raise HTTPException(
-                    status_code=415,
-                    detail=f"The server sent the file {encoding}-encoded, which can't be "
-                    "imported from a URL - download it and upload the file instead.",
-                )
-            written = 0
-            async with aiofiles.open(dest, "wb") as out:
-                async for chunk in resp.aiter_raw():
-                    written += len(chunk)
-                    if written > limit:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=False) as client:
+            for _hop in range(_MAX_DOWNLOAD_REDIRECTS + 1):
+                await assert_public_url(current)
+                async with client.stream(
+                    "GET", current, headers={"Accept-Encoding": "identity"}
+                ) as resp:
+                    if resp.is_redirect:
+                        location = resp.headers.get("location")
+                        if not location:
+                            raise HTTPException(
+                                status_code=400, detail="Redirect without a location header."
+                            )
+                        current = str(resp.url.join(location))
+                        continue
+                    if resp.status_code >= 400:
                         raise HTTPException(
-                            status_code=413,
-                            detail=f"The download is larger than {human_bytes(limit)}, the "
-                            "import limit (INGEST_MAX_DECOMPRESSED_BYTES).",
+                            status_code=400,
+                            detail=f"Remote server returned HTTP {resp.status_code} "
+                            "for the given URL.",
                         )
-                    await out.write(chunk)
+                    encoding = resp.headers.get("content-encoding", "").strip().lower()
+                    if encoding not in _STORABLE_ENCODINGS:
+                        raise HTTPException(
+                            status_code=415,
+                            detail=f"The server sent the file {encoding}-encoded, which can't be "
+                            "imported from a URL - download it and upload the file instead.",
+                        )
+                    written = 0
+                    async with aiofiles.open(dest, "wb") as out:
+                        async for chunk in resp.aiter_raw():
+                            written += len(chunk)
+                            if written > limit:
+                                raise HTTPException(
+                                    status_code=413,
+                                    detail=f"The download is larger than {human_bytes(limit)}, "
+                                    "the import limit (INGEST_MAX_DECOMPRESSED_BYTES).",
+                                )
+                            await out.write(chunk)
+                    return
+            raise HTTPException(
+                status_code=400, detail="Too many redirects while fetching the URL."
+            )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {exc}") from exc
 

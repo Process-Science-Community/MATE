@@ -20,6 +20,7 @@ import httpx
 import structlog
 
 from mate.api.ai_config import AiConfigPayload
+from mate.api.net_guard import assert_public_url
 
 log = structlog.get_logger(__name__)
 
@@ -133,6 +134,7 @@ async def structured_completion(
     if provider in ("unigpt", "custom"):
         timeout = httpx.Timeout(120.0, connect=10.0)
         url = f"{base_url.rstrip('/')}/chat/completions"
+        await assert_public_url(url)  # SSRF guard: user-controlled base_url
         async with httpx.AsyncClient(timeout=timeout) as client:
             return await _openai_compat_prompted(
                 client, cfg, full_system, user_text, url, p.api_key, schema
@@ -297,6 +299,7 @@ async def _openai_compat_structured(
         },
     }
     url = f"{base_url.rstrip('/')}/chat/completions"
+    await assert_public_url(url)  # SSRF guard: user-controlled base_url
     timeout = httpx.Timeout(120.0, connect=10.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(
@@ -394,6 +397,7 @@ async def _openai_compat_stream_text(
         {"role": "user", "content": user_text},
     ]
     url = f"{base_url.rstrip('/')}/chat/completions"
+    await assert_public_url(url)  # SSRF guard: user-controlled base_url
     timeout = httpx.Timeout(120.0, connect=10.0)
     async with (
         httpx.AsyncClient(timeout=timeout) as client,

@@ -59,7 +59,7 @@ from mate.api.modules.object_centric_log_access import ObjectCentricLogAccess
 from mate.api.modules.registry import CapabilityRegistry
 from mate.api.modules.runtimes import runtime_for
 from mate.api.modules.subprocess_host import SubprocessBridge
-from mate.api.sharing import user_can_read_log
+from mate.api.sharing import user_can_read_log_module
 from mate.api.tasks import spawn
 from mate.sdk.context import ModuleContext
 from mate.sdk.decorators import (
@@ -1741,8 +1741,8 @@ class ModuleLoader:
                             active_filter = log_row.active_filter
                         # Not the owner? Only a shared dashboard bound to this
                         # log grants read; then read from the owner's dir.
-                        if log_row.user_id != user_id and await user_can_read_log(
-                            session, log_id, user_id
+                        if log_row.user_id != user_id and await user_can_read_log_module(
+                            session, log_id, user_id, module_id
                         ):
                             storage_user_id = log_row.user_id
         except Exception:

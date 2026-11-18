@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -462,6 +462,22 @@ class Settings(BaseSettings):
     def dev_tools_enabled(self) -> bool:
         """Dev router + Studio writes: only on a local dev box with the demo bypass."""
         return self.env == "dev" and self.demo_mode
+
+    @model_validator(mode="after")
+    def _refuse_demo_in_prod(self) -> Settings:
+        """Fail closed: the demo bypass accepts a fixed, signature-less sentinel
+        token as a (optionally admin) user, so it must never run in a prod
+        deployment. A stray DEMO_MODE in the operator's .env (e.g. copied from
+        .env.example) would otherwise hand anyone admin with no credentials.
+        The prod compose also hard-pins DEMO_MODE/DEMO_ADMIN off; this is the
+        belt-and-braces guard inside the app itself."""
+        if self.env == "prod" and self.demo_mode:
+            raise ValueError(
+                "DEMO_MODE must not be enabled when ENV=prod: the demo bypass "
+                "accepts an unauthenticated sentinel token. Set DEMO_MODE=false "
+                "(and DEMO_ADMIN=false) for any hosted deployment."
+            )
+        return self
 
     @property
     def users_dir(self) -> Path:

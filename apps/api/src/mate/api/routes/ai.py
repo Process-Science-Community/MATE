@@ -46,6 +46,7 @@ from mate.api.ai_nav import (
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.db.models import UserSetting
 from mate.api.db.session import SessionDep
+from mate.api.net_guard import assert_public_url
 from mate.api.sharing import user_can_access_log
 from mate.api.shutdown import is_shutting_down
 
@@ -617,6 +618,7 @@ async def _stream_openai_compat(
 
     timeout = httpx.Timeout(120.0, connect=10.0)
     url = f"{base_url.rstrip('/')}/chat/completions"
+    await assert_public_url(url)  # SSRF guard: user-controlled base_url
     async with (
         httpx.AsyncClient(timeout=timeout) as client,
         client.stream(

@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from mate.api.ai_config import Provider
+from mate.api.net_guard import assert_public_url
 
 log = structlog.get_logger(__name__)
 
@@ -146,6 +147,7 @@ async def fetch_provider_models(
                     detail=f"{provider!r} requires a base URL in addition to the API key.",
                 )
             url = _openai_compat_models_url(base_url)
+            await assert_public_url(url)  # SSRF guard: user-controlled base_url
             r = await client.get(
                 url,
                 headers={"Authorization": f"Bearer {api_key}"},
