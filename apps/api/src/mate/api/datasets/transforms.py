@@ -231,11 +231,14 @@ def apply_transforms(env: DatasetEnvelope, transforms: list[dict[str, Any]]) -> 
     import duckdb
     import pandas as pd
 
+    from mate.api.duckdb.pool import apply_resource_limits
+
     src = env.data
     col_ids = [c.id for c in env.schema_.columns] or list({k for r in src.rows for k in r})  # type: ignore[attr-defined]
     df = pd.DataFrame(src.rows, columns=col_ids) if src.rows else pd.DataFrame(columns=col_ids)  # type: ignore[attr-defined]
 
     con = duckdb.connect(":memory:")
+    apply_resource_limits(con)
     try:
         for step in transforms:
             op = step.get("op")
@@ -284,6 +287,8 @@ def join_envelopes(
     import duckdb
     import pandas as pd
 
+    from mate.api.duckdb.pool import apply_resource_limits
+
     on = step.get("on")
     how = str(step.get("how", "inner")).lower()
     if how not in {"inner", "left", "right", "outer"}:
@@ -294,6 +299,7 @@ def join_envelopes(
         raise TransformError(f"join key {on!r} must exist in both inputs.")
     join_kw = "FULL" if how == "outer" else how.upper()
     con = duckdb.connect(":memory:")
+    apply_resource_limits(con)
     try:
         con.register("l", ldf)
         con.register("r", rdf)

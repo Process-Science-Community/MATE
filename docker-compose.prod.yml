@@ -166,10 +166,11 @@ services:
       #  - pool 2 (default is `nproc` = 4 on the VM) + 1 offload per user,
       #    so at most two heavy children can coexist instead of four.
       #  - DuckDB otherwise takes its default limit of 80% of *host* RAM,
-      #    per connection, with a thread per core. CAVEAT: only DuckDBPool
-      #    reads these; the raw `duckdb.connect(":memory:")` in
-      #    modules/event_log_access.py sets no PRAGMAs and still takes the
-      #    default — that needs a code fix, not an env var.
+      #    per connection, with a thread per core. Every connection the API
+      #    opens (DuckDBPool, the per-request EventLogAccess behind the
+      #    Events/Variants tabs, OCEL access, dataset transforms) applies
+      #    these via duckdb.pool.apply_resource_limits; the limit is per
+      #    connection, and a query over it spills to ./data/duckdb-tmp.
       #  - glibc keeps up to 8 arenas per core and never returns them, which
       #    is a good part of why the API drifts to ~6 GiB RSS over days.
       MODULE_PROCESS_POOL_SIZE: "2"
