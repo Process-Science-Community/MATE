@@ -105,10 +105,12 @@ services:
       # Staged replacement for the line below (see auth.ts KEYCLOAK_INTERNAL_URL):
       # route the server-side OIDC back-channel straight to Keycloak over the
       # internal network so there is no HTTPS cert-name-mismatch hop to bypass.
-      # Roll out in order: (1) uncomment the next line + redeploy; (2) verify a
-      # full login AND a token refresh succeed; (3) only THEN delete the
-      # NODE_TLS_REJECT_UNAUTHORIZED line.
-      # KEYCLOAK_INTERNAL_URL: http://keycloak:8080/auth/realms/flows-funds
+      # Roll out in order: (1) set KEYCLOAK_INTERNAL_URL + redeploy [done
+      # 2026-11-18]; (2) verify a full login AND a token refresh succeed;
+      # (3) only THEN delete the NODE_TLS_REJECT_UNAUTHORIZED line - it turns
+      # off certificate checks for every server-side HTTPS call of this
+      # container, not just the Keycloak hop.
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080/auth/realms/flows-funds
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       # Server-side session store (Option 3): the Auth.js session cookie carries
       # ONLY an opaque id; the access+refresh JWT lives on disk under
