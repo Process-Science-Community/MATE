@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.engine import Row
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.auth import AdminUserDep
 from mate.api.config import get_settings
@@ -114,7 +115,7 @@ def _naive_utc_now() -> datetime:
 
 def _day_series(rows: Sequence[Row[Any]]) -> list[DayCount]:
     """Coerce ``(date_str, count)`` rows into a sorted day series."""
-    return [DayCount(day=str(d), count=int(c)) for d, c in rows if d is not None]
+    return [DayCount(day=str(d), count=round(c)) for d, c in rows if d is not None]
 
 
 def _labels(rows: Sequence[Row[Any]], *, unknown: str = "unknown") -> list[LabelCount]:
@@ -123,6 +124,48 @@ def _labels(rows: Sequence[Row[Any]], *, unknown: str = "unknown") -> list[Label
         LabelCount(label=str(label) if label is not None else unknown, count=int(c))
         for label, c in rows
     ]
+
+
+# --------------------------------------------------------------------------
+# Dialect-portable SQL fragments. Tests and lite/dev run on SQLite, production
+# on Postgres, and the two share no function for date-part or interval math
+# (SQLite: julianday/strftime/json_extract; Postgres: EXTRACT/->>). Every
+# aggregation below goes through these so the same query runs on both.
+# --------------------------------------------------------------------------
+
+
+def _is_postgres(session: AsyncSession) -> bool:
+    bind = session.bind
+    return bind is not None and bind.dialect.name == "postgresql"
+
+
+def _seconds_between(
+    session: AsyncSession, end: ColumnElement[Any], start: ColumnElement[Any]
+) -> ColumnElement[Any]:
+    """``end - start`` in (fractional) seconds."""
+    if _is_postgres(session):
+        return func.extract("epoch", end - start)
+    # SQLite stores timestamps as naive-UTC text; julianday() diff is in days.
+    return (func.julianday(end) - func.julianday(start)) * 86400.0
+
+
+def _hour_of(session: AsyncSession, ts: ColumnElement[Any]) -> ColumnElement[Any]:
+    """Hour of day 0..23 (UTC - timestamps are stored naive-UTC)."""
+    if _is_postgres(session):
+        return func.extract("hour", ts)
+    return func.strftime("%H", ts)
+
+
+def _weekday_of(session: AsyncSession, ts: ColumnElement[Any]) -> ColumnElement[Any]:
+    """Day of week, 0=Sunday..6=Saturday on both dialects."""
+    if _is_postgres(session):
+        return func.extract("dow", ts)
+    return func.strftime("%w", ts)
+
+
+def _num_label(value: Any, width: int = 1) -> str:
+    """Normalise a date-part value (SQLite text '07', Postgres Decimal 7) to text."""
+    return f"{int(value):0{width}d}"
 
 
 # strftime('%w'): 0=Sunday..6=Saturday. Render the weekday chart Monday-first.
@@ -165,17 +208,14 @@ async def overview(user: AdminUserDep, session: SessionDep, days: int = 90) -> A
     avg_events_per_session = float(
         await session.scalar(select(func.avg(AnalyticsSession.event_count))) or 0.0
     )
-    # SQLite stores timestamps as naive-UTC text; julianday() diff yields
-    # fractional days, times 86400 for seconds. NULL coalesces to 0.0 with no sessions.
+    # NULL coalesces to 0.0 with no sessions.
     avg_session_seconds = float(
         await session.scalar(
             select(
                 func.avg(
-                    (
-                        func.julianday(AnalyticsSession.last_seen_at)
-                        - func.julianday(AnalyticsSession.started_at)
+                    _seconds_between(
+                        session, AnalyticsSession.last_seen_at, AnalyticsSession.started_at
                     )
-                    * 86400.0
                 )
             )
         )
@@ -342,25 +382,27 @@ async def overview(user: AdminUserDep, session: SessionDep, days: int = 90) -> A
             )
         ).all()
     )
+    hour = _hour_of(session, AnalyticsEvent.occurred_at)
     activity_by_hour = [
-        LabelCount(label=str(h), count=int(c))
+        LabelCount(label=_num_label(h, 2), count=int(c))
         for h, c in (
             await session.execute(
-                select(func.strftime("%H", AnalyticsEvent.occurred_at), func.count())
+                select(hour, func.count())
                 .where(AnalyticsEvent.occurred_at >= cutoff)
-                .group_by(func.strftime("%H", AnalyticsEvent.occurred_at))
-                .order_by(func.strftime("%H", AnalyticsEvent.occurred_at))
+                .group_by(hour)
+                .order_by(hour)
             )
         ).all()
         if h is not None
     ]
+    weekday = _weekday_of(session, AnalyticsEvent.occurred_at)
     weekday_counts = {
-        str(w): int(c)
+        _num_label(w): int(c)
         for w, c in (
             await session.execute(
-                select(func.strftime("%w", AnalyticsEvent.occurred_at), func.count())
+                select(weekday, func.count())
                 .where(AnalyticsEvent.occurred_at >= cutoff)
-                .group_by(func.strftime("%w", AnalyticsEvent.occurred_at))
+                .group_by(weekday)
             )
         ).all()
         if w is not None
@@ -429,14 +471,15 @@ async def users_insights(user: AdminUserDep, session: SessionDep, days: int = 90
     )
 
     # Onboarding completion ratio over the UserSetting key ``onboarding``
-    # ({completed: bool, ...}). json_extract is SQLite's native JSON path read.
+    # ({completed: bool, ...}). The JSON-path index renders per dialect
+    # (SQLite json_extract, Postgres ->>).
     onboarding_completed = int(
         await session.scalar(
             select(func.count())
             .select_from(UserSetting)
             .where(
                 UserSetting.key == "onboarding",
-                func.json_extract(UserSetting.value_json, "$.completed") == 1,
+                UserSetting.value_json["completed"].as_boolean().is_(True),
             )
         )
         or 0
@@ -783,7 +826,7 @@ async def jobs_insights(user: AdminUserDep, session: SessionDep, days: int = 90)
         ).all()
     )
 
-    duration_expr = (func.julianday(Job.finished_at) - func.julianday(Job.started_at)) * 86400.0
+    duration_expr = _seconds_between(session, Job.finished_at, Job.started_at)
     finished_filter = (
         Job.status == "completed",
         Job.started_at.is_not(None),
@@ -864,7 +907,7 @@ async def usage_insights(user: AdminUserDep, session: SessionDep, days: int = 90
     )
     installs_map = {lc.label: lc.count for lc in installs_by_module}
 
-    duration_expr = (func.julianday(Job.finished_at) - func.julianday(Job.started_at)) * 86400.0
+    duration_expr = _seconds_between(session, Job.finished_at, Job.started_at)
     run_rows = (
         await session.execute(
             select(
