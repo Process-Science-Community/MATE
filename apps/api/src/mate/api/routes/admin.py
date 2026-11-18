@@ -203,9 +203,7 @@ async def export_info(user: CurrentUserDep, session: SessionDep) -> ExportInfo:
     event_count = await session.scalar(select(func.count()).select_from(AnalyticsEvent)) or 0
     if db_backup.is_postgres():
         # No file to stat; ask the server for the database's on-disk footprint.
-        size = int(
-            await session.scalar(text("SELECT pg_database_size(current_database())")) or 0
-        )
+        size = int(await session.scalar(text("SELECT pg_database_size(current_database())")) or 0)
     else:
         src = _db_path()
         size = src.stat().st_size if src.exists() else None

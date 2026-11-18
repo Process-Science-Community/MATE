@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from mate.api.auth import AdminUserDep
 from mate.api.config import get_settings
@@ -134,13 +135,20 @@ def _labels(rows: Sequence[Row[Any]], *, unknown: str = "unknown") -> list[Label
 # --------------------------------------------------------------------------
 
 
+# A timestamp expression: a mapped column (``Model.created_at``) or a derived one.
+_SqlTime = ColumnElement[Any] | InstrumentedAttribute[Any]
+
+
 def _is_postgres(session: AsyncSession) -> bool:
-    bind = session.bind
-    return bind is not None and bind.dialect.name == "postgresql"
+    # Typed as always bound, but an unbound session must not crash the probe.
+    dialect = getattr(session.bind, "dialect", None)
+    return dialect is not None and dialect.name == "postgresql"
 
 
 def _seconds_between(
-    session: AsyncSession, end: ColumnElement[Any], start: ColumnElement[Any]
+    session: AsyncSession,
+    end: _SqlTime,
+    start: _SqlTime,
 ) -> ColumnElement[Any]:
     """``end - start`` in (fractional) seconds."""
     if _is_postgres(session):
@@ -149,14 +157,14 @@ def _seconds_between(
     return (func.julianday(end) - func.julianday(start)) * 86400.0
 
 
-def _hour_of(session: AsyncSession, ts: ColumnElement[Any]) -> ColumnElement[Any]:
+def _hour_of(session: AsyncSession, ts: _SqlTime) -> ColumnElement[Any]:
     """Hour of day 0..23 (UTC - timestamps are stored naive-UTC)."""
     if _is_postgres(session):
         return func.extract("hour", ts)
     return func.strftime("%H", ts)
 
 
-def _weekday_of(session: AsyncSession, ts: ColumnElement[Any]) -> ColumnElement[Any]:
+def _weekday_of(session: AsyncSession, ts: _SqlTime) -> ColumnElement[Any]:
     """Day of week, 0=Sunday..6=Saturday on both dialects."""
     if _is_postgres(session):
         return func.extract("dow", ts)

@@ -97,7 +97,8 @@ def migrate(source_url: str, target_url: str, *, force: bool = False) -> int:
         occupied = [t.name for t in tables if _row_count(dst, t) > 0]
         if occupied:
             print(
-                "✗ target is not empty: " + ", ".join(occupied[:5])
+                "✗ target is not empty: "
+                + ", ".join(occupied[:5])
                 + ("…" if len(occupied) > 5 else "")
                 + "\n  Re-run with --force once you have truncated it, or point at a fresh database.",
                 file=sys.stderr,
@@ -125,7 +126,9 @@ def migrate(source_url: str, target_url: str, *, force: bool = False) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "--source",
         default="data/metadata.db",
@@ -156,7 +159,9 @@ def main(argv: list[str] | None = None) -> int:
         print("✗ target is SQLite - set DATABASE_URL to the PostgreSQL URL.", file=sys.stderr)
         return 2
 
-    print(f"source: {source}\ntarget: {make_url(_sync_url(target)).render_as_string(hide_password=True)}\n")
+    print(
+        f"source: {source}\ntarget: {make_url(_sync_url(target)).render_as_string(hide_password=True)}\n"
+    )
     return migrate(source, target, force=args.force)
 
 

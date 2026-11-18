@@ -4,16 +4,18 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
-import java.nio.channels.Channels;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -52,12 +54,18 @@ public final class WireConnection implements RpcTransport, Closeable {
     private final ExecutorService dispatchPool;
 
     private WireConnection(SocketChannel channel) {
+        if (!channel.isBlocking()) {
+            // The direct read/write streams below rely on blocking semantics
+            // (read >= 1 byte or EOF, write >= 1 byte); non-blocking would spin.
+            throw new IllegalArgumentException("WireConnection needs a blocking channel");
+        }
         this.channel = channel;
         this.reader =
                 new BufferedReader(
-                        new InputStreamReader(Channels.newInputStream(channel), StandardCharsets.UTF_8),
+                        new InputStreamReader(
+                                new ChannelReadStream(channel), StandardCharsets.UTF_8),
                         1 << 16);
-        this.out = new BufferedOutputStream(Channels.newOutputStream(channel), 1 << 16);
+        this.out = new BufferedOutputStream(new ChannelWriteStream(channel), 1 << 16);
         this.dispatchPool =
                 Executors.newCachedThreadPool(
                         r -> {
@@ -251,5 +259,75 @@ public final class WireConnection implements RpcTransport, Closeable {
     @Override
     public void close() throws IOException {
         channel.close();
+    }
+
+    /*
+     * Why not Channels.newInputStream/newOutputStream: for a SelectableChannel,
+     * the JDK 17 adapters hold the channel's blockingLock() for the whole
+     * blocking read/write. runLoop() parks in read() with that monitor held, so
+     * every write (request(), notify(), dispatch replies) blocks forever - a
+     * full deadlock on 17 (JDK 21's adapters no longer take it). SocketChannel
+     * itself has independent read and write locks, so calling read/write on
+     * it directly lets one reader and one (writeLock-serialised) writer run
+     * concurrently on every supported JDK.
+     */
+
+    /** Read side of the channel; never touches the channel's blockingLock. */
+    private static final class ChannelReadStream extends InputStream {
+        private final SocketChannel channel;
+
+        ChannelReadStream(SocketChannel channel) {
+            this.channel = channel;
+        }
+
+        @Override
+        public int read() throws IOException {
+            byte[] one = new byte[1];
+            int n = read(one, 0, 1);
+            return n < 0 ? -1 : one[0] & 0xff;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            Objects.checkFromIndexSize(off, len, b.length);
+            if (len == 0) {
+                return 0;
+            }
+            // A blocking channel returns >= 1 byte or -1 (EOF) for len > 0.
+            return channel.read(ByteBuffer.wrap(b, off, len));
+        }
+
+        @Override
+        public void close() throws IOException {
+            channel.close();
+        }
+    }
+
+    /** Write side of the channel; never touches the channel's blockingLock. */
+    private static final class ChannelWriteStream extends OutputStream {
+        private final SocketChannel channel;
+
+        ChannelWriteStream(SocketChannel channel) {
+            this.channel = channel;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            Objects.checkFromIndexSize(off, len, b.length);
+            ByteBuffer buf = ByteBuffer.wrap(b, off, len);
+            while (buf.hasRemaining()) {
+                channel.write(buf); // blocking: writes >= 1 byte or throws
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            channel.close();
+        }
     }
 }

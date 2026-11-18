@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left, bisect_right
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .geom import EPS, Rect, point_rect_dist, seg_rect_hit
 
@@ -56,46 +56,69 @@ class Row:
 
 @dataclass
 class ObstacleField:
-    """Rank rows plus the channels between them."""
+    """Rank rows plus the channels between them.
+
+    ``ranks`` lists every rank that holds a node — real *or* virtual. A rank of
+    virtual nodes only is an obstacle-free, zero-height row at its centre y: the
+    router derives channel keys from chain ranks, so such a rank must split the
+    tall band around it into two channels, one per key, or two different keys
+    would hand out tracks in the same band.
+    """
 
     rows: dict[int, Row]
     ranks: list[int]
     clearance: float
     fallback_channel_h: float
-    _index: dict[int, int] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        self._index = {rank: i for i, rank in enumerate(self.ranks)}
 
     # -- channels ----------------------------------------------------------
+    #
+    # Every query resolves its ranks against the nearest *present* rows, so it
+    # is total over all ints: a rank no node occupies (``solve_ranks`` can skip
+    # one) just yields a taller band, and that band is still node-free because
+    # nothing lies between two consecutive rows.
 
     def channel_between(self, rank_a: int, rank_b: int) -> tuple[float, float]:
         """The node-free band between two ranks (order-independent).
 
-        Ranks need not be adjacent: `solve_ranks` can leave a rank empty, and a
-        band spanning an empty rank is still node-free — just taller.
+        Ranks need not be adjacent, nor present in the field: the band runs from
+        the nearest row at or above the upper rank to the nearest row at or
+        below the lower one.
         """
         if rank_a == rank_b:
             return self.channel_below(rank_a)
         upper, lower = (rank_a, rank_b) if rank_a < rank_b else (rank_b, rank_a)
-        return (self.rows[upper].y_bot, self.rows[lower].y_top)
+        return self._band(upper, lower)
 
     def channel_below(self, rank: int) -> tuple[float, float]:
-        row = self.rows[rank]
-        index = self._index[rank]
-        if index + 1 < len(self.ranks):
-            return (row.y_bot, self.rows[self.ranks[index + 1]].y_top)
-        return (row.y_bot, row.y_bot + self.fallback_channel_h)
+        return self._band(rank, rank + 1)
 
     def channel_above(self, rank: int) -> tuple[float, float]:
-        row = self.rows[rank]
-        index = self._index[rank]
-        if index > 0:
-            return (self.rows[self.ranks[index - 1]].y_bot, row.y_top)
-        return (row.y_top - self.fallback_channel_h, row.y_top)
+        return self._band(rank - 1, rank)
 
     def has_channel_below(self, rank: int) -> bool:
-        return self._index[rank] + 1 < len(self.ranks)
+        return bisect_right(self.ranks, rank) < len(self.ranks)
+
+    def next_rank(self, rank: int) -> int:
+        """The first present rank strictly below ``rank``, else ``rank`` itself."""
+        index = bisect_right(self.ranks, rank)
+        return self.ranks[index] if index < len(self.ranks) else rank
+
+    def _band(self, upper: int, lower: int) -> tuple[float, float]:
+        """From the last row at or above ``upper`` to the first at or below ``lower``.
+
+        A side with no row gets a ``fallback_channel_h`` band off the other one.
+        """
+        above = bisect_right(self.ranks, upper) - 1
+        below = bisect_left(self.ranks, lower)
+        top = self.rows[self.ranks[above]].y_bot if above >= 0 else None
+        bottom = self.rows[self.ranks[below]].y_top if below < len(self.ranks) else None
+        if top is None:
+            if bottom is None:
+                return (0.0, self.fallback_channel_h)
+            return (bottom - self.fallback_channel_h, bottom)
+        if bottom is None:
+            return (top, top + self.fallback_channel_h)
+        return (top, bottom)
 
     # -- per-row x queries -------------------------------------------------
 
@@ -275,7 +298,11 @@ def build_field(
     clearance: float,
     fallback_channel_h: float,
 ) -> ObstacleField:
-    """Index the real nodes by rank. ``x``/``y`` are node *centres*."""
+    """Index the real nodes by rank. ``x``/``y`` are node *centres*.
+
+    Ranks holding only virtual (or zero-size) nodes get an empty, zero-height row
+    at their centre y: no obstacles, but they bound the channels either side.
+    """
     by_rank: dict[int, list[tuple[float, str, Rect]]] = {}
     for node in real_ids:
         width, height = sizes.get(node, (0.0, 0.0))
@@ -318,6 +345,24 @@ def build_field(
             pmax_hi=tuple(pmax),
             mlo=tuple(mlo),
             mhi=tuple(mhi),
+        )
+
+    # A rank holding only virtual nodes (or zero-size real ones) is no obstacle,
+    # but it still sits on its own centre y and bounds the channels either side.
+    for node, rank in ranks.items():
+        if rank in rows or node not in y:
+            continue
+        rows[rank] = Row(
+            rank=rank,
+            y_top=y[node],
+            y_bot=y[node],
+            lo=(),
+            hi=(),
+            ids=(),
+            rects=(),
+            pmax_hi=(),
+            mlo=(),
+            mhi=(),
         )
 
     return ObstacleField(

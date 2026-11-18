@@ -152,9 +152,7 @@ def _assert_tool_matches_server(tool: str) -> None:
 def dump_postgres(dest: Path) -> None:
     """Write a custom-format pg_dump of the metadata database to ``dest``."""
     _assert_tool_matches_server("pg_dump")
-    _run_pg_tool(
-        "pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", str(dest)
-    )
+    _run_pg_tool("pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", str(dest))
 
 
 def _postgres_is_empty() -> bool:
@@ -200,9 +198,7 @@ def backup_sync() -> bool:
         try:
             dump_postgres(dump)
             s3.upload_object(dump, _backup_key())
-            log.info(
-                "storage.db_backup.uploaded", key=_backup_key(), bytes=dump.stat().st_size
-            )
+            log.info("storage.db_backup.uploaded", key=_backup_key(), bytes=dump.stat().st_size)
             return True
         except Exception:
             log.warning("storage.db_backup.failed", exc_info=True)
