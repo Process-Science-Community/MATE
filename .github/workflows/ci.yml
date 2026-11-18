@@ -141,13 +141,16 @@ jobs:
     needs: plan
     if: needs.plan.outputs.run_jvm == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Build + tests take ~1 min; a hang must fail fast, not burn the runner.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          # The JDK production ships (apps/api/Dockerfile: eclipse-temurin:21-jre).
+          # Not 17: the SDK's socket I/O deadlocks there (docs/ci/README.md §6).
+          java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
         with:
           # Only main writes the Gradle cache; PRs restore it.

@@ -25,7 +25,7 @@ pull_request ─► plan ──► static ─┐
 | `api` | `ci-api` | `apps/api/tests` (981 tests), parallel via pytest-xdist | 62 s (176 s serial) |
 | `modules` | `ci-modules` | each selected `modules/<id>/tests` on the platform env | ~60 s for all 16 |
 | `web` | `ci-web` | `tsc --noEmit` for `apps/web` + esbuild of every module panel | 5-17 s |
-| `jvm` | `ci-jvm` | `make jvm` + cross-runtime conformance (`test_worker_conformance.py`) | not measured, see §6 |
+| `jvm` | `ci-jvm` | `make jvm` (incl. SDK unit tests) + cross-runtime conformance, on JDK 21 | see §6 |
 
 CI runs exactly the `make ci-*` targets, so a local run is the same check.
 
@@ -147,8 +147,16 @@ mainly **feedback time**, and the shared queue when agents push in parallel.
   `main` (Settings → Branches). Also consider a CODEOWNERS entry for
   `.github/workflows/` and `scripts/ci/`. A PR runs the workflow from its own head,
   so a change could weaken its own checks; review those paths with extra care.
-- **JVM lane unverified locally**: Maven Central rate-limited (HTTP 429) the dev
-  sandbox, so its first real run will be on GitHub.
+- **JVM SDK deadlocks on JDK 17** (found by the first CI run, 2026-11-18).
+  `WireConnection` reads and writes one blocking `SocketChannel` through
+  `Channels.newInputStream`/`newOutputStream`. On JDK 17 those adapters hold the
+  channel's `blockingLock()` while blocked in `read`, so a write from another
+  thread (every outbound request) waits forever. Reproduced locally: all 6
+  `WireConnectionTest` tests hang on JDK 17 and pass on JDK 21; a 30-line
+  standalone repro shows the same 3/3. Production ships Temurin 21, so the platform
+  is unaffected, but the README promises "JDK 17 or newer" to module authors. The
+  `jvm` lane runs on 21 (the shipped runtime). Either fix the SDK to read and write
+  the channel directly, or raise the documented minimum to 21.
 - **No Docker build check.** Dockerfiles and compose changes run the API suite only.
   An image build on `main`/schedule is a candidate if image breakage shows up.
 - **No ESLint gate.** `next lint` has no config. Add one (prefer a non-interactive flat
