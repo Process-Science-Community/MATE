@@ -125,9 +125,16 @@ ci-web: ## Lane: web typecheck + module panel bundles
 	cd apps/web && pnpm typecheck
 	cd apps/web && node scripts/bundle-modules.mjs
 
-ci-jvm: ## Lane: JVM SDK build + cross-runtime conformance (needs JDK 17+)
+# JDK17_HOME=/path/to/jdk17 also runs the SDK's own tests on the oldest JDK the README
+# promises (the SDK targets --release 17; CI sets it, locally it is optional).
+JDK17_HOME ?=
+ci-jvm: ## Lane: JVM SDK build + cross-runtime conformance (JDK 21); SDK tests on JDK17_HOME too
 	$(MAKE) jvm
 	uv run --extra dev pytest apps/api/tests/test_worker_conformance.py -q -p no:cacheprovider
+	@if [ -n "$(JDK17_HOME)" ]; then \
+	  echo "--- SDK tests on JDK 17 ($(JDK17_HOME))"; \
+	  cd packages/module-sdk-jvm && JAVA_HOME="$(JDK17_HOME)" ./gradlew :sdk:test --rerun --no-daemon; \
+	fi
 
 typecheck: ## Type-check the web app
 	cd apps/web && pnpm typecheck

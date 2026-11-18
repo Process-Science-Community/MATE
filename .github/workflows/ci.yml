@@ -148,9 +148,12 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          # The JDK production ships (apps/api/Dockerfile: eclipse-temurin:21-jre).
-          # Not 17: the SDK's socket I/O deadlocks there (docs/ci/README.md §6).
-          java-version: "21"
+          # 21 is the JDK production ships (apps/api/Dockerfile: eclipse-temurin:21-jre)
+          # and the default (last listed). 17 is the oldest JDK the README promises module
+          # authors; the SDK's own tests also run on it (JDK17_HOME below).
+          java-version: |
+            17
+            21
       - uses: gradle/actions/setup-gradle@v4
         with:
           # Only main writes the Gradle cache; PRs restore it.
@@ -161,7 +164,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --extra dev --frozen
-      - run: make ci-jvm
+      - run: make ci-jvm JDK17_HOME="$JAVA_HOME_17_X64"
 
   gate:
     # The one required check. Passes only if the plan ran and every lane the plan

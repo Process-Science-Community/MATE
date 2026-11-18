@@ -26,8 +26,8 @@ this file adds the verification and CI rules every change follows. Rationale and
 - Pyright is ratcheted (`scripts/ci/pyright-baseline.json`, 306 errors at introduction). New code
   must not add errors. After fixing some, lower the ceiling:
   `uv run python scripts/ci/pyright_ratchet.py --update`.
-- Known red on main at introduction (2026-11-18): 2 `discovery` layout-router tests
-  (`KeyError` in `modules/discovery/layout/obstacles.py`). Fix it; don't mask it.
+- The JVM SDK must work on JDK 17 (the documented minimum) and 21 (what production ships);
+  the `jvm` lane runs the SDK tests on both. Never drop 17 from the lane to get green.
 
 **Test selection (`scripts/ci/plan.py`)**
 - Deterministic path rules. Unknown paths and CI-contract files run the full suite. When

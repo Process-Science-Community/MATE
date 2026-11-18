@@ -159,16 +159,17 @@ mainly **feedback time**, and the shared queue when agents push in parallel.
   `main` (Settings → Branches). Also consider a CODEOWNERS entry for
   `.github/workflows/` and `scripts/ci/`. A PR runs the workflow from its own head,
   so a change could weaken its own checks; review those paths with extra care.
-- **JVM SDK deadlocks on JDK 17** (found by the first CI run, 2026-11-18).
-  `WireConnection` reads and writes one blocking `SocketChannel` through
-  `Channels.newInputStream`/`newOutputStream`. On JDK 17 those adapters hold the
-  channel's `blockingLock()` while blocked in `read`, so a write from another
-  thread (every outbound request) waits forever. Reproduced locally: all 6
-  `WireConnectionTest` tests hang on JDK 17 and pass on JDK 21; a 30-line
-  standalone repro shows the same 3/3. Production ships Temurin 21, so the platform
-  is unaffected, but the README promises "JDK 17 or newer" to module authors. The
-  `jvm` lane runs on 21 (the shipped runtime). Either fix the SDK to read and write
-  the channel directly, or raise the documented minimum to 21.
+- **JVM SDK deadlock on JDK 17: fixed** (found by the first CI run, 2026-11-18).
+  `WireConnection` read and wrote one blocking `SocketChannel` through
+  `Channels.newInputStream`/`newOutputStream`; on JDK 17 those adapters hold the
+  channel's `blockingLock()` while blocked in `read`, so every write from another
+  thread waited forever (all 6 `WireConnectionTest` cases hung on 17, passed on 21).
+  It now reads/writes the channel directly. The `jvm` lane builds on JDK 21 (what
+  production ships) and re-runs the SDK tests on JDK 17 (the documented minimum),
+  and `WireConnectionTest` has a 30 s timeout so a regression fails instead of hanging.
+- **`modules/` is outside pyright's scope** (`[tool.pyright] include` covers
+  `apps/api/src` and `packages/module-sdk-py/src` only), so the ratchet does not
+  guard module code. Ruff does.
 - **No Docker build check.** Dockerfiles and compose changes run the API suite only.
   An image build on `main`/schedule is a candidate if image breakage shows up.
 - **No ESLint gate.** `next lint` has no config. Add one (prefer a non-interactive flat
