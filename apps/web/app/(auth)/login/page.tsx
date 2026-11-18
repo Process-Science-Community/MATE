@@ -111,15 +111,16 @@ export default async function LoginPage({
               one-shot guard inside stops a failing OAuth from looping and leaves
               the manual link as the fallback. */}
           {staleSession ? <RecoveryAutoRetry href={signInAgainUrl} /> : null}
-          {/* Auth.js sends a failed sign-in here (`pages.signIn`) with ?error=…; say so
-              instead of silently showing the same buttons. Generic on purpose: the
-              error code is Auth.js internals, not something to show a user. */}
+          {/* Auth.js sends a failed sign-in here (`pages.signIn` / `pages.error`) with
+              ?error=…; say so instead of silently showing the same buttons. Generic on
+              purpose: the error code is Auth.js internals, not something to show a user.
+              The usual cause is a login page left open too long (expired PKCE cookie). */}
           {params.error && !staleSession ? (
             <p
               role="alert"
               className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
             >
-              Sign-in didn&apos;t complete. Please try again.
+              Sign-in didn&apos;t complete – the login page may have been open too long. Please try again.
             </p>
           ) : null}
           <LoginCta

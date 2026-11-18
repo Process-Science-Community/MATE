@@ -373,7 +373,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // Our own login screen is the only sign-in page: without this Auth.js falls back
   // to its built-in one (reachable at /api/auth/signin, which the middleware leaves
   // public) and a failed sign-in lands there as "Sign in with <provider name>".
-  pages: { signIn: "/login" },
+  //
+  // `error` too: every sign-in failure Auth.js doesn't class as the user's fault
+  // goes to its error page as `?error=Configuration` – "Server error. There is a
+  // problem with the server configuration." That includes the everyday
+  // `InvalidCheck: pkceCodeVerifier value could not be parsed`, which is just a
+  // login tab left open past the 15-min PKCE cookie (or a skewed client clock),
+  // not a broken server. /login shows a "try again" notice for any ?error= and
+  // its CTA (/login/start) wipes the stale check cookies, so a retry recovers.
+  // A real misconfiguration still logs `[auth][error]` server-side.
+  pages: { signIn: "/login", error: "/login" },
   // Self-hosted behind the uni edge proxy + Caddy: trust the forwarded Host so
   // Auth.js builds callback URLs and cookie flags from AUTH_URL rather than
   // re-deriving them from each raw request (prod compose didn't set
