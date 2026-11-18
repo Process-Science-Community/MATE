@@ -48,13 +48,20 @@ class _FakeCtx:
         self.request_context = _FakeRequestContext(principal)
 
 
-def _principal(user_id: str, scopes: tuple[str, ...] = ALL_SCOPES) -> MCPPrincipal:
-    cu = CurrentUser(id=user_id, email=None, preferred_username=None, name=None, roles=())
+def _principal(
+    user_id: str, scopes: tuple[str, ...] = ALL_SCOPES, roles: tuple[str, ...] = ("user", "admin")
+) -> MCPPrincipal:
+    # Admin by default: custom watched-folder paths are admin-only.
+    cu = CurrentUser(id=user_id, email=None, preferred_username=None, name=None, roles=roles)
     return MCPPrincipal(user=cu, token_id="tok", scopes=scopes, auth_type="pat")
 
 
-def _ctx(user_id: str = TEST_USER_ID, scopes: tuple[str, ...] = ALL_SCOPES) -> Any:
-    return _FakeCtx(_principal(user_id, scopes))
+def _ctx(
+    user_id: str = TEST_USER_ID,
+    scopes: tuple[str, ...] = ALL_SCOPES,
+    roles: tuple[str, ...] = ("user", "admin"),
+) -> Any:
+    return _FakeCtx(_principal(user_id, scopes, roles))
 
 
 @pytest.fixture(autouse=True)
@@ -156,6 +163,13 @@ async def test_watched_folder_validation(client: AsyncClient, tmp_path: Path) ->
     with pytest.raises(MCPToolError, match=r"\[invalid\]"):
         await watched_tools.create_watched_folder(
             _ctx(), name="Bad mode", source_path=str(tmp_path / "y"), mode="sometimes"
+        )
+
+    # A non-admin may not point a watch at a custom path (it can reach other
+    # accounts' data); the error names the admin requirement.
+    with pytest.raises(MCPToolError, match=r"requires the admin role"):
+        await watched_tools.create_watched_folder(
+            _ctx(roles=("user",)), name="Snoop", source_path=str(tmp_path)
         )
 
     src = tmp_path / "upd"

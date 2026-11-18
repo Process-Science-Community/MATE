@@ -248,6 +248,18 @@ def ensure_not_sandboxed(user: CurrentUser, action: str) -> None:
         )
 
 
+def may_watch_custom_path(roles: tuple[str, ...]) -> bool:
+    """True if ``roles`` may point a watched folder at a custom path.
+
+    A custom path is read by the API process with its full filesystem / bucket
+    access - ``/app/data/users/<someone-else>/...`` included - and every file
+    found there is imported into the caller's account. So it is an admin-only
+    operator tool, never a sandboxed account; everyone else gets the managed
+    per-account folder (see ``ingest.source.default_source_path``).
+    """
+    return ADMIN_ROLE in roles and not is_sandboxed(roles)
+
+
 def evict_user_from_jit_cache(user_id: str) -> None:
     """Forget *user_id* from the JIT-sync cache.
 
