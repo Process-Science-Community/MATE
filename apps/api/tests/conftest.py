@@ -43,6 +43,9 @@ def _configure_env(session_data_dir: Path) -> Iterator[None]:
     os.environ["DATA_DIR"] = str(session_data_dir)
     os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{session_data_dir}/metadata.db"
     os.environ["WORKER_CONCURRENCY"] = "1"
+    # Upload is off by default (no sandbox); the upload tests exercise the
+    # feature itself, test_module_upload_toggle covers the off switch.
+    os.environ["MODULE_UPLOAD_ENABLED"] = "true"
     # Default modules dir: an empty subdir so unrelated tests don't see the fixture mod.
     empty_modules = session_data_dir / "modules-empty"
     empty_modules.mkdir(exist_ok=True)

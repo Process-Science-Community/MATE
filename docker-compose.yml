@@ -115,6 +115,10 @@ services:
       # Sample logs + starter dashboard seeded into listed accounts at start
       # (written by infra/keycloak/create-reviewer-accounts.sh). Empty = off.
       SAMPLE_CONTENT_MANIFEST: ${SAMPLE_CONTENT_MANIFEST:-}
+      # Module archive upload in the UI/API. Off: uploaded code is not sandboxed
+      # (it runs inside the API with every account's data and the secrets).
+      # Modules ship by reviewed pull request; see docs/strategy/hub-roadmap.md.
+      MODULE_UPLOAD_ENABLED: ${MODULE_UPLOAD_ENABLED:-false}
       # Realm roles confined to their own account: no module upload, no custom
       # watched-folder path, no API tokens (see docs/REVIEWER_ACCESS.md).
       SANDBOXED_ROLES: ${SANDBOXED_ROLES:-reviewer}

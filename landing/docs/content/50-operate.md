@@ -180,6 +180,7 @@ Compressed uploads and archives unpack behind zip-bomb guards. The caps count by
 | `USER_TRACKING_ONBOARDING` | `force` | `force`, `on`, or `off` — see [Security and privacy](security-and-privacy.html#usage-analytics). |
 | `USER_TRACKING_EXEMPT_ROLES` / `_USERS` | `reviewer` / empty | Accounts never tracked, even under `force`: holders of these realm roles, plus listed usernames or Keycloak ids. |
 | `SAMPLE_CONTENT_MANIFEST` | empty | Manifest of accounts to seed with sample logs and a starter dashboard at start, once each. |
+| `MODULE_UPLOAD_ENABLED` | `false` | Archive upload of modules in the UI and API. Uploaded code runs unsandboxed inside the API, so keep it off on shared instances; lite mode turns it on. |
 | `SANDBOXED_ROLES` | `reviewer` | Realm roles confined to their own account: no module upload, no watched folder on a custom path, no API tokens. |
 
 > [!NOTE]

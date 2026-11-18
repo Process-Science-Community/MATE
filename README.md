@@ -235,7 +235,7 @@ Measured with a fresh clone and empty package caches on an Apple Silicon Mac:
    make validate                   # manifest, HOW_TO_USE.md and layout.json of all modules
    ```
 
-8. **Publish.** Commit the folder under `modules/` and open a pull request, or package it as a ZIP file and upload it in MATE under **Modules → Install a module** (`/modules/import`).
+8. **Publish.** Commit the folder under `modules/` and open a pull request. Archive upload under **Modules → Install a module** works in lite mode and on instances that set `MODULE_UPLOAD_ENABLED=true`; it is off by default because uploaded code is not sandboxed.
 
 ### Command reference
 

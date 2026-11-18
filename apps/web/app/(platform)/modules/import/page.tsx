@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileDown, Upload, X } from "lucide-react";
+import { FileDown, GitPullRequest, Laptop, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageContainer } from "@/components/page";
-import { ApiError, rawFetch } from "@/lib/api";
+import { ApiError, api, rawFetch } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { downloadBlob } from "@/lib/download";
 import { toastError } from "@/lib/toast";
@@ -24,6 +24,11 @@ function hasAcceptedSuffix(name: string) {
 export default function ImportModulePage() {
   const router = useProgressRouter();
   const qc = useQueryClient();
+  const uploadStatus = useQuery({
+    queryKey: ["modules", "install-status"],
+    queryFn: () => api<ModuleUploadStatus>("/api/v1/modules/install/status"),
+    staleTime: 5 * 60_000,
+  });
 
   const onInstalled = useCallback(
     (jobId: string) => {
@@ -57,8 +62,56 @@ export default function ImportModulePage() {
         </Button>
       </div>
 
-      <UploadTab onInstalled={onInstalled} />
+      {uploadStatus.isPending ? null : uploadStatus.data?.enabled ? (
+        <UploadTab onInstalled={onInstalled} />
+      ) : (
+        <UploadDisabled />
+      )}
     </PageContainer>
+  );
+}
+
+type ModuleUploadStatus = { enabled: boolean; detail: string | null };
+
+/** Shown when the instance has MODULE_UPLOAD_ENABLED off (the default on shared
+ * instances): uploaded module code is not sandboxed, so modules reach a hosted
+ * instance through a reviewed pull request, and unpublished ones run locally. */
+function UploadDisabled() {
+  return (
+    <Card>
+      <CardContent className="space-y-5">
+        <div className="space-y-1">
+          <div className="text-sm font-medium">Module upload is turned off on this platform</div>
+          <p className="text-sm text-muted-foreground">
+            A module&apos;s code runs on the server with access to the platform&apos;s data, so
+            modules are reviewed before they go live instead of being uploaded here.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex items-start gap-3 rounded-lg border border-border p-4">
+            <GitPullRequest className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Publish a module</div>
+              <p className="text-xs text-muted-foreground">
+                Open a pull request that adds your module to <code>modules/</code> in the MATE
+                repository. Once it is reviewed and merged, it ships with the next deploy.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 rounded-lg border border-border p-4">
+            <Laptop className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Run your own module</div>
+              <p className="text-xs text-muted-foreground">
+                Clone MATE, put the module in <code>modules/</code> and start{" "}
+                <code>make lite</code>. You can import your own XES or CSV logs there and run
+                any module, published or not.
+              </p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
