@@ -30,12 +30,22 @@ import mate.sdk.internal.WireConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 /**
  * Exercises the worker-side wire endpoint against a raw fake host over a real
  * Unix socketpair: framing, id bookkeeping, cancel-sentinel mapping, error
  * shape, and notification handling.
+ *
+ * <p>Every test here also writes from a worker thread while {@code runLoop()}
+ * is parked in a blocking read on the same channel - the JDK 17 deadlock that
+ * {@code Channels.newInputStream/newOutputStream} cause (they hold the
+ * channel's blockingLock across the read). The class-level timeout turns a
+ * reintroduction into a failing test on JDK 17 instead of a CI job that hangs
+ * until it is killed; it only bites when these tests run on 17, which is why
+ * the JVM lane runs the SDK tests on JDK 17 as well as 21.
  */
+@Timeout(value = 30, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class WireConnectionTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

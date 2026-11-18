@@ -368,7 +368,7 @@ def _classify_same_rank(
     below = field.has_channel_below(rank)
     face: Face = "bottom" if below else "top"
     channel: ChannelKey = (
-        _channel_key(rank, _next_rank(field, rank)) if below else (_SYNTH_ABOVE, rank)
+        _channel_key(rank, field.next_rank(rank)) if below else (_SYNTH_ABOVE, rank)
     )
     return _Draft(
         key=key,
@@ -594,11 +594,6 @@ def _channel_bounds(field: ObstacleField, key: ChannelKey) -> tuple[float, float
     if lower == _SYNTH_BELOW:
         return field.channel_below(upper)
     return field.channel_between(upper, lower)
-
-
-def _next_rank(field: ObstacleField, rank: int) -> int:
-    index = field.ranks.index(rank)
-    return field.ranks[index + 1] if index + 1 < len(field.ranks) else rank
 
 
 # -- track assignment ------------------------------------------------------

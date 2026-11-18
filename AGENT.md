@@ -29,6 +29,8 @@ make api        # API only – runs alembic upgrade head first, then uvicorn
 make web        # web only
 make test           # uv run --extra dev pytest apps/api/tests -v
 make typecheck      # cd apps/web && pnpm typecheck (tsc --noEmit)
+make check-changed  # run the CI lanes this diff selects (vs origin/main) – do this before pushing
+make ci             # every CI lane (static, api, modules, web, jvm); `make ci-plan` shows the selection
 make fmt            # ruff check --fix . && ruff format .
 make codegen        # regenerate apps/web/lib/api-types.ts from the running API's /openapi.json
 make up / up-dev    # docker compose (prod-style / dev overlay with hot reload)
