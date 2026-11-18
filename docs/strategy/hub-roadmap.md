@@ -18,8 +18,8 @@ Session handover with operational follow-ups: [§7](#7-open-operational-items-fr
 Today a module's code runs **inside the API process** by default
 (`isolation: in_process`), and even `isolation: subprocess` passes the API's full
 environment (database URL, secrets) to the worker
-(`apps/api/src/mate/api/modules/subprocess_host.py:291`,
-`apps/api/src/mate/api/modules/job_worker.py:150`). There is no uid drop, no
+(`apps/api/src/mate/api/modules/subprocess_host.py:293`,
+`apps/api/src/mate/api/modules/job_worker.py:149`). There is no uid drop, no
 rlimit and no filesystem or network restriction. A module can read every
 account's data. Until 2026-11-18 any non-`reviewer` account could upload one
 (`POST /api/v1/modules/install`), which made upload a remote-code-execution path
@@ -31,8 +31,8 @@ Other confirmed gaps, independent of upload:
 | --- | --- | --- |
 | Module routes check authentication, not module ownership | `modules/loader.py:1236-1244` (`_bind_route`) | Any signed-in user can call any loaded module by URL. Also named in `extensibility-strategy.md`. |
 | Module asset/bundle route has no ownership check | `routes/modules.py` (`/{module_id}/assets/{asset_path:path}`) | |
-| `events.py` is always imported in-process | `modules/loader.py:1110-1134` | Even for `isolation: subprocess` modules. |
-| Install runs `uv pip install` of manifest-declared packages | `modules/installer.py:155` | Install time is code execution. |
+| `events.py` is always imported in-process | `modules/loader.py:_register_module_events`, called from `_instantiate` | Even for `isolation: subprocess` modules. |
+| Install runs `uv pip install` of manifest-declared packages | `modules/installer.py:250` (`install_module`) | Install time is code execution. |
 | Module frontend bundles run via `new Function` in the browser | `apps/web/lib/module-panels.tsx:89`, `module-widgets.tsx:95` | Same origin as the app. |
 | Module config (may hold AI API keys) is sent to workers | `modules/ctx_rpc.py:106-112` | See invariant in `extensibility-strategy.md`. |
 | Entry-point packages (`mate.modules`) are a second code-loading path | `modules/discovery.py:126` | Operator-only (needs a pip install on the server). |
@@ -138,7 +138,10 @@ on the user's own machine, not in the Hub's own server process.
 
 - [x] `MODULE_UPLOAD_ENABLED` setting, default `false`; upload refused with 403
       and the import page explains the pull-request and lite-mode routes. Lite
-      mode turns it on for itself.
+      mode turns it on for itself. While it is off, modules uploaded earlier are
+      not loaded either (`ModuleLoader.load_all` skips `data/uploaded_modules/`
+      and logs `modules.loader.uploads_skipped`; S3 restore of uploads is
+      skipped). Folders and install rows stay, so switching it on restores them.
 - [x] Watched folders on a custom path are admin-only (REST and MCP).
 - [x] DuckDB `DUCKDB_THREADS` / `DUCKDB_MEMORY_LIMIT` applied to every
       connection (`duckdb/pool.py:apply_resource_limits`).
@@ -155,8 +158,10 @@ on the user's own machine, not in the Hub's own server process.
 - [ ] Opt-in modules: a manifest flag so a merged module is available but not
       installed for everyone (today everything in `modules/` is a default,
       `loader.py:615-621`).
-- [ ] Users can export their own event logs (today only admins can,
-      `routes/admin.py`), so they can test modules locally on real data.
+- [ ] Users can download their own event logs (today only admins can, via
+      `GET /admin/event-logs/{log_id}/download` in `routes/admin_insights.py`;
+      the `/admin/export/*` routes in `routes/admin.py` export usage-tracking
+      data, not logs), so they can test modules locally on real data.
 - [ ] Module card and dataset card spec (fields in §4.7), validated by
       `mate-module validate`.
 - [ ] Migrate or drop the two production uploads `case_count` and `num_cases`

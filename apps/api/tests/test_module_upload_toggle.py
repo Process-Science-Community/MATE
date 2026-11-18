@@ -62,3 +62,44 @@ async def test_enabled_status(
     _set(monkeypatch, "true")
     body = (await client.get("/api/v1/modules/install/status")).json()
     assert body == {"enabled": True, "detail": None}
+
+
+_LEFTOVER_MANIFEST = (
+    "id: leftover_upload\nname: Leftover\nversion: 0.0.1\ncategory: foundation\n"
+    "requirements:\n  event_log:\n    required_columns: [case_id, activity, timestamp]\n"
+    "    min_events: 1\n    min_cases: 1\n"
+    "provides: []\nconsumes: []\n"
+    "dependencies:\n  python:\n    inherit: []\n    isolation: in_process\n"
+)
+_LEFTOVER_MODULE = (
+    'from mate.sdk import Module\n\nclass LeftoverModule(Module):\n    id = "leftover_upload"\n'
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_earlier_uploads_load_only_while_upload_is_on(
+    enabled: bool, monkeypatch: pytest.MonkeyPatch, _restore_settings: None
+) -> None:
+    """A module uploaded while the switch was on is as unsandboxed as a new
+    upload, so it must not load once the switch is off (and comes back on)."""
+    import shutil
+
+    from mate.api.config import get_settings
+    from mate.api.main import create_app
+    from mate.api.modules.loader import get_module_loader
+
+    from .guide_text import GUIDE_FILENAME, minimal_guide
+
+    _set(monkeypatch, "true" if enabled else "false")
+    folder = get_settings().uploaded_modules_dir / "leftover_upload"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "manifest.yaml").write_text(_LEFTOVER_MANIFEST)
+    (folder / "module.py").write_text(_LEFTOVER_MODULE)
+    (folder / GUIDE_FILENAME).write_text(minimal_guide("Leftover"))
+    try:
+        app = create_app()
+        async with app.router.lifespan_context(app):
+            assert ("leftover_upload" in get_module_loader().loaded) is enabled
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)

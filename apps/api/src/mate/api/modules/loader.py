@@ -608,10 +608,25 @@ class ModuleLoader:
         self._id_locks_guard = asyncio.Lock()
 
     async def load_all(self) -> list[LoadedModule]:
-        discovered = keep_only(
-            discover(self.modules_dir, self.uploaded_modules_dir),
-            get_settings().modules_only_ids,
-        )
+        # With MODULE_UPLOAD_ENABLED off, earlier uploads must not keep running:
+        # they are as unsandboxed as a new upload. Their folders and install rows
+        # stay (turning the switch back on restores them); they just don't load.
+        roots = [self.modules_dir]
+        if get_settings().module_upload_enabled:
+            roots.append(self.uploaded_modules_dir)
+        elif self.uploaded_modules_dir.is_dir():
+            skipped = sorted(
+                p.name
+                for p in self.uploaded_modules_dir.iterdir()
+                if (p / "manifest.yaml").is_file()
+            )
+            if skipped:
+                log.warning(
+                    "modules.loader.uploads_skipped",
+                    reason="MODULE_UPLOAD_ENABLED is off",
+                    module_ids=skipped,
+                )
+        discovered = keep_only(discover(*roots), get_settings().modules_only_ids)
         # Snapshot which ids are repo defaults by *root* (not manifest source):
         # an upload already present on disk at boot must not be mistaken for a
         # default just because it discovers as "filesystem".

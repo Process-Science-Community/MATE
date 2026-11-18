@@ -62,11 +62,27 @@ export default function ImportModulePage() {
         </Button>
       </div>
 
-      {uploadStatus.isPending ? null : uploadStatus.data?.enabled ? (
+      {uploadStatus.isError ? (
+        <Card>
+          <CardContent className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Couldn&apos;t check whether module upload is available.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => uploadStatus.refetch()}
+            >
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
+      ) : uploadStatus.data?.enabled === true ? (
         <UploadTab onInstalled={onInstalled} />
-      ) : (
+      ) : uploadStatus.data?.enabled === false ? (
         <UploadDisabled />
-      )}
+      ) : null}
     </PageContainer>
   );
 }
