@@ -866,18 +866,26 @@ exposed to password guessing from outside. The app is unaffected: the API and th
 To open the console from your laptop:
 
 ```bash
-# Terminal 1 – forward a local port to the VM's :443 (leave it running)
+# Terminal 1 – forward a local port to the VM's :443 (leave it running; with -N
+# it prints nothing after the password, that is the open tunnel)
 ssh -p "$DEPLOY_PORT" -N -L 8443:127.0.0.1:443 "$DEPLOY_USER@$DEPLOY_HOST"
 ```
+
+If SSH answers `Too many authentication failures`, your agent offered several
+keys before the password prompt; add
+`-o PubkeyAuthentication=no -o PreferredAuthentications=password`. Repeated
+failures get your address banned for an hour by fail2ban on the VM
+(`sudo fail2ban-client set sshd unbanip <ip>` from an open session).
 
 ```bash
 # Terminal 2 (macOS) – a separate Chrome window that sends the site's hostname
 # through the tunnel, so Keycloak's redirects keep working
 open -na "Google Chrome" --args --user-data-dir=/tmp/mate-kc-admin \
-  --host-resolver-rules="MAP mate.uni-muenster.de 127.0.0.1:8443"
+  --host-resolver-rules="MAP mate.uni-muenster.de 127.0.0.1:8443" \
+  "https://mate.uni-muenster.de/auth/admin/"
 ```
 
-Then open `https://mate.uni-muenster.de/auth/admin/` in that window. If the VM's
+The console opens in that new window (verified 2026-11-18). If the VM's
 certificate does not match the hostname, the browser warns once; that hop is your
 own SSH tunnel. Close the window and stop the `ssh` command when done.
 
