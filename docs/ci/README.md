@@ -155,10 +155,11 @@ mainly **feedback time**, and the shared queue when agents push in parallel.
 
 ## 6. Known gaps and next steps
 
-- **Branch protection is a repository setting**: mark `CI gate` as required on
-  `main` (Settings → Branches). Also consider a CODEOWNERS entry for
-  `.github/workflows/` and `scripts/ci/`. A PR runs the workflow from its own head,
-  so a change could weaken its own checks; review those paths with extra care.
+- **Branch protection: enabled (2026-11-18).** Ruleset `main protection` on `main`:
+  PR required, `CI gate` required and branch up to date, no force pushes or deletion,
+  empty bypass list. **CODEOWNERS deferred** until the project has more contributors.
+  Until then nothing stops a PR from editing `.github/workflows/` or `scripts/ci/`
+  (a PR runs the workflow from its own head), so review those paths with extra care.
 - **JVM SDK deadlock on JDK 17: fixed** (found by the first CI run, 2026-11-18).
   `WireConnection` read and wrote one blocking `SocketChannel` through
   `Channels.newInputStream`/`newOutputStream`; on JDK 17 those adapters hold the
