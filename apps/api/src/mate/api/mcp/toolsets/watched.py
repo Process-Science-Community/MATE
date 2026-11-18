@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.auth import get_owned_folder, get_owned_watched_folder
-from mate.api.auth.dependencies import is_sandboxed
+from mate.api.auth.dependencies import may_watch_custom_path
 from mate.api.db.engine import get_sessionmaker
 from mate.api.db.models import WatchedFolder, WatchedFolderFile
 from mate.api.ingest.source import default_source_path, ensure_managed_dir, list_source
@@ -160,10 +160,8 @@ async def create_watched_folder(
         )
     except ValidationError as exc:
         raise tool_error(CODE_INVALID, f"Invalid watched-folder spec: {exc}") from exc
-    if (payload.source_path or "").strip() and is_sandboxed(p.user.roles):
-        raise tool_error(
-            CODE_INVALID, "A watched folder on a custom path is not available for this account."
-        )
+    if (payload.source_path or "").strip() and not may_watch_custom_path(p.user.roles):
+        raise tool_error(CODE_INVALID, "A watched folder on a custom path requires the admin role.")
 
     async def _impl() -> dict[str, Any]:
         sm = get_sessionmaker()

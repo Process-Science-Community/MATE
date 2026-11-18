@@ -15,6 +15,7 @@ from typing import Any
 
 import duckdb
 
+from mate.api.duckdb.pool import apply_resource_limits
 from mate.api.ingest.storage import log_paths
 from mate.api.modules.event_filters import quote_ident as _quote_ident
 from mate.api.storage import eviction
@@ -141,6 +142,7 @@ class ObjectCentricLogAccess:
         if self._conn is not None:
             return
         self._conn = duckdb.connect(":memory:")
+        apply_resource_limits(self._conn)
         # Each OCEL table becomes its own independent view. Paths are derived
         # from validated log_ids (UUIDs); escape single quotes defensively as
         # DuckDB rejects parameter binding inside CREATE VIEW.

@@ -145,9 +145,12 @@ make lite MODULES=my_module,other_module
 5. **Validate.** `make validate` checks the manifest, the guide and
    `layout.json` (rules under [Validation](#validation)). Exit code 1 on any
    problem.
-6. **Ship.** Either commit the folder (it becomes a bundled default for everyone)
-   or zip it and upload it under **Modules → Install a module** (`/modules/import`) (see
-   [modules/README.md §11](../modules/README.md#11-distribution)).
+6. **Ship.** Open a pull request that adds the folder under `modules/` (it
+   becomes a bundled default for everyone once merged and deployed; see
+   [modules/README.md §11](../modules/README.md#11-distribution)). Shared
+   instances turn archive upload off (`MODULE_UPLOAD_ENABLED=false`, the
+   default) because uploaded code is not sandboxed. Lite mode turns it on for
+   itself, so **Modules → Install a module** still works on your own machine.
 
 ## Studio: building a page without TSX
 

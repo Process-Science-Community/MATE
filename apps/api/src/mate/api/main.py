@@ -349,7 +349,10 @@ async def lifespan(app: FastAPI):
             install_ids = {mid for (mid,) in rows.all()}
         up_dir = settings.uploaded_modules_dir.resolve()
         await asyncio.to_thread(gc_orphaned_uploaded_modules, up_dir, install_ids)
-        await asyncio.to_thread(restore_missing_modules_sync, up_dir, install_ids)
+        # Uploaded modules only load while upload is on (see loader.load_all),
+        # so don't pull their sources back from the bucket otherwise.
+        if settings.module_upload_enabled:
+            await asyncio.to_thread(restore_missing_modules_sync, up_dir, install_ids)
 
     try:
         await loader.load_all()

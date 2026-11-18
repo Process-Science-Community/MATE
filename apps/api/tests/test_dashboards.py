@@ -44,7 +44,11 @@ async def _seed_ocel_log(client: AsyncClient) -> str:
             data={"name": "Sample OCEL"},
         )
     log_id = resp.json()["log_id"]
-    await _wait_until_ready(client, log_id)
+    # OCEL ingest parses with pm4py, imported cold inside the import job (~1.3 s
+    # alone, several seconds on a loaded 4-way xdist runner). Same 10 s deadline
+    # as the OCEL suites (test_ocel_ingest.py, test_ocel_routes.py); the 5 s CSV
+    # default timed out under CI load on main as well.
+    await _wait_until_ready(client, log_id, timeout=10.0)
     return log_id
 
 

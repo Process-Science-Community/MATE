@@ -28,6 +28,35 @@ _thread_conn: contextvars.ContextVar[duckdb.DuckDBPyConnection | None] = context
 )
 
 
+def apply_resource_limits(conn: duckdb.DuckDBPyConnection) -> None:
+    """Apply ``DUCKDB_THREADS`` / ``DUCKDB_MEMORY_LIMIT`` to *conn*.
+
+    Every ``duckdb.connect()`` is its own database instance with DuckDB's
+    defaults - a thread per core and ~80% of the *host's* RAM - so each
+    connection the API opens (the per-request ``EventLogAccess`` behind the
+    Events/Variants tabs, OCEL access, dataset transforms) must call this, or
+    a handful of concurrent queries on a big log can exhaust the container.
+    Queries over the limit spill to ``<DATA_DIR>/duckdb-tmp`` instead (on the
+    data volume, not the container's root filesystem).
+
+    Best-effort: a PRAGMA a DuckDB build doesn't know must never break the
+    connection.
+    """
+    settings = get_settings()
+
+    def _try(sql: str) -> None:
+        with contextlib.suppress(duckdb.Error):
+            conn.execute(sql)
+
+    if settings.duckdb_threads > 0:
+        _try(f"PRAGMA threads={int(settings.duckdb_threads)}")
+    if settings.duckdb_memory_limit:
+        limit = settings.duckdb_memory_limit.replace("'", "''")
+        _try(f"PRAGMA memory_limit='{limit}'")
+        spill = str(settings.data_dir / "duckdb-tmp").replace("'", "''")
+        _try(f"SET temp_directory='{spill}'")
+
+
 class DuckDBPool:
     """Lazy thread-local in-memory DuckDB connections."""
 
@@ -37,22 +66,15 @@ class DuckDBPool:
 
     def _new_connection(self) -> duckdb.DuckDBPyConnection:
         conn = duckdb.connect(database=":memory:")
-        settings = get_settings()
+        apply_resource_limits(conn)
 
-        # Tuning (§9). Each statement is best-effort - older/newer DuckDB builds
-        # differ on which PRAGMAs exist, and a missing one must never break the
-        # connection. Object cache keeps Parquet footers between queries (big win
-        # when many widgets scan the same file); unordered scans cut memory/time
-        # for aggregations; the optional thread cap curbs core oversubscription
-        # when many widget queries run at once.
+        # Tuning (§9). Object cache keeps Parquet footers between queries (big
+        # win when many widgets scan the same file); unordered scans cut
+        # memory/time for aggregations.
         def _try(sql: str) -> None:
             with contextlib.suppress(duckdb.Error):
                 conn.execute(sql)
 
-        if settings.duckdb_threads > 0:
-            _try(f"PRAGMA threads={int(settings.duckdb_threads)}")
-        if settings.duckdb_memory_limit:
-            _try(f"PRAGMA memory_limit='{settings.duckdb_memory_limit}'")
         _try("PRAGMA enable_object_cache=true")
         _try("SET preserve_insertion_order=false")
 

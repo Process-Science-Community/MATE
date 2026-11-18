@@ -50,7 +50,7 @@ Needs `uv`, `pnpm` (Node) and Python 3.12; see [Contributing](contributing.html#
 3. **Build the page** — open **Dev** in the sidebar (`/dev`), then **Open Studio**. **Save** writes `modules/my_module/layout.json` — see [The Studio](frontend-panels-widgets-and-datasets.html#the-studio). Edit `module.py`, `manifest.yaml` and `HOW_TO_USE.md` alongside. Saving `module.py` or `manifest.yaml` reloads the module; `HOW_TO_USE.md` is read fresh on every request.
 4. **Test** — in a second terminal, `make test ID=my_module` runs `modules/my_module/tests` — see [Testing and publishing](testing-and-publishing.html).
 5. **Validate** — `make validate` checks every module's manifest, guide and `layout.json`, and exits `1` on any problem.
-6. **Ship** — commit the folder (it becomes a bundled module), or zip it and upload it under **Modules → Install a module**. A new bundled module also needs its manual page: run `make docs` and commit `landing/docs/site/`.
+6. **Ship** — open a pull request that commits the folder (it becomes a bundled module). Archive upload under **Modules → Install a module** works in lite mode and where `MODULE_UPLOAD_ENABLED=true`; it is off by default, because uploaded code is not sandboxed. A new bundled module also needs its manual page: run `make docs` and commit `landing/docs/site/`.
 :::
 
 ## The how-to-use guide
@@ -775,7 +775,8 @@ Validating the manifest and the guide first is deliberate: they are the cheapest
 
 | Channel | Input | Best for |
 | --- | --- | --- |
-| Upload | A `.zip`, `.tar`, `.tar.gz`, or `.tgz` of the folder | Private modules, one-off installs, air-gapped hosts. |
+| Pull request | The folder under `modules/` | The default channel for shared instances: reviewed, versioned, shipped with the next deploy. |
+| Upload | A `.zip`, `.tar`, `.tar.gz`, or `.tgz` of the folder | Lite mode and single-user or air-gapped hosts. Off unless `MODULE_UPLOAD_ENABLED=true`: uploaded code runs unsandboxed in the API. |
 | Installed package | A package exposing the `mate.modules` entry point | Modules shipped through your own infrastructure — discovery picks it up at boot; the UI has no registry browser. |
 
 Install runs as a job and rolls back cleanly on failure. Git-URL and registry channels are specified in `docs/INSTRUCTIONS.md` but not implemented yet. Package an archive with the manifest, `module.py`, `HOW_TO_USE.md`, tests, `layout.json`, frontend sources, and `uv.lock` — exclude `.venv/`, `.dist/`, `node_modules/`, and large model files (those belong in `model_store`). An archive without a valid `HOW_TO_USE.md` is rejected before anything is written; the install job's error lists what is wrong.

@@ -92,6 +92,15 @@ Upload XES / XES.gz / CSV → parsed (`apps/api/src/mate/api/ingest/`) → store
 ### Web app
 Next.js App Router under `apps/web/app/`: `(auth)/` for login, `(platform)/` for the authed app (`processes`, `models`, `dashboards`, `settings`, `admin`, `profile`). Data fetching via TanStack Query (`lib/queries.ts`, `lib/*-queries.ts`); client state via Zustand (`lib/stores/`). The typed fetch wrapper is `lib/api.ts` (browser) / `lib/api-server.ts` (server). `@/*` → `apps/web/`, `@modules/*` → `modules/`.
 
+## Current direction (read before module, security or hub work)
+
+- Plan, decisions and open items: [`docs/strategy/hub-roadmap.md`](./docs/strategy/hub-roadmap.md) (MATE as "the Hugging Face for process science"; Hugging Face comparison; staged roadmap; tracking/privacy and large-log follow-ups).
+- Module code is **not sandboxed**: `in_process` runs in the API, `subprocess` inherits the API's full env. Never add a path that runs user-supplied code on a shared instance.
+- Module archive upload is off unless `MODULE_UPLOAD_ENABLED=true` (lite mode sets it). Modules ship by reviewed PR into `modules/`; unpublished modules run locally via `make lite`.
+- Custom watched-folder paths are admin-only (`auth/dependencies.py:may_watch_custom_path`).
+- Every DuckDB connection must call `duckdb/pool.py:apply_resource_limits`.
+- Production DB is Postgres; tests and lite run SQLite. Raw SQL functions must work on both (see the helpers in `routes/admin_insights.py`).
+
 ## Conventions
 - Python: ruff (line length 100, formatter-enforced) + pyright strict. Alembic version files are exempt from lint.
 - Analytics/tracking: capture **every** DOM click, not just interactive elements. Avoid ad-blocker trigger words (`/analytics`, `/events`, `/track`) in API paths – use `/usage`, `/sync`, `/insights` instead (existing routes already follow this).

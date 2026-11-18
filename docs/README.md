@@ -7,7 +7,8 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | File | What it is |
 | --- | --- |
 | [`/README.md`](../README.md) | Entry point: quick start, running modes (`make dev` / `up` / `up DEV=1` / prod overlay), bundled modules, configuration, data layout. Read first. |
-| [`/CLAUDE.md`](../CLAUDE.md) | Orientation for Claude Code (claude.ai/code): commands, architecture summary, conventions. Kept in root because the tool loads it from there. |
+| [`/AGENT.md`](../AGENT.md) | Orientation for coding agents: commands, architecture summary, conventions, current direction. |
+| [`/CLAUDE.md`](../CLAUDE.md) | Claude Code project memory: imports `AGENT.md` and adds the verification and CI rules. Kept in root because the tool loads it from there. |
 | [`/PRODUCT.md`](../PRODUCT.md) | Product definition for design tooling (users, brand personality, design principles, accessibility targets). Read by the `impeccable` design skill's context script — must stay in root. |
 
 `tasks.md` (root) is a gitignored personal scratchpad, not documentation.
@@ -22,6 +23,8 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | [`MCP.md`](./MCP.md) | MCP server **consumer** reference: endpoint, auth (PAT/OAuth), scopes, tool catalog, data wall, client setup. Operator-side setup lives in `DEPLOY.md` ("MCP server"). |
 | [`ci/README.md`](./ci/README.md) | CI design and verification rules: lanes, the change planner (`scripts/ci/plan.py`), declared test inputs, pyright ratchet, baseline and cost measurements. |
 | [`DEV_LITE.md`](./DEV_LITE.md) | Lite dev mode: `make lite` (native, low-memory, `MODULES=`), the module creation flow, debugging recipes, troubleshooting. |
+| [`strategy/hub-roadmap.md`](./strategy/hub-roadmap.md) | The "Hugging Face for process science" plan: Hugging Face comparison (publishing vs. sandboxed execution), concept mapping, staged roadmap (module upload off → safe PR flow → sandboxed runner → hub), decisions log, and the open operational items (tracking/privacy, large case-study log). **Start here when continuing that work.** |
+| [`strategy/extensibility-strategy.md`](./strategy/extensibility-strategy.md) | Forward plan for polyglot modules, isolation tiers, ProM integration and the MCP server. |
 | [`S3_OFFLOAD.md`](./S3_OFFLOAD.md) | S3 storage design doc (all phases implemented): local cache + eviction, bypass-hole closure, migration + quota, hydration performance, and the still-open multi-node seams. Storage code docstrings cite it. |
 
 ## The published manual

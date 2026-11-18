@@ -20,6 +20,7 @@ from typing import Any
 import duckdb
 
 from mate.api.config import get_settings
+from mate.api.duckdb.pool import apply_resource_limits
 from mate.api.ingest.storage import log_paths
 from mate.api.modules.event_filters import quote_ident as _quote_ident
 from mate.api.modules.event_filters import render_filter_sql
@@ -348,6 +349,7 @@ class EventLogAccess:
         if self._conn is not None:
             return
         self._conn = duckdb.connect(":memory:")
+        apply_resource_limits(self._conn)
         # DuckDB rejects parameter binding in CREATE VIEW - interpolate
         # the path. Safe: paths are derived from validated log_ids (UUIDs).
         events_path = str(self._paths.events).replace("'", "''")

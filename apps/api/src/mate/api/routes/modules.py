@@ -520,6 +520,28 @@ def _has_allowed_upload_suffix(name: str) -> bool:
     return any(lowered.endswith(s) for s in _ALLOWED_UPLOAD_SUFFIXES)
 
 
+MODULE_UPLOAD_DISABLED_DETAIL = (
+    "Module upload is turned off on this platform. Modules ship through a reviewed "
+    "pull request into the MATE repository; to run an unpublished module, use lite "
+    "mode locally (docs/DEV_LITE.md)."
+)
+
+
+class ModuleUploadStatus(BaseModel):
+    enabled: bool
+    detail: str | None = None
+
+
+@router.get("/install/status", response_model=ModuleUploadStatus)
+async def install_upload_status(user: CurrentUserDep) -> ModuleUploadStatus:
+    """Whether this instance accepts module archive uploads (MODULE_UPLOAD_ENABLED),
+    so the web app can explain the alternative instead of offering a dead form."""
+    enabled = get_settings().module_upload_enabled
+    return ModuleUploadStatus(
+        enabled=enabled, detail=None if enabled else MODULE_UPLOAD_DISABLED_DETAIL
+    )
+
+
 @router.post("/install", response_model=InstallJobResponse, status_code=status.HTTP_202_ACCEPTED)
 async def install_from_upload(
     user: CurrentUserDep, file: Annotated[UploadFile, File()]
@@ -527,7 +549,13 @@ async def install_from_upload(
     """Accept a zip / tar.gz, persist it to a staging dir, and submit a job
     that unpacks and registers the module. Returns the job id so the dock can
     stream progress (`GET /api/v1/events` SSE filtered by `job.*`).
+
+    Off unless MODULE_UPLOAD_ENABLED (see config): uploaded code is not sandboxed.
     """
+    if not get_settings().module_upload_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=MODULE_UPLOAD_DISABLED_DETAIL
+        )
     # Uploaded module code runs in the API process and can read every account's
     # data, so sandboxed accounts (SANDBOXED_ROLES, e.g. `reviewer`) may use the
     # installed modules but not add their own.

@@ -106,6 +106,19 @@ class Settings(BaseSettings):
         description="SAMPLE_CONTENT_MANIFEST - path to a sample-content manifest seeded at start.",
     )
 
+    # In-platform module upload (POST /modules/install). Off by default: an
+    # uploaded module runs inside the API process (or a subprocess that inherits
+    # its full environment) and can read every account's data and the server's
+    # secrets - there is no sandbox yet. Modules ship to a hosted instance through
+    # a reviewed pull request into modules/; authors run unpublished modules
+    # locally in lite mode (docs/DEV_LITE.md), which turns this on for itself.
+    # See docs/strategy/hub-roadmap.md for the sandbox plan that would let
+    # community modules run on a hosted instance again.
+    module_upload_enabled: bool = Field(
+        default=False,
+        description="MODULE_UPLOAD_ENABLED - allow uploading module archives in the UI/API.",
+    )
+
     # Realm roles kept inside their own account (default `reviewer`, the role
     # infra/keycloak/create-reviewer-accounts.sh grants). Holders cannot use the
     # features that reach beyond it: uploading a module (its code runs inside

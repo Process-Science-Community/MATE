@@ -119,6 +119,7 @@ A watched folder turns a directory — or an S3 prefix — into an import source
 | Modes | `manual` (scan on demand), `interval` (every N seconds), `continuous`. |
 | Deduplication | `watched_folder_files` records size plus mtime (local) or ETag (S3), so each file imports once. |
 | Source files | Never moved, renamed, or deleted. |
+| Custom path | Admins only. A custom local path or S3 prefix is read with the API's full access (other accounts' data included), so every other account gets the managed per-account folder. |
 | Mapping | A per-format default mapping is required — there is no wizard for an unattended file. |
 
 The card per folder shows mode, interval, last scan, and a status badge (`active`, `paused`, `error`), with scan, pause/resume, and delete actions. For a local path, the directory must exist **inside the API container** — bind-mount it.
