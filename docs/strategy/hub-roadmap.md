@@ -145,6 +145,7 @@ on the user's own machine, not in the Hub's own server process.
 - [x] Watched folders on a custom path are admin-only (REST and MCP).
 - [x] DuckDB `DUCKDB_THREADS` / `DUCKDB_MEMORY_LIMIT` applied to every
       connection (`duckdb/pool.py:apply_resource_limits`).
+- [x] Security audit and fixes, see [§8](#8-security-audit-2026-11-18).
 
 ### Stage 1 – make the pull-request flow safe and usable
 
@@ -153,11 +154,19 @@ on the user's own machine, not in the Hub's own server process.
       exists today.
 - [ ] PR template and `CODEOWNERS` for `modules/`; a review checklist for module
       code (network, filesystem, subprocess, dependency list).
-- [ ] Ownership check on module routes and assets (`loader.py:_bind_route`,
-      `routes/modules.py` assets route).
-- [ ] Opt-in modules: a manifest flag so a merged module is available but not
-      installed for everyone (today everything in `modules/` is a default,
-      `loader.py:615-621`).
+- [ ] ~~Ownership check on module routes and assets~~ Superseded: with
+      repo-only modules, per-user installs are a display preference, not access
+      control, and enforcing them breaks shared dashboards, admin controls and
+      first visits. Replaced by the module-model simplification below.
+- [ ] Module-model simplification: replace per-user install/uninstall with
+      catalog (loaded from `modules/`) + per-user active flag
+      (`module_configs.enabled`, default from manifest `default_enabled`);
+      remove upload machinery, install tables and the admin
+      default/withhold/force options. Staged plan drafted 2026-11-18 (stages:
+      defuse S3 upload GC + backup → remove upload → switch owned→loaded/active
+      with data migration → drop `module_installs`). Waiting for owner decisions.
+- [ ] Opt-in modules: `default_enabled: false` in the manifest (part of the
+      simplification above).
 - [ ] Users can download their own event logs (today only admins can, via
       `GET /admin/event-logs/{log_id}/download` in `routes/admin_insights.py`;
       the `/admin/export/*` routes in `routes/admin.py` export usage-tracking
@@ -276,3 +285,48 @@ role. Everyone else is tracked, including admins, and cannot opt out.
   expired PKCE cookie (`InvalidCheck`), not a server problem.
 - Admin insights (overview, users, jobs, usage) ran SQLite-only SQL (`julianday`,
   `strftime`, `json_extract`) and failed on Postgres; now dialect-aware.
+
+## 8. Security audit (2026-11-18)
+
+Triggered by an external responsible-disclosure report: an uploaded module could
+read the shared database (upload was already being disabled that day). Followed by
+a two-pass code audit and a live pen-test against a production-faithful local
+stack (Postgres, `ENV=prod`, real JWT auth with locally minted tokens for two
+users and an admin), then a read-only scan of the VM.
+
+### Fixed and deployed
+
+| Finding | Fix |
+| --- | --- |
+| Uploaded module code ran unsandboxed (RCE for any account) | Upload off by default; earlier uploads not loaded (stage 0) |
+| Demo bypass (`Bearer demo-access-token`) not pinned off in prod | `Settings` refuses `ENV=prod` + `DEMO_MODE`; prod compose pins it off; `.env.example` defaults false. Prod was checked: never open |
+| SSRF via `POST /event-logs/from-url` and user-set AI `base_url` | `net_guard.assert_public_url` (public addresses only, redirects re-validated) |
+| `/event-logs/probe-xml`, `/probe-json` without auth or size cap | `CurrentUserDep` + capped sample stream |
+| Sharing a dashboard exposed all module outputs of its log | `sharing.user_can_access_log_module`: only modules the shared board places |
+| Custom watched-folder paths for any account | Admin-only |
+| Keycloak admin console and `master` realm public | Caddy 404 except via SSH tunnel (`docs/DEPLOY.md`) |
+| App database on the default password | Rotated |
+| No DB backup; world-readable dumps; no SSH brute-force protection | `scripts/backup-db.sh` nightly, owner-only; fail2ban on the VM |
+
+### Attacked and held
+
+Cross-tenant access on every id-bearing route (404), forged / `alg=none` /
+wrong-audience tokens (401), non-admin on admin routes (403), SQL injection
+(422), path traversal (404), XXE in XES upload, SSE cross-tenant leak, unbounded
+pagination, CORS reflection, MCP scopes and PAT privilege, AI key read-back.
+
+### Open
+
+- [ ] `NODE_TLS_REJECT_UNAUTHORIZED=0` on the web container
+      (`docker-compose.prod.yml`): finish the staged `KEYCLOAK_INTERNAL_URL`
+      rollout (set it, verify login and token refresh, then remove the flag).
+- [ ] API, web and proxy containers run as root inside the container.
+- [ ] CSP is `Report-Only` (`infra/caddy/Caddyfile`); enforcing needs a policy
+      that still allows module panels (`new Function`).
+- [ ] SSRF guard: DNS-rebinding race (resolve, then connect) is not closed; a
+      self-hosted AI provider on a private address is now refused and would need
+      an operator allowlist.
+- [ ] AI chat shared-log context still uses the log-wide share check (bounded by
+      the AI data wall).
+- [ ] SSH on the VM still accepts passwords (owner decision); fail2ban mitigates.
+- [ ] Module code is not sandboxed (stage 2).
