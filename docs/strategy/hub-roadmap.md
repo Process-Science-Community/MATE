@@ -164,7 +164,8 @@ on the user's own machine, not in the Hub's own server process.
       remove upload machinery, install tables and the admin
       default/withhold/force options. Staged plan drafted 2026-11-18 (stages:
       defuse S3 upload GC + backup → remove upload → switch owned→loaded/active
-      with data migration → drop `module_installs`). Waiting for owner decisions.
+      with data migration → drop `module_installs`). Approved 2026-11-18; full
+      plan and decisions in [`module-model-plan.md`](./module-model-plan.md).
 - [ ] Opt-in modules: `default_enabled: false` in the manifest (part of the
       simplification above).
 - [ ] Users can download their own event logs (today only admins can, via
@@ -318,8 +319,8 @@ pagination, CORS reflection, MCP scopes and PAT privilege, AI key read-back.
 ### Open
 
 - [ ] `NODE_TLS_REJECT_UNAUTHORIZED=0` on the web container
-      (`docker-compose.prod.yml`): finish the staged `KEYCLOAK_INTERNAL_URL`
-      rollout (set it, verify login and token refresh, then remove the flag).
+      (`docker-compose.prod.yml`): `KEYCLOAK_INTERNAL_URL` is set (step 1);
+      after a verified login and token refresh on the VM, remove the flag.
 - [ ] API, web and proxy containers run as root inside the container.
 - [ ] CSP is `Report-Only` (`infra/caddy/Caddyfile`); enforcing needs a policy
       that still allows module panels (`new Function`).

@@ -24,6 +24,7 @@ Every markdown doc in the repo, what it covers, and when to read it.
 | [`ci/README.md`](./ci/README.md) | CI design and verification rules: lanes, the change planner (`scripts/ci/plan.py`), declared test inputs, pyright ratchet, baseline and cost measurements. |
 | [`DEV_LITE.md`](./DEV_LITE.md) | Lite dev mode: `make lite` (native, low-memory, `MODULES=`), the module creation flow, debugging recipes, troubleshooting. |
 | [`strategy/hub-roadmap.md`](./strategy/hub-roadmap.md) | The "Hugging Face for process science" plan: Hugging Face comparison (publishing vs. sandboxed execution), concept mapping, staged roadmap (module upload off → safe PR flow → sandboxed runner → hub), decisions log, and the open operational items (tracking/privacy, large case-study log). **Start here when continuing that work.** |
+| [`strategy/module-model-plan.md`](./strategy/module-model-plan.md) | Approved plan for replacing per-user module install/upload with a repo-only catalog plus a per-user active flag: target model, staged PRs, safety rules, owner decisions. |
 | [`strategy/extensibility-strategy.md`](./strategy/extensibility-strategy.md) | Forward plan for polyglot modules, isolation tiers, ProM integration and the MCP server. |
 | [`S3_OFFLOAD.md`](./S3_OFFLOAD.md) | S3 storage design doc (all phases implemented): local cache + eviction, bypass-hole closure, migration + quota, hydration performance, and the still-open multi-node seams. Storage code docstrings cite it. |
 
