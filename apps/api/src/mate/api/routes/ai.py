@@ -22,6 +22,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Path
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.ai_config import (
     AI_CONFIG_KEY,
@@ -44,8 +45,9 @@ from mate.api.ai_nav import (
     route_intent,
 )
 from mate.api.auth import CurrentUserDep, get_owned_event_log
-from mate.api.db.models import UserSetting
+from mate.api.db.models import EventLog, UserSetting
 from mate.api.db.session import SessionDep
+from mate.api.hub.gate import lineage_for
 from mate.api.net_guard import assert_public_url
 from mate.api.sharing import user_can_access_log
 from mate.api.shutdown import is_shutting_down
@@ -453,6 +455,23 @@ async def route(payload: RouteRequest, session: SessionDep, user: CurrentUserDep
     )
 
 
+async def _log_ok_for_ai(session: AsyncSession, log_id: str, user_id: str) -> bool:
+    """May this log's data go into an external-AI prompt?
+
+    The user can read it (own or shared), and - for a log copied from a dataset -
+    the dataset is not withdrawn and its license allows external AI. Guards the
+    context block too, whose cache fallback reads results straight from disk and
+    so would bypass the module-context gate.
+    """
+    if not await user_can_access_log(session, log_id, user_id):
+        return False
+    row = await session.get(EventLog, log_id)
+    if row is None:
+        return False
+    lineage = await lineage_for(session, row)
+    return lineage is None or (not lineage.withdrawn and lineage.allow_external_ai)
+
+
 @router.post("/chat")
 async def chat(
     payload: ChatRequest, session: SessionDep, user: CurrentUserDep
@@ -500,7 +519,7 @@ async def chat(
         # (aggregates the user already sees in-app). Ownership-checked; skipped
         # for object-centric logs, which have no case-centric variants.
         ctx_log_id = payload.context.log_id if payload.context else None
-        if ctx_log_id:
+        if ctx_log_id and await _log_ok_for_ai(session, ctx_log_id, user.id):
             try:
                 log_row = await get_owned_event_log(session, ctx_log_id, user.id)
             except HTTPException:
@@ -518,7 +537,7 @@ async def chat(
     if (
         block_context is not None
         and block_context.log_id
-        and not await user_can_access_log(session, block_context.log_id, user.id)
+        and not await _log_ok_for_ai(session, block_context.log_id, user.id)
     ):
         block_context = None
     context_block = await _build_context_block(block_context, user.id)

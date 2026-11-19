@@ -820,6 +820,72 @@ codex mcp add mate -- npx mcp-remote https://mate.uni-muenster.de/mcp \
   tool unregistration), rate/concurrency/timeout numbers. Live, no restart:
   enable/disable, read-only, mint policy (admin UI).
 
+## Publishing a dataset (the course log)
+
+The dataset hub (`/datasets`, `HUB_DATASETS_ENABLED`, default `true`) lets an admin publish
+one of their own event logs as a catalogued, immutable dataset. Each user who clicks **Use this
+dataset** gets their own copy (Parquet + the shipped module results, about 18 MB for the
+1.2 M-event course log), so the 579 MB XES is parsed once, on the admin's account. Design and
+decisions: [`strategy/dataset-hub-plan.md`](strategy/dataset-hub-plan.md).
+
+Revisions live under `data/datasets/{id}/r{n}/` (in S3 mode mirrored like `users/`). Back it up
+with the rest of `data/`. Students never write there.
+
+**Step by step (prod, as an admin account that is not a `reviewer`):**
+
+1. **Deploy** the release (`make deploy`). The api runs migration `0018_hub_datasets` on boot.
+   Check `GET /api/v1/hub/status` returns `"enabled": true, "can_curate": true` for you.
+2. **Import** the XES on `/processes` as your own log (peak about 2 GB RSS for the 2025 log;
+   do it when nobody else is importing). Wait for `ready`; check the activity column on the
+   Settings tab (26 activities for the 2025 log, not 5). For the 2020 log, note whether the
+   `W_` activities have English or Dutch names: the modification note below must say so.
+3. **Warm the shipped modules.** Open each course module that precomputes on import
+   (`discovery`, `complexity`, `performance_over_time`, …) on the log and wait until it shows
+   results. Keep the module settings at their defaults and leave no committed filter (Events tab).
+   Only these results ship; `performance`, `conformance`, `process_comparison` compute per
+   student on first open.
+4. **Publish.** Settings tab → **Publish as dataset…**, with the card below. **External AI**:
+   allowed. **Visibility: `private`** for now. The dialog lists the module results that will
+   ship; a warning there means your settings differ from the defaults – reset and rerun first.
+
+   | Field | 2020 log | 2025 log |
+   |---|---|---|
+   | Namespace / name | `process-thinking` / `credit-loan-application-2020` | `process-thinking` / `credit-loan-application-2025` |
+   | Title | Process Thinking: Credit Loan Application 2020 | Process Thinking: Credit Loan Application 2025 |
+   | Source URL | https://data.4tu.nl/articles/dataset/BPI_Challenge_2012/12689204 | https://data.4tu.nl/articles/_/12721292/1 |
+   | Publisher | Eindhoven University of Technology (4TU.Centre for Research Data), `https://data.4tu.nl` | same |
+   | License | 4TU General Terms of Use | same |
+   | Tags | `process-thinking`, `loan-application`, `bpi-challenge-2012`, `course-variant` | same with `bpi-challenge-2017` |
+
+   Summary: "Course variant of BPI Challenge 2012 (2017), adapted by the Chair of Information
+   Systems and Business Process Management, University of Münster." Description starts with
+   the modification note: "Course variant for *Process Thinking*. Timestamps were shifted to make
+   the process more recent [2020 only, if the file has English `W_` names: and the workflow
+   activities were translated to English]. This is not the original BPI Challenge data: cite
+   the original when you publish results, and do not compare results with analyses of the
+   original log." Citation: the original BPI Challenge dataset (as given on its 4TU page) plus
+   "Process Thinking course variant, Chair of Information Systems and Business Process
+   Management, University of Münster, 2026".
+5. **QA** with two other accounts: one ordinary user (Use → their copy opens; module pages open
+   without a compute; a license banner shows on the process and module pages) and one
+   `reviewer` (must get 404 on the dataset page: 4TU terms are not an open license).
+6. **Set visibility to `public`** on the dataset page (curator panel). The chair agreed
+   (2026-11-19) to publish both logs to every MATE account as clearly marked course variants;
+   `reviewer` accounts still do not see them (4TU terms are not an open license). `restricted`
+   (one team) stays available for other datasets.
+7. **Announce** `https://mate.uni-muenster.de/datasets/process-thinking/credit-loan-application-2025`
+   (and `-2020`).
+
+**Takedown.** Curator panel → **Disable** (reason required): the dataset and every copy answer
+`410` at once, jobs on copies are cancelled; **Enable** restores. **Purge** (only after disable,
+type the slug) deletes the revision files for good; copies stay blocked and their owners can
+delete them.
+
+**Rollback.** `HUB_DATASETS_ENABLED=false` in `.env` + recreate the api container (`up -d api`;
+the web reads the flag from `/api/v1/hub/status`): the hub routes and nav disappear, existing
+copies stay governed (410/egress gates keep working). A schema rollback (`alembic downgrade
+0017_rename_module_outputs`) refuses while any copy exists – delete the copies first.
+
 ## Admin user deletion (removing the Keycloak account)
 
 Admin → **Users** lists every account; opening one shows everything it owns and

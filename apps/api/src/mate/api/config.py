@@ -119,6 +119,14 @@ class Settings(BaseSettings):
         description="MODULE_UPLOAD_ENABLED - allow uploading module archives in the UI/API.",
     )
 
+    # Dataset hub (published event logs, copy-on-use; mate.api.hub). Off hides
+    # the /hub routes and the web nav; the takedown / external-AI gates on logs
+    # already derived from a dataset stay active either way.
+    hub_datasets_enabled: bool = Field(
+        default=True,
+        description="HUB_DATASETS_ENABLED - show the dataset hub (/datasets).",
+    )
+
     # Realm roles kept inside their own account (default `reviewer`, the role
     # infra/keycloak/create-reviewer-accounts.sh grants). Holders cannot use the
     # features that reach beyond it: uploading a module (its code runs inside
@@ -503,6 +511,16 @@ class Settings(BaseSettings):
         (``_staging_sweep`` in ``main.py``).
         """
         return self.data_dir / "staging"
+
+    @property
+    def datasets_dir(self) -> Path:
+        """Root of the published dataset revisions (``{dataset_id}/r{n}/``).
+
+        Written only by ``mate.api.hub.storage`` (created lazily there). Lives
+        outside ``users/`` so cache eviction and user deletion never touch it;
+        ``local_cache_bytes`` does not count it.
+        """
+        return self.data_dir / "datasets"
 
     def event_logs_dir_for(self, user_id: str) -> Path:
         return self.users_dir / user_id / "event_logs"

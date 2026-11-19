@@ -42,6 +42,7 @@ from mate.api.modules.event_log_access import EventLogAccess, file_identity
 from mate.api.modules.object_centric_log_access import ObjectCentricLogAccess
 from mate.api.modules.processing import log_imported_payload
 from mate.api.net_guard import assert_public_url
+from mate.api.path_segments import safe_segment
 from mate.api.schemas.common import utc_isoformat
 from mate.api.schemas.event_log_data import (
     ActivityCase,
@@ -69,6 +70,13 @@ from mate.api.uuid7 import uuid7_str
 log = structlog.get_logger(__name__)
 
 VARIANT_SORTS = {"case_count", "avg_duration_seconds", "last_seen", "first_seen"}
+
+# A log copied from a dataset holds only Parquet - there is no original upload to
+# re-run the import from. Without this guard the job would start and then fail.
+NO_ORIGINAL_DETAIL = (
+    "no_original: this log was created from a dataset and has no original upload. "
+    "Use the dataset again for a fresh copy."
+)
 
 
 def _utcnow() -> datetime:
@@ -983,6 +991,8 @@ async def import_log_from_url(
 
 def reimport_preflight(row: EventLog) -> str:
     """The re-import 409 guards; returns the (narrowed) source format."""
+    if row.dataset_revision_id is not None:
+        raise HTTPException(status_code=409, detail=NO_ORIGINAL_DETAIL)
     if row.status == "importing":
         raise HTTPException(status_code=409, detail="Import already in progress.")
     if not row.source_format:
@@ -1078,6 +1088,8 @@ async def reimport_log(
 
 def remap_preflight(row: EventLog) -> str:
     """The remap 409 guards; returns the (narrowed) source format."""
+    if row.dataset_revision_id is not None:
+        raise HTTPException(status_code=409, detail=NO_ORIGINAL_DETAIL)
     if row.log_model == "object_centric":
         raise HTTPException(
             status_code=409,
@@ -1213,9 +1225,21 @@ async def duplicate_log(session: AsyncSession, src: EventLog, user_id: str) -> E
         date_min=src.date_min,
         date_max=src.date_max,
         detected_schema=src.detected_schema,
+        column_roles=src.column_roles,
+        mapping_needs_review=src.mapping_needs_review,
         description=src.description,
         column_overrides=src.column_overrides,
         active_filter=src.active_filter,
+        # Lineage + license travel with a duplicate of a dataset copy. Module
+        # results do not (only the log root is cloned), so the seed gate's file
+        # check makes the duplicate recompute. ``duplicate_of`` keeps the hub's
+        # idempotent "use" from handing back an edited duplicate as the copy.
+        dataset_revision_id=src.dataset_revision_id,
+        license_snapshot=(
+            {**src.license_snapshot, "duplicate_of": src.id}
+            if isinstance(src.license_snapshot, dict)
+            else src.license_snapshot
+        ),
         folder_id=src.folder_id,
         position=src.position + 1,
         created_at=now,
@@ -1250,6 +1274,14 @@ async def delete_log_and_data(
             log.warning("event_log.cleanup_failed", log_id=log_id, error=str(exc))
     # Remove the mirrored copy from the S3 primary store too (no-op in local mode).
     await storage_sync.delete_log(user_id, log_id)
+    # ... and the log's module results, which live outside the log dir.
+    results = get_settings().module_results_dir_for(user_id) / safe_segment(log_id, "log id")
+    if results.exists():
+        try:
+            shutil.rmtree(results)
+        except OSError as exc:
+            log.warning("event_log.results_cleanup_failed", log_id=log_id, error=str(exc))
+    await storage_sync.delete_dir_remote(results)
 
 
 # ── folders ──────────────────────────────────────────────────────────────────

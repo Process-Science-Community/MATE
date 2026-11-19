@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mate.api.auth import ADMIN_ROLE, get_owned_event_log
 from mate.api.config import get_settings
 from mate.api.db.models import EventLog
+from mate.api.hub.gate import NO_EGRESS_DETAIL, external_ai_allowed
 from mate.api.mcp import audit, metrics
 from mate.api.mcp.auth import SCOPE_PRINCIPAL_KEY, MCPPrincipal
 from mate.api.mcp.consent import egress_consented
@@ -178,12 +179,36 @@ async def guarded(
         )
 
 
-async def ensure_owned_log(session: AsyncSession, log_id: str, user_id: str) -> EventLog:
-    """Ownership gate, translated to a tool error (404 for missing AND foreign)."""
+async def ensure_owned_log(
+    session: AsyncSession,
+    log_id: str,
+    user_id: str,
+    *,
+    allow_unavailable: bool = False,
+    egress: bool = True,
+) -> EventLog:
+    """Ownership gate, translated to a tool error (404 for missing AND foreign).
+
+    Every MCP read hands the log's data to an external client, so a log copied
+    from a dataset whose license forbids external AI is refused (``egress``);
+    a withdrawn dataset's copy is ``gone`` unless ``allow_unavailable``. Only
+    ``delete_process`` passes both off.
+    """
     try:
-        return await get_owned_event_log(session, log_id, user_id)
+        row = await get_owned_event_log(
+            session, log_id, user_id, allow_unavailable=allow_unavailable
+        )
     except HTTPException as exc:
         raise from_http_exception(exc) from exc
+    if egress:
+        await ensure_log_egress(session, row)
+    return row
+
+
+async def ensure_log_egress(session: AsyncSession, row: EventLog) -> None:
+    """``forbidden`` when the log's dataset license forbids external AI."""
+    if row.dataset_revision_id is not None and not await external_ai_allowed(session, row):
+        raise tool_error(CODE_FORBIDDEN, NO_EGRESS_DETAIL)
 
 
 def cap(obj: Any) -> Any:

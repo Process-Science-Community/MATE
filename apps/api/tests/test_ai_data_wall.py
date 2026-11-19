@@ -105,3 +105,126 @@ async def test_make_context_restrict_flag(client_with_sample_mod: AsyncClient) -
     # Default (non-AI) path keeps full raw access.
     full = await loader._make_context(mod_id, log_id, TEST_USER_ID)
     assert isinstance(full.event_log, EventLogAccess)
+
+
+# --------------------------------------------------------------------------- #
+# Dataset license: a copy whose dataset forbids external AI never reaches it
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_no_egress_derived_log_never_reaches_external_ai(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typing import Any
+
+    from mate.api.ai_config import AiConfigPayload, ProviderConfig
+    from mate.api.ai_nav import list_user_processes
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.modules import get_module_loader
+    from mate.api.routes import ai as ai_routes
+
+    from .conftest import multi_user_client
+    from .hub_support import CURATOR, HUB_USERS, STUDENT, be, import_log, publish, use
+
+    mod = "sample_mod"
+    async with multi_user_client(HUB_USERS, mods=(mod,), tmp_path=tmp_path) as (c, st):
+        log_id = await import_log(c, st)
+        ds = await publish(c, st, log_id, title="No-egress course log", allow_external_ai=False)
+        new_id = (await use(c, st, STUDENT, ds["slug"])).json()["log"]["id"]
+        be(st, STUDENT)
+
+        for url, params in (
+            (f"/api/v1/ai/guidance/module/{mod}", {"log_id": new_id}),
+            (f"/api/v1/ai/guidance/module/{mod}/stream", {"log_id": new_id}),
+            (f"/api/v1/ai/guidance/process/{new_id}", None),
+            (f"/api/v1/ai/guidance/import/quality/{new_id}", None),
+        ):
+            r = await c.post(url, json={}, params=params)
+            assert r.status_code == 403, f"{url}: {r.status_code} {r.text}"
+        # Clearing stored guidance sends nothing anywhere and stays allowed.
+        r = await c.delete(f"/api/v1/ai/guidance/module/{mod}", params={"log_id": new_id})
+        assert r.status_code == 200, r.text
+
+        async def listed() -> set[str]:
+            async with get_sessionmaker()() as s:
+                return {p.id for p in await list_user_processes(s, STUDENT)}
+
+        assert new_id not in await listed()
+
+        # Chat: a module whose curated payload would carry the log's results.
+        instance = get_module_loader().loaded[mod].instance
+        monkeypatch.setattr(
+            instance, "guidance_payload", lambda ctx: {"k": "RESULT-LEAK"}, raising=False
+        )
+        cfg = AiConfigPayload(
+            anthropic=ProviderConfig(api_key="k"),
+            selected_provider="anthropic",
+            selected_model="m",
+            allow_process_data=True,
+        )
+        prompts: list[str] = []
+
+        async def _load(*_a: Any, **_k: Any) -> AiConfigPayload:
+            return cfg
+
+        async def _capture(cfg_: AiConfigPayload, _messages: Any) -> Any:
+            prompts.append(cfg_.system_prompt)
+            yield "data: {}\n\n"
+
+        monkeypatch.setattr(ai_routes, "load_ai_config", _load)
+        monkeypatch.setattr(ai_routes, "_stream_chat", _capture)
+
+        async def chat() -> str:
+            r = await c.post(
+                "/api/v1/ai/chat",
+                json={
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "context": {"log_id": new_id, "module_ids": [mod]},
+                },
+            )
+            assert r.status_code == 200, r.text
+            return prompts[-1]
+
+        prompt = await chat()
+        assert "RESULT-LEAK" not in prompt
+        assert "No-egress course log" not in prompt
+        assert "Activities (" not in prompt
+
+        # The flag is read live: allowing it applies to the existing copy.
+        be(st, CURATOR)
+        r = await c.patch(f"/api/v1/hub/datasets/{ds['slug']}", json={"allow_external_ai": True})
+        assert r.status_code == 200 and r.json()["allow_external_ai"] is True
+        be(st, STUDENT)
+        assert new_id in await listed()
+        prompt = await chat()
+        assert "RESULT-LEAK" in prompt
+        assert "No-egress course log" in prompt
+
+
+@pytest.mark.asyncio
+async def test_ai_card_module_refused_on_no_egress_log(
+    admin_client_with_sample_cards: AsyncClient,
+) -> None:
+    from uuid import uuid4
+
+    c = admin_client_with_sample_cards
+    log_id = await _seed_log(c)
+    body = {
+        "source_log_id": log_id,
+        "namespace": f"ns-{uuid4().hex[:8]}",
+        "name": "log",
+        "title": "No-egress",
+        "allow_external_ai": False,
+    }
+    r = await c.post("/api/v1/hub/datasets", json=body)
+    assert r.status_code == 201, r.text
+    slug = r.json()["slug"]
+    new_id = (await c.post(f"/api/v1/hub/datasets/{slug}/use", json={})).json()["log"]["id"]
+
+    # The AI-card module would send the log's data to a provider: refused.
+    r = await c.get("/api/v1/modules/sample_cards/echo-config", params={"log_id": new_id})
+    assert r.status_code == 403, r.text
+    # The same module on the curator's own (ordinary) log is fine.
+    r = await c.get("/api/v1/modules/sample_cards/echo-config", params={"log_id": log_id})
+    assert r.status_code == 200, r.text

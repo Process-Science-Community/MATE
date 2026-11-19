@@ -410,3 +410,42 @@ async def test_restore_default_modules_reports_restored(client: AsyncClient) -> 
     await _seed_log("mcpan-rest-log")  # consent
     out = await analysis.restore_default_modules(_ctx(_principal()))
     assert out == {"restored": []}  # test loader ships no default modules
+
+
+@pytest.mark.asyncio
+async def test_mcp_refuses_no_egress_derived_log_but_allows_delete(tmp_path: Any) -> None:
+    from mate.api.mcp.toolsets import processes
+
+    from .conftest import multi_user_client
+    from .hub_support import HUB_USERS, STUDENT, import_log, publish, use
+
+    async with multi_user_client(HUB_USERS, mods=("sample_mod",), tmp_path=tmp_path) as (c, st):
+        log_id = await import_log(c, st)
+        open_ds = await publish(c, st, log_id, title="Open copy")
+        closed_ds = await publish(c, st, log_id, allow_external_ai=False)
+        open_id = (await use(c, st, STUDENT, open_ds["slug"])).json()["log"]["id"]
+        closed_id = (await use(c, st, STUDENT, closed_ds["slug"])).json()["log"]["id"]
+        await _seed_log(closed_id, STUDENT)  # egress consent for the principal
+        ctx = _ctx(_principal(STUDENT))
+
+        for call in (
+            processes.get_process(ctx, closed_id),
+            processes.get_activities(ctx, closed_id),
+            analysis.get_module_output(ctx, closed_id, "sample_mod"),
+        ):
+            with pytest.raises(MCPToolError, match=r"\[forbidden\]"):
+                await call
+
+        # A copy whose dataset allows external AI is served - with its attribution.
+        detail = await processes.get_process(ctx, open_id)
+        assert detail["source_dataset"]["slug"] == open_ds["slug"]
+        listed = await processes.list_processes(ctx)
+        by_id = {p["id"]: p for p in listed["items"]}
+        assert by_id[open_id]["source_dataset"]["citation"] == open_ds["citation"]
+        # The no-egress copy is not listed at all - not its name, not its counts
+        # (same rule as the AI chat's process catalog).
+        assert closed_id not in by_id
+
+        # Deleting sends nothing anywhere: allowed.
+        out = await processes.delete_process(ctx, closed_id, confirm=True)
+        assert out == {"deleted": True, "log_id": closed_id}

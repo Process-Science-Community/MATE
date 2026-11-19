@@ -273,3 +273,110 @@ async def admin_client_with_sample_cards(tmp_path: Path) -> AsyncIterator[AsyncC
     module owner, so it can both lock cards (admin API) and view them (/config)."""
     async with _sample_mod_client(tmp_path, seed=True, mod="sample_cards", admin=True) as c:
         yield c
+
+
+# --------------------------------------------------------------------------- #
+# Multi-user harness: one app, the current identity swapped mid-test.
+# --------------------------------------------------------------------------- #
+
+
+def make_user(uid: str, roles: tuple[str, ...] = ("user",)):
+    from mate.api.auth.dependencies import CurrentUser
+
+    return CurrentUser(
+        id=uid,
+        email=f"{uid}@mate.local",
+        preferred_username=uid[:8],
+        name=uid[:8],
+        roles=roles,
+    )
+
+
+async def seed_users(user_ids: tuple[str, ...]) -> None:
+    from datetime import UTC, datetime
+
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.db.models import User
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    async with get_sessionmaker()() as s:
+        for uid in user_ids:
+            if await s.get(User, uid) is None:
+                s.add(
+                    User(
+                        id=uid,
+                        email=f"{uid}@mate.local",
+                        preferred_username=uid[:8],
+                        name=uid[:8],
+                        created_at=now,
+                        last_seen_at=now,
+                    )
+                )
+        await s.commit()
+
+
+@contextlib.asynccontextmanager
+async def multi_user_client(
+    user_ids: tuple[str, ...] = (),
+    *,
+    mods: tuple[str, ...] = (),
+    tmp_path: Path | None = None,
+) -> AsyncIterator[tuple[AsyncClient, dict[str, Any]]]:
+    """App whose current user is ``state["user"]`` (switch with :func:`act_as`).
+
+    Starts as ``TEST_USER_ID`` with role ``user``; ``user_ids`` are seeded as
+    ``users`` rows. ``mods`` (fixture module names, needs ``tmp_path``) are loaded
+    as defaults and installed for every listed user.
+    """
+    from mate.api import config as cfg
+
+    prev_modules = os.environ.get("MODULES_DIR")
+    if mods:
+        assert tmp_path is not None, "mods need tmp_path"
+        for name in mods:
+            shutil.copytree(
+                Path(__file__).parent / "fixtures" / "modules" / name,
+                tmp_path / "modules" / name,
+            )
+        os.environ["MODULES_DIR"] = str(tmp_path / "modules")
+        cfg.get_settings.cache_clear()
+        shutil.rmtree(cfg.get_settings().uploaded_modules_dir, ignore_errors=True)
+    try:
+        from mate.api.auth.dependencies import get_current_user
+        from mate.api.main import create_app
+
+        app = create_app()
+        state: dict[str, Any] = {"user": make_user(TEST_USER_ID)}
+
+        async def _current():
+            return state["user"]
+
+        app.dependency_overrides[get_current_user] = _current
+        transport = ASGITransport(app=app)
+        async with (
+            AsyncClient(transport=transport, base_url="http://testserver") as c,
+            app.router.lifespan_context(app),
+        ):
+            await seed_users(user_ids)
+            if mods:
+                from mate.api.db.engine import get_sessionmaker
+                from mate.api.modules import get_module_loader
+                from mate.api.modules.installs import record_install
+
+                async with get_sessionmaker()() as session:
+                    for uid in (TEST_USER_ID, *user_ids):
+                        for manifest in get_module_loader().manifests():
+                            await record_install(session, uid, manifest.id, "upload")
+                    await session.commit()
+            yield c, state
+    finally:
+        if mods:
+            if prev_modules is None:
+                os.environ.pop("MODULES_DIR", None)
+            else:
+                os.environ["MODULES_DIR"] = prev_modules
+            cfg.get_settings.cache_clear()
+
+
+def act_as(state: dict[str, Any], uid: str, roles: tuple[str, ...] = ("user",)) -> None:
+    state["user"] = make_user(uid, roles)

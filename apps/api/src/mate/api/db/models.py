@@ -7,12 +7,14 @@ populated by phase 5 - the column shape is fixed in v1.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, ClassVar
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -20,6 +22,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
+    true,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -79,7 +83,12 @@ class Folder(Base):
 
 class EventLog(Base):
     """A user-facing process log. The `id` is also the directory name in
-    `data/event_logs/{id}/` and the URL identifier in `/processes/{logId}`.
+    `data/users/{user_id}/event_logs/{id}/` and the URL identifier in
+    `/processes/{logId}`.
+
+    A log created from a published dataset ("Use this dataset") carries
+    ``dataset_revision_id`` (lineage) and a ``license_snapshot`` of the dataset
+    card at use time; see ``mate.api.hub``.
     """
 
     __tablename__ = "process_logs"
@@ -160,10 +169,27 @@ class EventLog(Base):
     last_edited_at: Mapped[datetime | None] = mapped_column(DateTime)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # Dataset lineage (mate.api.hub). Set only on a log created by "Use this
+    # dataset"; revisions are never deleted (purge only stamps purged_at), so the
+    # SET NULL is a safety net, not a code path.
+    dataset_revision_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey(
+            "hub_dataset_revisions.id",
+            name="fk_process_logs_dataset_revision",
+            ondelete="SET NULL",
+        ),
+    )
+    # The dataset card (license, citation, publisher, allow_external_ai) as it
+    # was when the copy was made. Shown when the dataset row is unreadable; the
+    # live values win otherwise.
+    license_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
     __table_args__ = (
         Index("ix_process_logs_user_status", "user_id", "status"),
         Index("ix_process_logs_user_created_at", "user_id", "created_at"),
         Index("ix_process_logs_user_folder_id", "user_id", "folder_id"),
+        Index("ix_process_logs_user_dataset_revision", "user_id", "dataset_revision_id"),
     )
 
 
@@ -796,3 +822,108 @@ class ApiToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     __table_args__ = (Index("ix_api_tokens_user", "user_id"),)
+
+
+class HubDataset(Base):
+    """A published event log ("dataset") - the card plus its access settings.
+
+    The data itself lives in immutable revisions (``HubDatasetRevision``) under
+    ``data/datasets/{id}/r{n}/``; "Use this dataset" copies a revision into an
+    ordinary ``EventLog`` owned by the user (copy-on-use, see ``mate.api.hub``).
+    """
+
+    __tablename__ = "hub_datasets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    description_md: Mapped[str | None] = mapped_column(Text)
+    license_id: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
+    license_name: Mapped[str | None] = mapped_column(String(200))
+    license_url: Mapped[str | None] = mapped_column(String(500))
+    citation: Mapped[str | None] = mapped_column(Text)
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_doi: Mapped[str | None] = mapped_column(String(200))
+    publisher_name: Mapped[str | None] = mapped_column(String(200))
+    publisher_url: Mapped[str | None] = mapped_column(String(500))
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    # Lowercased title + summary + namespace/name + tags, rewritten by the
+    # service on every write: portable LIKE search (LIKE over JSON is not).
+    search_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    allow_external_ai: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
+    retention_until: Mapped[date | None] = mapped_column(Date)
+    # private | restricted | public
+    visibility: Mapped[str] = mapped_column(String(16), default="private", nullable=False)
+    audience_team_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("teams.id", ondelete="SET NULL")
+    )
+    # active | disabled
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    disabled_reason: Mapped[str | None] = mapped_column(Text)
+    disabled_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    # No FK (would form a cycle with hub_dataset_revisions); set by the service.
+    current_revision_id: Mapped[str | None] = mapped_column(String(36))
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint("namespace", "name", name="uq_hub_datasets_slug"),
+        Index("ix_hub_datasets_visibility_status", "visibility", "status"),
+        Index("ix_hub_datasets_updated_at", "updated_at"),
+    )
+
+
+class HubDatasetRevision(Base):
+    """One immutable snapshot of a dataset's data (``r{number}`` on disk).
+
+    The on-disk path is always derived (``mate.api.hub.storage.revision_dir``),
+    never stored. ``source_log_id`` has no FK: the curator's log may be deleted
+    and the dataset survives.
+    """
+
+    __tablename__ = "hub_dataset_revisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("hub_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_log_id: Mapped[str | None] = mapped_column(String(36))
+    source_format: Mapped[str | None] = mapped_column(String(32))
+    log_model: Mapped[str | None] = mapped_column(String(16))
+    detected_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    column_roles: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    column_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    events_count: Mapped[int | None] = mapped_column(Integer)
+    cases_count: Mapped[int | None] = mapped_column(Integer)
+    variants_count: Mapped[int | None] = mapped_column(Integer)
+    activities_count: Mapped[int | None] = mapped_column(Integer)
+    date_min: Mapped[datetime | None] = mapped_column(DateTime)
+    date_max: Mapped[datetime | None] = mapped_column(DateTime)
+    bytes_parquet: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    events_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    preview: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    # {module_id: {"module_version": str | None, "config_hash": str, "keys": [str]}}
+    canonical_results: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime)
+    purged_by: Mapped[str | None] = mapped_column(String(36))
+
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "number", name="uq_hub_dataset_revisions_number"),
+    )

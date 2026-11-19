@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useProgressRouter } from "@/lib/use-progress-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchEventLog } from "@/lib/client-prefetch";
+import { licenseLabel } from "@/components/datasets/license-badge";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -44,7 +45,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { toastError } from "@/lib/toast";
 import { cn } from "@/lib/cn";
 import { formatDateRange, formatNumber, formatRelative } from "@/lib/format";
-import type { EventLogSummary, FolderSummary, ReorderItem } from "@/lib/api-types";
+import type { EventLogSummary, FolderSummary, ReorderItem, SourceDataset } from "@/lib/api-types";
 import {
   useCreateFolder,
   useDeleteEventLog,
@@ -903,7 +904,10 @@ function LogRow({
             }}
           >
             <div className="min-w-0" style={{ paddingLeft: depth * 16 + 24 }}>
-              <div className="truncate font-medium">{row.name}</div>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{row.name}</span>
+                {row.source_dataset && <DatasetRowBadge src={row.source_dataset} />}
+              </div>
               {importing && (
                 <div className="mt-1 max-w-xs">
                   {/* Indeterminate: the bar has to pulse or it reads as a stalled 0%. */}
@@ -961,7 +965,8 @@ function LogRow({
               <LogActionsDropdown
                 disabled={busy}
                 ready={ready}
-                hasSourceFormat={Boolean(row.source_format)}
+                // A dataset copy has no original upload to re-import (API 409 no_original).
+                hasSourceFormat={Boolean(row.source_format) && !row.source_dataset}
                 folders={folders}
                 currentFolderId={row.folder_id}
                 onOpen={onOpen}
@@ -985,7 +990,7 @@ function LogRow({
             Duplicate
           </ContextMenuItem>
           <ContextMenuItem
-            disabled={busy || !row.source_format}
+            disabled={busy || !row.source_format || !!row.source_dataset}
             onSelect={() => setReimportOpen(true)}
           >
             <RefreshCcw className="mr-2 h-3.5 w-3.5" />
@@ -1373,4 +1378,21 @@ export function NewFolderDialog({
 // Helper used by the parent page when there's no logId in the URL.
 export function processesHref(id: string) {
   return `/processes/${id}` as const;
+}
+
+/** Marks a log copied from a dataset, with its license – or that it was withdrawn. */
+function DatasetRowBadge({ src }: { src: SourceDataset }) {
+  const withdrawn = src.status !== "active";
+  return (
+    <span
+      title={withdrawn ? `${src.slug} was withdrawn` : `Copy of ${src.slug} r${src.revision}`}
+      className={
+        withdrawn
+          ? "shrink-0 rounded border border-destructive/30 bg-destructive/10 px-1.5 py-px text-[10px] font-medium text-destructive"
+          : "shrink-0 rounded border border-primary/20 bg-primary/5 px-1.5 py-px text-[10px] font-medium text-primary"
+      }
+    >
+      {withdrawn ? "Dataset withdrawn" : `Dataset · ${licenseLabel(src.license_id, src.license_name)}`}
+    </span>
+  );
 }

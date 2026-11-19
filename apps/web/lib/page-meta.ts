@@ -60,6 +60,10 @@ const STATIC: Record<string, PageMeta> = {
     description:
       "Storage locations scanned for new event-log files. New files are imported automatically.",
   },
+  "/datasets": {
+    title: "Datasets",
+    description: "Published event logs you can use as your own copy.",
+  },
   "/dashboards": {
     title: "Dashboards",
     description: "Compose cards from any module into a saved, reopenable board.",
@@ -187,6 +191,14 @@ export function resolvePageMeta(pathname: string, ctx: ResolvePageCtx = {}): Pag
     return {
       title: ctx.logNames?.get(logId) ?? "Process",
       description: "Overview, variants, and module output for this event log.",
+    };
+  }
+
+  // /datasets/:namespace/:name
+  if (parts[0] === "datasets" && parts.length >= 3) {
+    return {
+      title: "Dataset",
+      description: `${parts[1]}/${parts[2]} – a published event log you can use as your own copy.`,
     };
   }
 

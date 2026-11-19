@@ -20,7 +20,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.db.engine import get_sessionmaker
-from mate.api.db.models import ModuleConfig, ModuleInstall
+from mate.api.db.models import EventLog, ModuleConfig, ModuleInstall
+from mate.api.hub.gate import source_dataset_for
 from mate.api.mcp.core import (
     MCPContext,
     authz,
@@ -114,13 +115,28 @@ async def _require_computed(user_id: str, log_id: str, module_id: str) -> None:
         )
 
 
+async def _attribution(session: AsyncSession, row: EventLog) -> dict[str, Any] | None:
+    """Citation for results computed on a log copied from a dataset (else None)."""
+    info = await source_dataset_for(session, row)
+    if info is None:
+        return None
+    return {
+        "slug": info.slug,
+        "title": info.title,
+        "revision": info.revision,
+        "license_id": info.license_id,
+        "citation": info.citation,
+    }
+
+
 async def _module_output(user_id: str, log_id: str, module_id: str) -> dict[str, Any]:
     from mate.api.routes.ai_guidance import build_payload
 
     sm = get_sessionmaker()
     async with sm() as session:
-        await ensure_owned_log(session, log_id, user_id)
+        row = await ensure_owned_log(session, log_id, user_id)
         await _ensure_installed(session, user_id, module_id)
+        attribution = await _attribution(session, row)
     await _require_computed(user_id, log_id, module_id)
     try:
         # restrict_event_log=True is the structural data wall: a module whose
@@ -133,7 +149,10 @@ async def _module_output(user_id: str, log_id: str, module_id: str) -> dict[str,
         raise from_http_exception(exc) from exc
     except PermissionError as exc:
         raise _no_results_error(module_id) from exc
-    return cap({"log_id": log_id, "module_id": module_id, "output": payload})
+    out: dict[str, Any] = {"log_id": log_id, "module_id": module_id, "output": payload}
+    if attribution is not None:
+        out["attribution"] = attribution
+    return cap(out)
 
 
 @mcp_tool(toolset="analysis", idempotent=True)
@@ -387,8 +406,9 @@ async def get_module_output_data(
 
         sm = get_sessionmaker()
         async with sm() as session:
-            await ensure_owned_log(session, log_id, p.user.id)
+            row = await ensure_owned_log(session, log_id, p.user.id)
             await _ensure_installed(session, p.user.id, module_id)
+            attribution = await _attribution(session, row)
         await _require_computed(p.user.id, log_id, module_id)
         try:
             loader = get_module_loader()
@@ -413,14 +433,15 @@ async def get_module_output_data(
             raise from_http_exception(exc) from exc
         except ValueError as exc:
             raise tool_error(CODE_NOT_FOUND, str(exc)) from exc
-        return cap(
-            {
-                "log_id": log_id,
-                "module_id": module_id,
-                "output_id": output_id,
-                "output": envelope.model_dump(by_alias=True),
-            }
-        )
+        out: dict[str, Any] = {
+            "log_id": log_id,
+            "module_id": module_id,
+            "output_id": output_id,
+            "output": envelope.model_dump(by_alias=True),
+        }
+        if attribution is not None:
+            out["attribution"] = attribution
+        return cap(out)
 
     return await guarded(
         p,

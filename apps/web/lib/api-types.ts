@@ -38,6 +38,8 @@ export interface EventLogSummary {
   last_edited_at: string | null;
   /** The importer had to guess a mandatory column – prompts a settings review. */
   mapping_needs_review?: boolean;
+  /** Set when this log is a copy of a published dataset ("Use this dataset"). */
+  source_dataset?: SourceDataset | null;
 }
 
 // ── Import wizard: staged upload + column probe (POST /event-logs/stage) ─────
@@ -167,6 +169,8 @@ export interface EventLogDetail extends EventLogSummary {
   active_filter: FilterEntry[] | null;
   /** Resolved role → source-column mapping (case_id / activity / timestamp / …). */
   column_roles: Record<string, string> | null;
+  /** Datasets published from this log – filled for curators only. */
+  published_datasets?: PublishedDatasetRef[];
 }
 
 /** Manual column-role mapping submitted from settings → re-imports the log. */
@@ -1051,4 +1055,196 @@ export interface AdminApiTokenInfo {
   created_at: string;
   last_used_at: string | null;
   revoked: boolean;
+}
+
+// ── Dataset hub (`/api/v1/hub`, mirrors `schemas/hub_datasets.py`) ──────────
+
+/** One entry of the curated license list. `open` licenses are the only ones a
+ *  sandboxed (reviewer) account can see. */
+export interface LicenseOut {
+  id: string;
+  spdx: string | null;
+  name: string;
+  url: string | null;
+  open: boolean;
+}
+
+/** `GET /hub/status` – always mounted, even when the hub flag is off. */
+export interface HubStatus {
+  enabled: boolean;
+  /** Admin and not sandboxed (and the hub is enabled). */
+  can_curate: boolean;
+}
+
+export type DatasetVisibility = "private" | "restricted" | "public";
+export type DatasetStatus = "active" | "disabled";
+
+/** The dataset a log was copied from. Live values while the dataset is readable,
+ *  the use-time snapshot otherwise. A non-`active` status means the copy is
+ *  withdrawn: its data routes answer 410. */
+export interface SourceDataset {
+  dataset_id: string;
+  slug: string;
+  title: string;
+  revision: number;
+  license_id: string;
+  license_name: string | null;
+  license_url: string | null;
+  citation: string | null;
+  publisher_name: string | null;
+  publisher_url: string | null;
+  status: "active" | "disabled" | "purged";
+  disabled_reason: string | null;
+  allow_external_ai: boolean;
+}
+
+export interface PublishedDatasetRef {
+  slug: string;
+  title: string;
+}
+
+export interface DatasetSummary {
+  id: string;
+  namespace: string;
+  name: string;
+  slug: string;
+  title: string;
+  summary: string;
+  license: LicenseOut;
+  tags: string[];
+  publisher_name: string | null;
+  visibility: DatasetVisibility;
+  status: DatasetStatus;
+  events_count: number | null;
+  cases_count: number | null;
+  date_min: string | null;
+  date_max: string | null;
+  /** Distinct users holding a non-deleted copy. */
+  uses: number;
+  updated_at: string;
+  published_at: string | null;
+}
+
+export interface DatasetColumnStat {
+  name: string;
+  dtype: string;
+  null_ratio: number | null;
+  distinct: number | null;
+}
+
+export interface DatasetStats {
+  columns?: DatasetColumnStat[];
+  time_span_days?: number | null;
+  file_format?: string | null;
+}
+
+export interface DatasetPreview {
+  top_activities?: { activity: string; count: number }[];
+  top_variants?: { activities: string[]; case_count: number }[];
+  rows?: { columns: string[]; data: unknown[][] };
+}
+
+export interface DatasetRevisionOut {
+  number: number;
+  created_at: string;
+  source_format: string | null;
+  log_model: string | null;
+  events_count: number | null;
+  cases_count: number | null;
+  variants_count: number | null;
+  activities_count: number | null;
+  date_min: string | null;
+  date_max: string | null;
+  bytes_parquet: number;
+  stats: DatasetStats;
+  preview: DatasetPreview;
+  canonical_modules: string[];
+  purged: boolean;
+}
+
+export interface DatasetLogRef {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface DatasetDetail extends DatasetSummary {
+  description_md: string | null;
+  citation: string | null;
+  source_url: string | null;
+  source_doi: string | null;
+  publisher_url: string | null;
+  allow_external_ai: boolean;
+  retention_until: string | null;
+  /** Curators only; null for everyone else. */
+  audience_team: { id: string; name: string } | null;
+  /** Curators only. */
+  disabled_reason: string | null;
+  revision: DatasetRevisionOut;
+  required_modules: string[];
+  missing_modules: string[];
+  viewer: { can_curate: boolean; my_logs: DatasetLogRef[] };
+}
+
+export interface DatasetPage {
+  items: DatasetSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DatasetCardFields {
+  title: string;
+  summary?: string;
+  description_md?: string | null;
+  license_id?: string;
+  license_name?: string | null;
+  license_url?: string | null;
+  citation?: string | null;
+  source_url?: string | null;
+  source_doi?: string | null;
+  publisher_name?: string | null;
+  publisher_url?: string | null;
+  tags?: string[];
+  allow_external_ai?: boolean;
+  retention_until?: string | null;
+  visibility?: DatasetVisibility;
+  audience_team_id?: string | null;
+}
+
+export interface DatasetCreate extends DatasetCardFields {
+  source_log_id: string;
+  namespace: string;
+  name: string;
+  /** Module results to ship; omitted/null = every eligible one
+   *  (`GET /hub/publish-candidates/{log_id}`). */
+  modules?: string[] | null;
+}
+
+/** A module whose results on the source log a publish ships by default. */
+export interface PublishCandidate {
+  module_id: string;
+  name: string;
+  /** False: the curator's settings differ from the module defaults, so users on
+   *  default settings recompute instead of reading the shipped result. */
+  config_is_default: boolean;
+}
+
+/** PATCH body – only the fields sent are applied. */
+export type DatasetUpdate = Partial<DatasetCardFields>;
+
+export interface DatasetUseResponse {
+  log: EventLogDetail;
+  /** False when the caller's existing copy was returned. */
+  created: boolean;
+}
+
+export type DatasetSort = "updated" | "uses";
+
+export interface DatasetListParams {
+  q?: string;
+  license?: string;
+  sort?: DatasetSort;
+  limit?: number;
+  offset?: number;
 }

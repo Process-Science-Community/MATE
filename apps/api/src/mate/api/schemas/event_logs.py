@@ -204,6 +204,32 @@ class EventLogCreateResponse(BaseModel):
     job_id: str
 
 
+class SourceDataset(BaseModel):
+    """The dataset a log was copied from ("Use this dataset"); live values when
+    the dataset is readable, the use-time snapshot otherwise."""
+
+    dataset_id: str
+    slug: str
+    title: str
+    revision: int
+    license_id: str
+    license_name: str | None = None
+    license_url: str | None = None
+    citation: str | None = None
+    publisher_name: str | None = None
+    publisher_url: str | None = None
+    status: Literal["active", "disabled", "purged"]
+    disabled_reason: str | None = None
+    allow_external_ai: bool = True
+
+
+class PublishedDatasetRef(BaseModel):
+    """A dataset published from this log (shown to curators in its settings)."""
+
+    slug: str
+    title: str
+
+
 class EventLogSummary(BaseModel):
     """Row shape for `GET /event-logs`."""
 
@@ -236,6 +262,8 @@ class EventLogSummary(BaseModel):
     # True when the importer had to guess a mandatory column - drives the
     # "review column mapping" warning in the process overview.
     mapping_needs_review: bool = False
+    # Set when the log was copied from a published dataset (lineage + license).
+    source_dataset: SourceDataset | None = None
 
 
 class EventLogDetail(EventLogSummary):
@@ -245,6 +273,8 @@ class EventLogDetail(EventLogSummary):
     active_filter: list[dict[str, Any]] | None = None
     # Resolved role → source-column mapping (case_id / activity / timestamp / …).
     column_roles: dict[str, Any] | None = None
+    # Datasets published from this log - filled for curators only.
+    published_datasets: list[PublishedDatasetRef] = Field(default_factory=list)
 
 
 class RemapColumnRoles(BaseModel):

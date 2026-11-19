@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { dashboardKeys, dashboardsListPath, dashboardPath } from "@/lib/query-keys";
-import type { ColumnSpec, EventsPage, FilterEntry, LogModel } from "@/lib/api-types";
+import type { ColumnSpec, EventsPage, FilterEntry, LogModel, SourceDataset } from "@/lib/api-types";
 
 export type { LogModel };
 // Re-exported from the pure `lib/query-keys.ts` (shared with the SSR prefetch layer).
@@ -219,6 +219,8 @@ export interface DashboardDetail {
   updated_at: string;
   /** False when the board was opened via a share – render it read-only. */
   is_owner: boolean;
+  /** The dataset the bound log was copied from – drives the attribution footer. */
+  source_dataset?: SourceDataset | null;
 }
 
 /** One configurable field on a card, in the module `config_schema` dialect. */

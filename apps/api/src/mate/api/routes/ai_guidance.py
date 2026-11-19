@@ -42,6 +42,7 @@ from mate.api.ai_guidance import (
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.db.models import ModuleConfig
 from mate.api.db.session import SessionDep
+from mate.api.hub.gate import ensure_external_ai_allowed
 from mate.api.modules import get_module_loader
 from mate.api.modules.cache import ResultCache
 
@@ -174,7 +175,8 @@ async def module_guidance(
     user: CurrentUserDep,
     log_id: str = Query(..., min_length=1),
 ) -> GuidanceResponse:
-    await get_owned_event_log(session, log_id, user.id)
+    egress_row = await get_owned_event_log(session, log_id, user.id)
+    await ensure_external_ai_allowed(session, egress_row)
     payload, system_prompt, user_prefix = await build_payload(module_id, log_id, user.id)
     output_hash = _hash_payload(payload)
     cache = ResultCache(log_id, module_id, user.id)
@@ -244,7 +246,8 @@ async def module_guidance_stream(
     user: CurrentUserDep,
     log_id: str = Query(..., min_length=1),
 ) -> StreamingResponse:
-    await get_owned_event_log(session, log_id, user.id)
+    egress_row = await get_owned_event_log(session, log_id, user.id)
+    await ensure_external_ai_allowed(session, egress_row)
     payload, system_prompt, user_prefix = await build_payload(module_id, log_id, user.id)
     output_hash = _hash_payload(payload)
     cfg = await load_ai_config(session, user.id)
@@ -318,7 +321,8 @@ async def process_guidance(
     session: SessionDep,
     user: CurrentUserDep,
 ) -> GuidanceResponse:
-    await get_owned_event_log(session, log_id, user.id)
+    egress_row = await get_owned_event_log(session, log_id, user.id)
+    await ensure_external_ai_allowed(session, egress_row)
     module_ids = await enabled_modules_with_guidance(session, user.id)
     if not module_ids:
         raise HTTPException(
@@ -575,6 +579,7 @@ async def import_quality(
     user: CurrentUserDep,
 ) -> GuidanceResponse:
     log_row = await get_owned_event_log(session, log_id, user.id)
+    await ensure_external_ai_allowed(session, log_row)
     payload = {
         "name": log_row.name,
         "source_format": log_row.source_format,

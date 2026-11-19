@@ -7,6 +7,7 @@ import { useState } from "react";
 import {
   Activity,
   Cog,
+  Database,
   FileBox,
   FolderKanban,
   LayoutDashboard,
@@ -24,6 +25,10 @@ import { cn } from "@/lib/cn";
 import { prefetchDashboards, prefetchEventLogs, prefetchModules } from "@/lib/client-prefetch";
 import { useMounted } from "@/lib/use-mounted";
 import { useIsDev } from "@/lib/dev-queries";
+import { useHubStatus } from "@/lib/hub-queries";
+import { datasetsListPath, queryKeys } from "@/lib/query-keys";
+import { api } from "@/lib/api";
+import type { DatasetPage } from "@/lib/api-types";
 import { useUi } from "@/lib/stores/ui";
 import { Button } from "@/components/ui/button";
 import { MateLogo } from "@/components/mate-logo";
@@ -78,6 +83,22 @@ const NAV: NavItem[] = [
   },
 ];
 
+// Shown after Processes only once `/hub/status` says the hub is enabled, so the
+// item never flashes in when HUB_DATASETS_ENABLED=false.
+const DATASETS_ITEM: NavItem = {
+  href: "/datasets",
+  label: "Datasets",
+  icon: Database,
+  match: (p) => p.startsWith("/datasets"),
+  // Warm the first page of the default catalog view (same key as useDatasets).
+  prefetch: (qc) =>
+    void qc.prefetchInfiniteQuery({
+      queryKey: queryKeys.datasets({ sort: "updated" }),
+      queryFn: () => api<DatasetPage>(datasetsListPath({ sort: "updated", limit: 24, offset: 0 })),
+      initialPageParam: 0,
+    }),
+};
+
 // Admin-only entries, appended to NAV when the session user has the `admin`
 // realm role. The page + API independently enforce the role server-side.
 const ADMIN_NAV: NavItem[] = [
@@ -104,6 +125,8 @@ export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const track = useTrack();
   const qc = useQueryClient();
   const isDev = useIsDev();
+  const hubEnabled = useHubStatus().data?.enabled === true;
+  const nav = hubEnabled ? [NAV[0], DATASETS_ITEM, ...NAV.slice(1)] : NAV;
 
   const expanded = pinned || hovered;
   const collapsed = !expanded;
@@ -156,7 +179,7 @@ export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
 
       <nav className="flex-1 px-2 pt-1" onMouseEnter={() => setHovered(true)}>
         <ul className="space-y-0.5">
-          {[...NAV, ...(isAdmin ? ADMIN_NAV : []), ...(isDev ? DEV_NAV : [])].map((item) => {
+          {[...nav, ...(isAdmin ? ADMIN_NAV : []), ...(isDev ? DEV_NAV : [])].map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
             const link = (

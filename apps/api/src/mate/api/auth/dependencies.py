@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.auth.jwks import get_signing_key
+from mate.api.auth.sandbox_flag import sync_sandbox_flag
 from mate.api.config import get_settings
 from mate.api.db.models import User
 from mate.api.db.session import SessionDep
@@ -150,6 +151,9 @@ async def _jit_sync_user(session: AsyncSession, user: CurrentUser) -> None:
     # Persist a tracking exemption carried by the token's roles (e.g. `reviewer`)
     # so recorders that only know the user id honour it too.
     exemption_changed = await sync_role_exemption(session, user.id, user.roles)
+    # Persist the sandboxed state too: a share recipient is known by id only, and
+    # a sandboxed account must not read a non-open dataset copy through a share.
+    await sync_sandbox_flag(session, user.id, is_sandboxed(user.roles))
     # Commit the sync now, before the id counts as seen: otherwise a first request
     # that fails would roll the exemption flag (and the users row) back while
     # later requests skip the sync, and recorders running in other sessions would
@@ -256,6 +260,15 @@ def may_watch_custom_path(roles: tuple[str, ...]) -> bool:
     found there is imported into the caller's account. So it is an admin-only
     operator tool, never a sandboxed account; everyone else gets the managed
     per-account folder (see ``ingest.source.default_source_path``).
+    """
+    return ADMIN_ROLE in roles and not is_sandboxed(roles)
+
+
+def may_curate_datasets(roles: tuple[str, ...]) -> bool:
+    """True if ``roles`` may publish and administer datasets (``mate.api.hub``).
+
+    Publishing exposes data to other accounts, so - like a custom watched-folder
+    path - it is an admin-only operator action, never a sandboxed account's.
     """
     return ADMIN_ROLE in roles and not is_sandboxed(roles)
 

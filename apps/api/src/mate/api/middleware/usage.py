@@ -41,6 +41,8 @@ _BUSINESS_OPS: list[tuple[str, re.Pattern[str], str]] = [
     ("DELETE", re.compile(r"^/api/v1/event-logs/[^/]+$"), "process_deleted"),
     ("DELETE", re.compile(r"^/api/v1/modules/[^/]+$"), "module_uninstalled"),
     ("DELETE", re.compile(r"^/api/v1/ai/guidance/module/[^/]+$"), "ai_guidance_cleared"),
+    ("POST", re.compile(r"^/api/v1/hub/datasets$"), "hub.dataset.publish"),
+    ("POST", re.compile(r"^/api/v1/hub/datasets/[^/]+/[^/]+/use$"), "hub.dataset.use"),
 ]
 
 # Paths that would only add noise (or feedback loops): the tracking pipeline

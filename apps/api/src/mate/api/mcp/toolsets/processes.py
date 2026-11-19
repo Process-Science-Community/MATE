@@ -21,11 +21,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.db.engine import get_sessionmaker
 from mate.api.db.models import EventLog, Folder
+from mate.api.hub.gate import (
+    SourceDatasetInfo,
+    egress_listable_clause,
+    source_dataset_for,
+    source_datasets_for,
+)
 from mate.api.mcp.core import (
     MCPContext,
     authz,
     cap,
     confirm_preview,
+    ensure_log_egress,
     ensure_owned_log,
     guarded,
 )
@@ -52,8 +59,10 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _process_row(r: EventLog) -> dict[str, Any]:
+def _process_row(r: EventLog, source: SourceDatasetInfo | None = None) -> dict[str, Any]:
     return {
+        # Set when the log was copied from a published dataset: cite it.
+        "source_dataset": source.as_dict() if source is not None else None,
         "id": r.id,
         "name": r.name,
         "status": r.status,
@@ -80,9 +89,9 @@ def _sanitized_schema(value: Any) -> Any:
     return value
 
 
-def _detail_dict(r: EventLog) -> dict[str, Any]:
+def _detail_dict(r: EventLog, source: SourceDatasetInfo | None = None) -> dict[str, Any]:
     """EventLogDetail-shaped dict (aggregates + settings, no raw cell values)."""
-    out = _process_row(r)
+    out = _process_row(r, source)
     out.update(
         {
             "error": r.error,
@@ -123,16 +132,20 @@ async def _ready_case_centric(session: AsyncSession, log_id: str, user_id: str) 
     """Ownership + ready + case-centric gate, as a tool error ([conflict] when
     the log is importing/processing/failed or object-centric)."""
     try:
-        return await svc.require_ready_case_centric(log_id, session, user_id)
+        row = await svc.require_ready_case_centric(log_id, session, user_id)
     except HTTPException as exc:
         raise from_http_exception(exc) from exc
+    await ensure_log_egress(session, row)
+    return row
 
 
 async def _ready_ocel(session: AsyncSession, log_id: str, user_id: str) -> EventLog:
     try:
-        return await svc.require_ready_ocel(log_id, session, user_id)
+        row = await svc.require_ready_ocel(log_id, session, user_id)
     except HTTPException as exc:
         raise from_http_exception(exc) from exc
+    await ensure_log_egress(session, row)
+    return row
 
 
 def _job_runtime() -> Any:
@@ -147,7 +160,12 @@ async def _list_processes(
 ) -> dict[str, Any]:
     sm = get_sessionmaker()
     async with sm() as session:
-        conds = [EventLog.user_id == user_id, EventLog.deleted_at.is_(None)]
+        conds = [
+            EventLog.user_id == user_id,
+            EventLog.deleted_at.is_(None),
+            # A no-egress or withdrawn dataset copy is not listed to the client.
+            egress_listable_clause(),
+        ]
         if status:
             conds.append(EventLog.status == status)
         if q:
@@ -162,7 +180,9 @@ async def _list_processes(
             .offset(offset)
             .limit(limit)
         )
-        items = [_process_row(r) for r in rows.scalars().all()]
+        found = rows.scalars().all()
+        sources = await source_datasets_for(session, found)
+        items = [_process_row(r, sources.get(r.id)) for r in found]
     return page_envelope(items, offset=offset, limit=limit, total=total)
 
 
@@ -212,7 +232,7 @@ async def get_process(ctx: MCPContext, log_id: str) -> dict[str, Any]:
         sm = get_sessionmaker()
         async with sm() as session:
             row = await ensure_owned_log(session, log_id, p.user.id)
-            return cap(_detail_dict(row))
+            return cap(_detail_dict(row, await source_dataset_for(session, row)))
 
     return await guarded(p, "get_process", {"log_id": log_id}, _impl())
 
@@ -773,7 +793,10 @@ async def delete_process(ctx: MCPContext, log_id: str, confirm: bool = False) ->
     async def _impl() -> dict[str, Any]:
         sm = get_sessionmaker()
         async with sm() as session:
-            row = await ensure_owned_log(session, log_id, p.user.id)
+            # Deleting sends no data anywhere and must work on a withdrawn copy.
+            row = await ensure_owned_log(
+                session, log_id, p.user.id, allow_unavailable=True, egress=False
+            )
             if not confirm:
                 return confirm_preview(
                     "delete_process",

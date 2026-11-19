@@ -12,7 +12,7 @@
  * truth — a mismatch would silently break hydration (the client would refetch).
  */
 
-import type { FilterEntry } from "@/lib/api-types";
+import type { DatasetListParams, FilterEntry } from "@/lib/api-types";
 
 export interface OcelListParams {
   offset?: number;
@@ -82,6 +82,14 @@ export const queryKeys = {
   moduleRunGate: (logId: string, moduleId: string) =>
     ["module-runs", logId, "gate", moduleId] as const,
   jobs: (params?: Record<string, string>) => ["jobs", params ?? {}] as const,
+  // Dataset hub. Everything under ["hub", "datasets"] is invalidated together
+  // after a publish / edit / takedown.
+  hubStatus: () => ["hub", "status"] as const,
+  hubLicenses: () => ["hub", "licenses"] as const,
+  publishCandidates: (logId: string) => ["hub", "publish-candidates", logId] as const,
+  datasetsAll: () => ["hub", "datasets"] as const,
+  datasets: (p: DatasetListParams) => ["hub", "datasets", "list", p] as const,
+  dataset: (ns: string, name: string) => ["hub", "datasets", "detail", ns, name] as const,
   job: (id: string) => ["jobs", id] as const,
 };
 
@@ -104,6 +112,20 @@ export function eventLogsListPath(params: { q?: string; status?: string } = {}):
 
 export function eventLogPath(id: string): string {
   return `/api/v1/event-logs/${id}`;
+}
+
+export function datasetsListPath(p: DatasetListParams = {}): string {
+  const qs = new URLSearchParams();
+  if (p.q) qs.set("q", p.q);
+  if (p.license) qs.set("license", p.license);
+  if (p.sort) qs.set("sort", p.sort);
+  if (p.limit !== undefined) qs.set("limit", String(p.limit));
+  if (p.offset !== undefined) qs.set("offset", String(p.offset));
+  return `/api/v1/hub/datasets${qs.toString() ? `?${qs}` : ""}`;
+}
+
+export function datasetPath(ns: string, name: string): string {
+  return `/api/v1/hub/datasets/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`;
 }
 
 export function dashboardsListPath(): string {

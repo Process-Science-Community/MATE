@@ -14,6 +14,7 @@ MATE is a self-hosted, modular process-mining platform. This file indexes the pu
 
 - [Importing event logs](importing-event-logs.html): The wizard accepts five format families, probes them server-side, and writes nothing until you confirm the interpretation.
 - [Working with logs](working-with-logs.html): Filtering, editing, and organising logs after the first import.
+- [Datasets](datasets.html): A dataset is a published, read-only event log in the catalog at Datasets (/datasets). Admins publish them; everyone uses them the same way.
 - [Exploring a process](exploring-a-process.html): The process page is the workspace for one log. Its tabs are URL-backed, so any view — a filtered event list, a variant, an activity — is a shareable link.
 - [Modules](modules.html): Modules are the platform's capabilities. The Modules page manages which ones your account has.
 - [Jobs and the interface](jobs-and-the-interface.html): Every long operation is a job, and the interface reports them consistently.
