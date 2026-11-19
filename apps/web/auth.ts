@@ -103,20 +103,17 @@ export const KEYCLOAK_IDP_HINT = process.env.KEYCLOAK_IDP_HINT ?? "";
 // ids are dropped (lib/social-idps).
 export const SOCIAL_IDPS_ENABLED = parseSocialIdps(process.env.KEYCLOAK_SOCIAL_IDPS);
 // Optional internal back-channel base URL for Keycloak, e.g.
-// "http://keycloak:8080/auth/realms/flows-funds". When set, the SERVER-SIDE
-// OIDC calls (discovery, code->token, userinfo, and the refresh in
-// doRefreshAccessToken) go straight to Keycloak over the internal container
-// network instead of hairpinning out to the public HTTPS hostname via the
-// on-box proxy. The browser-facing issuer + authorization endpoint stay on
-// KEYCLOAK_ISSUER (public HTTPS), so the `iss` check and the login redirect are
-// unchanged. This is what lets us drop NODE_TLS_REJECT_UNAUTHORIZED=0 in
-// docker-compose.prod.yml (the cert-name-mismatch workaround on that hop).
-//
-// STAGED ROLLOUT — a wrong URL breaks login even while the TLS bypass is still
-// present, so do NOT remove the bypass in the same step: (1) set
-// KEYCLOAK_INTERNAL_URL + redeploy; (2) verify a full login AND a token refresh
-// succeed; (3) only THEN remove NODE_TLS_REJECT_UNAUTHORIZED. Leave unset for
-// local dev (the dev Keycloak is reached directly, no proxy in between).
+// "http://keycloak:8080/auth/realms/flows-funds". When set, every SERVER-SIDE
+// Keycloak call (code->token, userinfo, the refresh in doRefreshAccessToken,
+// logout, the account API) goes straight to Keycloak over the internal
+// container network, and Auth.js runs no OIDC discovery at all (see the
+// provider config below). The browser-facing issuer + authorization endpoint
+// stay on KEYCLOAK_ISSUER (public HTTPS), so the `iss` check and the login
+// redirect are unchanged. In production this is required: the web container
+// cannot verify the certificate it gets for the public hostname, and the old
+// NODE_TLS_REJECT_UNAUTHORIZED=0 workaround is gone (docker-compose.prod.yml).
+// Leave unset for local dev (the dev Keycloak is reached directly, no proxy in
+// between; Auth.js then discovers from the issuer as usual).
 const KEYCLOAK_INTERNAL_URL = process.env.KEYCLOAK_INTERNAL_URL ?? "";
 
 // Public base URL of the deployment (https in prod, http://localhost in dev).
@@ -343,12 +340,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       issuer: KEYCLOAK_ISSUER,
       // Route the server-side OIDC back-channel over the internal network when
       // configured (see KEYCLOAK_INTERNAL_URL). `issuer` stays public so the
-      // `iss` check and the discovered authorization_endpoint (used for the
-      // browser redirect) keep using the public hostname; only discovery, the
-      // code->token exchange, and userinfo move onto the internal URL.
+      // `iss` check keeps using the public hostname.
+      //
+      // All three endpoints are given explicitly so Auth.js never runs OIDC
+      // discovery: @auth/core discovers from `issuer` (the public HTTPS URL)
+      // whenever `authorization`, or both `token` and `userinfo`, are missing,
+      // and it ignores `wellKnown` for that request. Inside the web container
+      // the public hostname resolves to our Caddy with the VM's own certificate
+      // (a name mismatch), so a discovery fetch only worked with
+      // NODE_TLS_REJECT_UNAUTHORIZED=0. `authorization` is the PUBLIC URL - the
+      // browser is redirected there, the server never fetches it; token and
+      // userinfo are server-side calls and use the internal URL.
       ...(KEYCLOAK_INTERNAL_URL
         ? {
-            wellKnown: `${KEYCLOAK_INTERNAL_URL}/.well-known/openid-configuration`,
+            authorization: `${KEYCLOAK_ISSUER}/protocol/openid-connect/auth`,
             token: `${KEYCLOAK_INTERNAL_URL}/protocol/openid-connect/token`,
             userinfo: `${KEYCLOAK_INTERNAL_URL}/protocol/openid-connect/userinfo`,
           }

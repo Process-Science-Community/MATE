@@ -318,9 +318,10 @@ pagination, CORS reflection, MCP scopes and PAT privilege, AI key read-back.
 
 ### Open
 
-- [ ] `NODE_TLS_REJECT_UNAUTHORIZED=0` on the web container
-      (`docker-compose.prod.yml`): `KEYCLOAK_INTERNAL_URL` is set (step 1);
-      after a verified login and token refresh on the VM, remove the flag.
+- [x] `NODE_TLS_REJECT_UNAUTHORIZED=0` removed from the web container: all
+      server-side Keycloak calls use `KEYCLOAK_INTERNAL_URL`, and `auth.ts`
+      passes the authorization endpoint explicitly so Auth.js runs no discovery
+      against the public hostname.
 - [ ] API, web and proxy containers run as root inside the container.
 - [ ] CSP is `Report-Only` (`infra/caddy/Caddyfile`); enforcing needs a policy
       that still allows module panels (`new Function`).
