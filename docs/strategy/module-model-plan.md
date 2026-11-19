@@ -101,6 +101,20 @@ SELECT count(*) FROM user_settings WHERE key='modules_defaults_seeded';
 - Users with **no install rows** (e.g. MCP-only users) get every default module active after
   stage 3, so eager precompute starts running for them. Note that in the release.
 
+**Answers (prod, 2026-11-19):**
+- `modules.default_excluded_ids = ["actor_performance"]`; `modules.default_ids` unset. So
+  `actor_performance` gets manifest `default_enabled: false` in stage 3 (2 users activated it by
+  hand and keep it).
+- 58 users, 55 with install rows, 55 seeded. 3 users have no rows and get every default active
+  after stage 3.
+- Rows per module: 55 for most repo modules; `performance_java` 48, `temporal_mapper` 41.
+  Open: did those users deactivate them, or were the modules added after they were seeded? Only
+  the first must become `enabled=false`. Check `installed_at` / `source` before writing the
+  migration.
+- Rows for modules not in the repo: `alpha_miner_java`, `case_count`, `num_cases` (1 each),
+  uploads that stopped loading when upload was switched off. Stage 3 ignores them; they are
+  archived and deleted in stage 4 (D5).
+
 ### Stage 1: Defuse the boot GC and back up (no behaviour change)
 
 - **Why first:** in S3 mode the boot GC deletes `data/uploaded_modules/<id>` folders that have no
