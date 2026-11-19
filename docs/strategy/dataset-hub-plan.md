@@ -367,6 +367,22 @@ It covers cached results, AI guidance (`routes/ai_guidance.py`, 5 `ResultCache` 
 
 ## 8. The first dataset: the course case-study log
 
+**Answers from the chair (2026-11-19)** for the Process Thinking course logs
+(`CreditLoanApplication_2020.xes`, `CreditLoanApplication_2025.xes`, with the course data
+dictionary DD-EVL-2026-01):
+- Rights holder / source: Eindhoven University of Technology via 4TU.Centre for Research Data,
+  https://data.4tu.nl/articles/_/12721292/1. The hosting page must show the publisher details.
+- Personal data: real company data, anonymised by blinding all data about individuals.
+- Audience: the Process Thinking course only → `restricted` to a course team, not `public`.
+- License: 4TU General Terms of Use (`4tu-general-terms`); all academic uses permitted;
+  publishing results requires the citation of the dataset.
+- Gating: none (no terms to accept).
+- Retention: keep after the semester; it may be reused next winter semester.
+- Still open: whether students may send data or results to external AI providers
+  (`allow_external_ai`), and whether the 2020 log has its own 4TU source (its activity names
+  match BPI Challenge 2012, the 2025 log's match BPI Challenge 2017), which would need its own
+  citation.
+
 **Questions for the data owner (the chair answers before anything beyond `private`):**
 1. Rights holder and basis: chair-owned, partner under NDA/DUA (reference?), or a public source (DOI + version)? Is MATE permitted to host and redistribute it?
 2. Audience: the course only (→ `restricted` to a course team), or every platform account, **including anonymous external conference reviewers**?
@@ -427,8 +443,11 @@ Do not choose a CC license on someone else's behalf. The conservative default is
   Consequences: 60 copy-on-use copies ≈ 1 GB of Parquet, so reference logs (Stage 4b) are not
   needed; import on prod is fine (no offline `hub.cli`); about four parallel self-uploads would
   exhaust the api's 8 GB, which is the main reason to publish the log once. Still to measure:
-  module warm time on the 1.2 M-event log. Open: 5 activities in the 2025 log vs 24 in 2020;
-  confirm the activity attribute with the owner.
+  module warm time on the 1.2 M-event log.
+- **The 5 activities were a MATE bug** (fixed 2026-11-19): the column resolver took the
+  `Action` attribute (Created, statechange, ...) over `concept:name` because it came first in
+  each event. The data dictionary lists ~23 activities for the 2025 log. Re-measure after the
+  fix; logs of this shape imported earlier need a re-map (Settings → Column roles).
 - Separate prerequisite PR: the CDE filename sanitisation.
 
 **Stage 1a: data model + copy-on-use + takedown (API)**

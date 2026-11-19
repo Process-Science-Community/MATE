@@ -56,6 +56,18 @@ def test_exact_is_case_and_punctuation_insensitive() -> None:
     assert res.needs_review is False
 
 
+def test_role_name_beats_earlier_lower_priority_alias() -> None:
+    # BPI Challenge 2017-style XES: each event lists `Action` (Created,
+    # statechange, ...) before `concept:name`, which the parser canonicalises
+    # to `activity`. `action` is also an activity alias; the exact role name
+    # must still win, or every process model is built from 5 action types.
+    res = resolve_roles(
+        ["case_id", "LoanGoal", "Action", "resource", "activity", "EventOrigin", "timestamp"]
+    )
+    assert res.roles["activity"] == "activity"
+    assert res.quality["activity"] == "exact"
+
+
 def test_fuzzy_match_flags_review() -> None:
     res = resolve_roles(["case_id", "Action Type", "timestamp"])
     assert res.roles["activity"] == "Action Type"
