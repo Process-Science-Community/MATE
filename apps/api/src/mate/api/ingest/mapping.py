@@ -155,11 +155,15 @@ def resolve_roles(
 def _find_column(
     columns: list[str], claimed: set[str], wanted_norms: list[str], *, exact: bool
 ) -> str | None:
-    for col in columns:
-        if col in claimed:
-            continue
-        norm = normalise_ident(col)
-        for w in wanted_norms:
+    # Alias order is priority order (the role's own name first), so it is the
+    # outer loop: a log with both `activity` (XES concept:name) and a domain
+    # `Action` column must map `activity`, whatever the column order. Scanning
+    # columns first let the earlier `Action` win via its lower-priority alias.
+    for w in wanted_norms:
+        for col in columns:
+            if col in claimed:
+                continue
+            norm = normalise_ident(col)
             if (norm == w) if exact else (w in norm or norm in w):
                 return col
     return None
