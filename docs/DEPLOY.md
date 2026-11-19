@@ -523,15 +523,16 @@ Then in a browser:
    data. Finally try a provider whose email an existing account already has: it must stop
    on the "already exists" page, not sign in.
 
-> **Staged rollout — internal OIDC back-channel (removes the TLS bypass).** The
-> web container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to tolerate the cert-name
-> mismatch on the server-side Keycloak hop. To remove it, in order: (1) uncomment
-> `KEYCLOAK_INTERNAL_URL: http://keycloak:8080/auth/realms/flows-funds` on the web
-> service, `$DC up -d`; (2) verify a full login **and** a token refresh (leave a
-> tab idle past the access-token expiry, then click — must not bounce to `/login`)
-> both succeed; (3) only then delete `NODE_TLS_REJECT_UNAUTHORIZED`. A wrong
-> internal URL breaks login, and dropping the bypass first removes the fallback —
-> never combine the steps.
+> **Internal OIDC back-channel (no TLS bypass).** The web service sets
+> `KEYCLOAK_INTERNAL_URL: http://keycloak:8080/auth/realms/flows-funds`, so its
+> server-side Keycloak calls stay on the Docker network, and `apps/web/auth.ts`
+> gives Auth.js all endpoints explicitly so it never fetches the public hostname
+> (whose certificate the container cannot verify). The former
+> `NODE_TLS_REJECT_UNAUTHORIZED=0` workaround is removed; do not add it back. After
+> any change here verify a full login **and** a token refresh (leave a tab idle
+> past the access-token expiry, then click — must not bounce to `/login`). A
+> `[auth][error]` with a certificate or `fetch failed` cause in `logs web` means
+> something is calling the public hostname server-side again.
 
 ## Updating a running deployment
 
