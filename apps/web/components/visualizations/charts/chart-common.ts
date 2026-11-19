@@ -5,7 +5,7 @@ export { VALUE_FORMATS, formatDurationShort, formatValue, type ValueFormat } fro
 import type {
   ColumnSpec,
   ColumnType,
-  DatasetEnvelope,
+  OutputEnvelope,
   FieldMapping,
   KpiData,
   KpiMeasure,
@@ -72,7 +72,7 @@ export function legendProps(pos: "bottom" | "right") {
     : ({ wrapperStyle: { fontSize: 11 } } as const);
 }
 
-export function kpiItems(d: DatasetEnvelope): KpiMeasure[] {
+export function kpiItems(d: OutputEnvelope): KpiMeasure[] {
   return d.shape === "kpi" && d.data && "items" in d.data ? (d.data as KpiData).items : [];
 }
 
@@ -110,10 +110,10 @@ const KPI_COLUMNS: ColumnSpec[] = [
   { id: "value", label: "Value", type: "number", role: "measure" },
 ];
 
-/** The dataset as a table. A `kpi` dataset becomes one `{label, value, format}`
+/** The output as a table. A `kpi` output becomes one `{label, value, format}`
  * row per numeric measure, so category/value charts (pie, radar, ...) can plot
  * it; the value column is a duration when every measure is one. */
-export function asTable(d: DatasetEnvelope): TableData {
+export function asTable(d: OutputEnvelope): TableData {
   if (d.shape === "kpi") {
     const items = kpiItems(d).filter((m) => typeof m.value === "number");
     const rows = items.map((m) => ({ label: m.label, value: m.value, format: m.format }));

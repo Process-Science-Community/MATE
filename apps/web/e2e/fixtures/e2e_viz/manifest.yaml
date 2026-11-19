@@ -2,7 +2,7 @@ id: e2e_viz
 name: E2E viz fixture
 version: 0.1.0
 category: other
-description: Static sample data in every dataset shape, for the Studio catalog e2e test.
+description: Static sample data in every output shape, for the Studio catalog e2e test.
 license: MIT
 
 requirements:
@@ -20,9 +20,9 @@ dependencies:
     packages: []
     isolation: in_process
 
-# Order matters: a catalog viz binds the FIRST dataset of a shape it accepts, so the
-# first table, graph, tree and kpi datasets are the ones the e2e spec's cards render.
-datasets:
+# Order matters: a catalog viz binds the FIRST output of a shape it accepts, so the
+# first table, graph, tree and kpi outputs are the ones the e2e spec's cards render.
+outputs:
   - id: rows
     title: Sample rows
     description: Category x group rows with numbers, a duration, a percent, a date and tags.

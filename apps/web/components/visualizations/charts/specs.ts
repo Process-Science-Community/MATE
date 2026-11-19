@@ -66,7 +66,7 @@ const CATEGORY_FIELDS = [
 ];
 
 const CATEGORY_NEEDS =
-  "A table with one category column and one numeric column, or a kpi dataset (each numeric measure becomes a slice).";
+  "A table with one category column and one numeric column, or a kpi output (each numeric measure becomes a slice).";
 
 const options = (properties: WidgetConfigSchema["properties"]): WidgetConfigSchema => ({ properties });
 
@@ -429,7 +429,7 @@ export const chartSpecs: VizSpec[] = [
     icon: "Filter",
     group: "chart",
     description: "Stages sorted by size, to show drop-off.",
-    needs: "A table with a stage column and a numeric value, or a kpi dataset (each numeric measure becomes a stage).",
+    needs: "A table with a stage column and a numeric value, or a kpi output (each numeric measure becomes a stage).",
     example: CATEGORY_EXAMPLE,
     accepts: ["table", "kpi"],
     fields: [

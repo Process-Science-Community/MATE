@@ -13,16 +13,16 @@ import { CopyBlock } from "@/components/dashboards/generic-viz-card";
 import {
   CATALOG_GROUPS,
   catalogEntries,
-  compatibleDatasets,
+  compatibleOutputs,
   type CatalogEntry,
 } from "@/lib/visualizations/catalog";
 import {
   ELEMENT_DEFAULTS,
   ELEMENT_KINDS,
   useCardCatalog,
-  useDatasetCatalog,
+  useOutputCatalog,
   type DashboardCard,
-  type DatasetCatalogEntry,
+  type OutputCatalogEntry,
   type ElementKind,
   type LogModel,
 } from "@/lib/dashboard-queries";
@@ -40,7 +40,7 @@ const ELEMENT_META: Record<ElementKind, { icon: LucideIcon; description: string 
 };
 const ELEMENTS_GROUP = "__elements__";
 
-/** A palette row: a module-authored widget card, or a module dataset rendered
+/** A palette row: a module-authored widget card, or a module output rendered
  * through the generic-viz layer. `applicable` is false when the entry's
  * `log_models` don't include the board's model – it is then shown grayed-out
  * (not hidden) with a tooltip explaining why it can't be placed. */
@@ -52,8 +52,8 @@ type Entry = (
       title: string;
       description: string | null;
       icon: string | null;
-      shape: DatasetCatalogEntry["shape"];
-      dataset: DatasetCatalogEntry;
+      shape: OutputCatalogEntry["shape"];
+      output: OutputCatalogEntry;
     }
   | { type: "element"; key: string; title: string; description: string | null; icon: null; element: ElementKind }
   | {
@@ -63,8 +63,8 @@ type Entry = (
       description: string | null;
       icon: string;
       entry: CatalogEntry;
-      /** Auto-binding: this module's first compatible dataset, or null (placeholder card). */
-      dataset: DatasetCatalogEntry | null;
+      /** Auto-binding: this module's first compatible output, or null (placeholder card). */
+      output: OutputCatalogEntry | null;
     }
 ) & { applicable: boolean; logModels: LogModel[] };
 
@@ -80,7 +80,7 @@ type Group = {
 
 /**
  * Left-rail palette of everything the user's installed modules expose - both
- * widget *cards* and data *datasets* (rendered via the platform's generic
+ * widget *cards* and data *outputs* (rendered via the platform's generic
  * visualizations) - grouped per module into collapsible sections. Pressing a
  * row starts a pointer-drag onto the canvas (`onStartAdd`); the canvas tracks
  * the cursor and drops it. A press without dragging adds it at the bottom.
@@ -95,12 +95,12 @@ export function CardPalette({
   onStartAdd: (req: AddRequest, e: React.PointerEvent | null) => void;
   /** Only entries whose `log_models` include the board's model are shown. */
   logModel: LogModel;
-  /** Restrict the palette to one module's widgets and datasets (the Studio). */
+  /** Restrict the palette to one module's widgets and outputs (the Studio). */
   moduleId?: string;
 }) {
   const { data: cards, isLoading: cardsLoading } = useCardCatalog();
-  const { data: datasets, isLoading: datasetsLoading } = useDatasetCatalog();
-  const isLoading = cardsLoading || datasetsLoading;
+  const { data: outputs, isLoading: outputsLoading } = useOutputCatalog();
+  const isLoading = cardsLoading || outputsLoading;
   const [query, setQuery] = useState("");
   // Group ids the user toggled away from their default (module groups open,
   // catalog groups collapsed). A search overrides this so matches are never
@@ -136,17 +136,17 @@ export function CardPalette({
         logModels: c.log_models,
       });
     }
-    for (const d of datasets ?? []) {
+    for (const d of outputs ?? []) {
       if (moduleId && d.module_id !== moduleId) continue;
       if (!matches(d.title, d.module_name, d.description)) continue;
       ensure(d.module_id, d.module_name).entries.push({
         type: "viz",
-        key: `d:${d.module_id}:${d.dataset_id}`,
+        key: `d:${d.module_id}:${d.output_id}`,
         title: d.title,
         description: d.description,
         icon: d.icon,
         shape: d.shape,
-        dataset: d,
+        output: d,
         applicable: d.log_models.includes(logModel),
         logModels: d.log_models,
       });
@@ -172,10 +172,10 @@ export function CardPalette({
       logModels: [],
     }));
     // The viz catalog (Studio only): every viz and preset, auto-bound to this
-    // module's first compatible dataset or placed as a "Needs data" card.
+    // module's first compatible output or placed as a "Needs data" card.
     const all = catalogEntries();
-    // Until the dataset catalog loads every row would read "needs data" and add an unbound card.
-    const catalog: Group[] = datasetsLoading ? [] : CATALOG_GROUPS.map((g) => ({
+    // Until the output catalog loads every row would read "needs data" and add an unbound card.
+    const catalog: Group[] = outputsLoading ? [] : CATALOG_GROUPS.map((g) => ({
       id: `__viz_${g.id}__`,
       name: g.label,
       icon: g.icon,
@@ -194,7 +194,7 @@ export function CardPalette({
             description: e.description || null,
             icon: e.icon,
             entry: e,
-            dataset: compatibleDatasets(e.spec.accepts, datasets, moduleId, logModel, e.key)[0] ?? null,
+            output: compatibleOutputs(e.spec.accepts, outputs, moduleId, logModel, e.key)[0] ?? null,
             applicable: true,
             logModels: [],
           }),
@@ -205,7 +205,7 @@ export function CardPalette({
       ...sorted,
       ...catalog,
     ];
-  }, [cards, datasets, datasetsLoading, query, logModel, moduleId]);
+  }, [cards, outputs, outputsLoading, query, logModel, moduleId]);
 
   const searching = query.trim().length > 0;
   const toggle = (id: string) =>
@@ -224,14 +224,14 @@ export function CardPalette({
         : entry.type === "catalog"
           ? {
               kind: "viz",
-              dataset: entry.dataset,
+              output: entry.output,
               vizId: entry.entry.spec.id,
               options: entry.entry.options,
               mapping: entry.entry.mapping,
-              title: entry.dataset?.title ?? entry.title,
+              title: entry.output?.title ?? entry.title,
               moduleId,
             }
-          : { kind: "viz", dataset: entry.dataset };
+          : { kind: "viz", output: entry.output };
 
   return (
     <div className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-muted/20">
@@ -256,7 +256,7 @@ export function CardPalette({
           {isLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
           {!isLoading && groups.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              No matches. Modules expose cards and datasets via their manifest.
+              No matches. Modules expose cards and outputs via their manifest.
             </p>
           )}
           {groups.map((group, gi) => {
@@ -355,9 +355,9 @@ export function CardPalette({
                                 </span>
                               )}
                               {entry.type === "catalog" &&
-                                (entry.dataset ? (
+                                (entry.output ? (
                                   <span className="mt-0.5 block truncate text-[10px] font-medium text-primary">
-                                    → {entry.dataset.title}
+                                    → {entry.output.title}
                                   </span>
                                 ) : (
                                   <span className="mt-0.5 block text-[10px] text-muted-foreground/70">

@@ -82,7 +82,7 @@ export default function StudioPage() {
   const { data: catalog } = useCardCatalog();
   const save = useSaveModuleLayout(moduleId);
   const reload = useReloadModule(moduleId);
-  // Back from the editor: pick up new datasets and widgets (e.g. after
+  // Back from the editor: pick up new outputs and widgets (e.g. after
   // `make widget`). The layout query is left alone so unsaved edits survive.
   const qc = useQueryClient();
   useOnDevFocus(() => {

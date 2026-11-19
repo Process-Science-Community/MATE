@@ -51,7 +51,7 @@ dependencies:
 # Data for the platform's generic visualizations (Studio catalog, layout.json,
 # dashboards). Each entry reads an existing GET route; the web adapters
 # (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
-datasets:
+outputs:
   - id: timeseries
     title: Arrivals, completions and WIP
     description: Per period, cases started, cases finished, active cases and events.

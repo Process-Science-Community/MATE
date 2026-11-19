@@ -1,7 +1,7 @@
 """Tests for the MCP analysis toolset + the structural data wall.
 
 The wall test is the core deliverable: a module whose ``guidance_payload``
-(or dataset route) reaches for raw event rows must fail with a clean
+(or module-output route) reaches for raw event rows must fail with a clean
 ``[conflict]`` tool error - never leak rows. Exercised through the REAL path
 (the process loader's ``_make_context`` with ``restrict_event_log=True``), not
 by monkeypatching ``build_payload``.
@@ -30,7 +30,7 @@ from mate.api.mcp.scopes import ALL_SCOPES, SCOPE_MODULES_READ
 from mate.api.mcp.toolsets import analysis
 from mate.api.modules.cache import ResultCache
 from mate.sdk.decorators import route as sdk_route
-from mate.sdk.manifest import DatasetEntry, Manifest
+from mate.sdk.manifest import Manifest, OutputEntry
 
 from .conftest import TEST_USER_ID
 
@@ -145,8 +145,8 @@ class _CuratedModule:
         return {"kpi": 42}
 
 
-class _DatasetModule:
-    """Module with dataset routes: one walled, one reading its own cache."""
+class _OutputModule:
+    """Module with output routes: one walled, one reading its own cache."""
 
     @sdk_route.get("/wall-table")
     async def wall_table(self, ctx: Any) -> Any:
@@ -158,15 +158,21 @@ class _DatasetModule:
         rows = await ctx.cache.get("rows")
         return {"items": rows or []}
 
+    @sdk_route.get("/cache/{key}")
+    async def cache_by_key(self, ctx: Any, key: str) -> Any:
+        return {"items": await ctx.cache.get(key) or []}
 
-_DS_MANIFEST = Manifest(
-    id="mcpan_ds_mod",
-    name="Dataset mod",
+
+_OUT_MANIFEST = Manifest(
+    id="mcpan_out_mod",
+    name="Output mod",
     version="0.0.1",
     category="other",
-    datasets=[
-        DatasetEntry(id="walled", shape="table", route="/wall-table"),
-        DatasetEntry(id="cached", shape="table", route="/cached-table"),
+    outputs=[
+        OutputEntry(id="walled", shape="table", route="/wall-table"),
+        OutputEntry(id="cached", shape="table", route="/cached-table"),
+        # A concrete path served by a templated route, as in the e2e_viz fixture.
+        OutputEntry(id="templated", shape="table", route="/cache/rows"),
     ],
 )
 
@@ -198,30 +204,40 @@ async def test_wall_lets_curated_output_through(client: AsyncClient) -> None:
         assert out["output"] == {"kpi": 42}
 
 
-async def test_wall_dataset_blocks_raw_rows_and_serves_cache(client: AsyncClient) -> None:
-    """get_dataset rides resolve_dataset → run_dataset_route with the wall:
+async def test_wall_output_data_blocks_raw_rows_and_serves_cache(client: AsyncClient) -> None:
+    """get_module_output_data rides resolve_output → run_output_route with the wall:
     a raw-reading route fails [conflict]; a cache-reading route works."""
-    await _seed_log("mcpan-ds-log")
-    async with _fake_module("mcpan_ds_mod", _DatasetModule(), manifest=_DS_MANIFEST):
+    await _seed_log("mcpan-out-log")
+    async with _fake_module("mcpan_out_mod", _OutputModule(), manifest=_OUT_MANIFEST):
         with pytest.raises(MCPToolError) as ei:
-            await analysis.get_dataset(
+            await analysis.get_module_output_data(
                 _ctx(_principal()),
-                module_id="mcpan_ds_mod",
-                dataset_id="walled",
-                log_id="mcpan-ds-log",
+                module_id="mcpan_out_mod",
+                output_id="walled",
+                log_id="mcpan-out-log",
             )
         assert ei.value.code == "conflict"
         assert "leak" not in str(ei.value)
 
-        await ResultCache("mcpan-ds-log", "mcpan_ds_mod", TEST_USER_ID).set("rows", [{"a": 1}])
-        out = await analysis.get_dataset(
+        await ResultCache("mcpan-out-log", "mcpan_out_mod", TEST_USER_ID).set("rows", [{"a": 1}])
+        out = await analysis.get_module_output_data(
             _ctx(_principal()),
-            module_id="mcpan_ds_mod",
-            dataset_id="cached",
-            log_id="mcpan-ds-log",
+            module_id="mcpan_out_mod",
+            output_id="cached",
+            log_id="mcpan-out-log",
         )
-        assert out["dataset"]["shape"] == "table"
-        assert out["dataset"]["data"]["rows"] == [{"a": 1}]
+        assert out["output"]["shape"] == "table"
+        assert out["output"]["data"]["rows"] == [{"a": 1}]
+
+        # Server-side resolution matches `/cache/{key}` and passes key="rows",
+        # like the HTTP router does for the browser.
+        out = await analysis.get_module_output_data(
+            _ctx(_principal()),
+            module_id="mcpan_out_mod",
+            output_id="templated",
+            log_id="mcpan-out-log",
+        )
+        assert out["output"]["data"]["rows"] == [{"a": 1}]
 
 
 async def test_make_context_restrict_passthrough(client: AsyncClient) -> None:
@@ -297,12 +313,12 @@ async def test_get_module_results_requires_install(client: AsyncClient) -> None:
     assert ei.value.code == "not_found"
 
 
-async def test_list_datasets_catalog(client: AsyncClient) -> None:
+async def test_list_module_outputs_catalog(client: AsyncClient) -> None:
     await _seed_log("mcpan-cat-log")  # just for consent seeding
-    async with _fake_module("mcpan_ds_mod", _DatasetModule(), manifest=_DS_MANIFEST):
-        out = await analysis.list_datasets(_ctx(_principal()))
-        mine = [e for e in out if e["module_id"] == "mcpan_ds_mod"]
-        assert {e["dataset_id"] for e in mine} == {"walled", "cached"}
+    async with _fake_module("mcpan_out_mod", _OutputModule(), manifest=_OUT_MANIFEST):
+        out = await analysis.list_module_outputs(_ctx(_principal()))
+        mine = [e for e in out if e["module_id"] == "mcpan_out_mod"]
+        assert {e["output_id"] for e in mine} == {"walled", "cached", "templated"}
         assert all(e["shape"] == "table" for e in mine)
         assert mine[0]["log_models"] == ["case_centric"]
 

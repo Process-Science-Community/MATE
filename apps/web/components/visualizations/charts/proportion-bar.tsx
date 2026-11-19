@@ -7,14 +7,14 @@ import { asTable, categoryCols, columnFormat, formatValue, resolveValue } from "
 
 /** One 100% bar split by category (shares of a whole), with a legend of
  * labels, values and shares. Past the palette's slots the tail folds into
- * "Other". Accepts a table or a kpi dataset (measures become categories). */
-export function ProportionBarViz({ dataset, mapping, options }: VizComponentProps) {
-  const table = asTable(dataset);
+ * "Other". Accepts a table or a kpi output (measures become categories). */
+export function ProportionBarViz({ output, mapping, options }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const cat = (typeof mapping.category === "string" && mapping.category) || categoryCols(cols)[0]?.id;
   const val = resolveValue(cols, mapping);
   if (!cat || !val || table.rows.length === 0) {
-    return <VizEmpty message={dataset.meta?.note ?? "Map a category and a value."} />;
+    return <VizEmpty message={output.meta?.note ?? "Map a category and a value."} />;
   }
   const parts = table.rows
     .map((r) => ({ name: String(r[cat] ?? ""), value: Number(r[val]) || 0, format: r.format }))
@@ -25,7 +25,7 @@ export function ProportionBarViz({ dataset, mapping, options }: VizComponentProp
     parts.push({ name: "Other", value: rest.reduce((s, p) => s + p.value, 0), format: undefined });
   }
   const sum = parts.reduce((s, p) => s + p.value, 0);
-  if (!sum) return <VizEmpty message={dataset.meta?.note} />;
+  if (!sum) return <VizEmpty message={output.meta?.note} />;
 
   const colorOf = (p: { name: string }, i: number) =>
     p.name === "Other" && i === SERIES_SLOTS - 1 ? "var(--muted-foreground)" : seriesColor(i);

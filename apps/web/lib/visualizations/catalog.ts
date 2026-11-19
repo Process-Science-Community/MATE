@@ -1,15 +1,15 @@
 /**
  * The Studio's visualization catalog: every registry viz plus its presets,
  * grouped for the palette, and the helpers that bind a catalog entry to a
- * module dataset or explain what data it still needs.
+ * module output or explain what data it still needs.
  *
  * Presets are palette-only starting points (viz_id + options/mapping). A placed
  * card stores nothing about the preset, and the inspector lists base vizzes.
  */
 
-import type { DatasetCatalogEntry, LogModel } from "@/lib/dashboard-queries";
+import type { OutputCatalogEntry, LogModel } from "@/lib/dashboard-queries";
 import { vizSpecs } from "./registry";
-import type { DatasetShape, FieldMapping, VizGroup, VizSpec } from "./types";
+import type { OutputShape, FieldMapping, VizGroup, VizSpec } from "./types";
 
 /** Palette groups, in palette order. Labels are fixed UI strings (e2e relies on them). */
 export const CATALOG_GROUPS: { id: string; label: string; icon: string; groups: VizGroup[] }[] = [
@@ -49,20 +49,20 @@ export function catalogEntries(): CatalogEntry[] {
   ]);
 }
 
-/** This module's datasets a viz accepting `accepts` can render on a
- * `logModel` log, in manifest order, except that a dataset whose id names the
+/** This module's outputs a viz accepting `accepts` can render on a
+ * `logModel` log, in manifest order, except that an output whose id names the
  * entry (`prefer`, e.g. "petri-net" → `petri_net`) comes first. The first one
  * is the auto-binding. */
-export function compatibleDatasets(
-  accepts: DatasetShape[],
-  datasets: DatasetCatalogEntry[] | undefined,
+export function compatibleOutputs(
+  accepts: OutputShape[],
+  outputs: OutputCatalogEntry[] | undefined,
   moduleId: string,
   logModel: LogModel,
   prefer?: string,
-): DatasetCatalogEntry[] {
-  const named = (d: DatasetCatalogEntry) =>
-    !!prefer && d.dataset_id.replace(/_/g, "-").includes(prefer) ? 0 : 1;
-  return (datasets ?? [])
+): OutputCatalogEntry[] {
+  const named = (d: OutputCatalogEntry) =>
+    !!prefer && d.output_id.replace(/_/g, "-").includes(prefer) ? 0 : 1;
+  return (outputs ?? [])
     .filter(
       (d) =>
         d.module_id === moduleId && accepts.includes(d.shape) && d.log_models.includes(logModel),
@@ -100,7 +100,7 @@ export function toPython(v: unknown, indent = 0): string {
 }
 
 /** The two files a module author edits to give an unbound viz card data: a
- * manifest `datasets:` item and a `@route.get` returning the viz's example. */
+ * manifest `outputs:` item and a `@route.get` returning the viz's example. */
 export function needsDataSnippet(spec: VizSpec): { manifest: string; route: string } {
   const shape = spec.accepts[0];
   const id = `${spec.id.replace(/-/g, "_")}_data`;

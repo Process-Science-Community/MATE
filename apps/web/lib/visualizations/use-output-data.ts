@@ -12,24 +12,24 @@ import {
   hasWidgetFilter,
   readWidgetFilter,
 } from "@/components/dashboards/widget-filter";
-import { useDatasetCatalog, type DashboardItem } from "@/lib/dashboard-queries";
+import { useOutputCatalog, type DashboardItem } from "@/lib/dashboard-queries";
 import { usePageParamsOptional, withQuery } from "@/lib/module-layout/page-params";
 import { normalize } from "@/lib/visualizations/adapters";
-import type { DatasetEnvelope, DatasetShape } from "@/lib/visualizations/types";
+import type { OutputEnvelope, OutputShape } from "@/lib/visualizations/types";
 
-export interface DatasetDataResult {
-  envelope?: DatasetEnvelope;
-  shape?: DatasetShape;
+export interface OutputDataResult {
+  envelope?: OutputEnvelope;
+  shape?: OutputShape;
   isLoading: boolean;
   isError: boolean;
-  /** The item's dataset_ref points at a module/dataset not in the catalog
-   * (module uninstalled or dataset removed). */
+  /** The item's output_ref points at a module/output not in the catalog
+   * (module uninstalled or output removed). */
   missing: boolean;
 }
 
 /**
- * Fetch + normalize a viz card's dataset. The catalog supplies the module
- * `route` + `shape` (so the placement only stores the `dataset_ref`); the data
+ * Fetch + normalize a viz card's output. The catalog supplies the module
+ * `route` + `shape` (so the placement only stores the `output_ref`); the data
  * is fetched straight from the module route via `api()`. Runs inside the
  * dashboard's widget QueryClient (the card mounts within `DashboardWidgetScope`),
  * so a filter commit resets + refetches it exactly like a module widget.
@@ -45,17 +45,17 @@ export interface DatasetDataResult {
  * editing it refetches; global toggles refetch via the provider's resetQueries.
  *
  * On a module layout page, the page params (`controls` cards) that the
- * dataset's `params_schema.properties` declares are sent as query params and
+ * output's `params_schema.properties` declares are sent as query params and
  * keyed on, so a control change refetches while the previous data stays shown.
  */
-export function useDatasetData(item: DashboardItem, logId: string | null): DatasetDataResult {
-  const ref = item.dataset_ref ?? null;
-  const { data: catalog } = useDatasetCatalog();
+export function useOutputData(item: DashboardItem, logId: string | null): OutputDataResult {
+  const ref = item.output_ref ?? null;
+  const { data: catalog } = useOutputCatalog();
   const entry = catalog?.find(
-    (e) => e.module_id === ref?.module_id && e.dataset_id === ref?.dataset_id,
+    (e) => e.module_id === ref?.module_id && e.output_id === ref?.output_id,
   );
   const route = entry?.route;
-  const shape = entry?.shape as DatasetShape | undefined;
+  const shape = entry?.shape as OutputShape | undefined;
   const enabled = Boolean(ref && route && logId);
 
   // Precedence (global wins) is computed centrally in `widget-filter.ts`.
@@ -82,7 +82,7 @@ export function useDatasetData(item: DashboardItem, logId: string | null): Datas
   }, [declared, pageValues]);
 
   const q = useQuery({
-    queryKey: ["dataset-data", ref?.module_id, ref?.dataset_id, logId, widgetKey, params],
+    queryKey: ["output-data", ref?.module_id, ref?.output_id, logId, widgetKey, params],
     queryFn: () =>
       api<unknown>(
         withQuery(`/api/v1/modules/${ref!.module_id}${route}`, { log_id: logId, ...params }),
@@ -90,10 +90,10 @@ export function useDatasetData(item: DashboardItem, logId: string | null): Datas
       ),
     enabled,
     staleTime: 30_000,
-    // Keep showing the old rows only while the same dataset+log refetches (a
-    // param or filter change), never data of another dataset or log.
+    // Keep showing the old rows only while the same output+log refetches (a
+    // param or filter change), never data of another output or log.
     placeholderData: (prev, prevQuery) =>
-      prevQuery?.queryKey.slice(1, 4).join("|") === [ref?.module_id, ref?.dataset_id, logId].join("|")
+      prevQuery?.queryKey.slice(1, 4).join("|") === [ref?.module_id, ref?.output_id, logId].join("|")
         ? prev
         : undefined,
   });

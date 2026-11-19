@@ -79,7 +79,7 @@ function ModuleRow({ module: m }: { module: DevModuleStatus }) {
             {m.has_layout && <Badge variant="secondary">layout.json</Badge>}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Datasets: {m.datasets.length ? m.datasets.join(", ") : "none"} · Widgets:{" "}
+            Outputs: {m.outputs.length ? m.outputs.join(", ") : "none"} · Widgets:{" "}
             {m.widgets.length ? m.widgets.join(", ") : "none"}
           </p>
           {m.load_error && (

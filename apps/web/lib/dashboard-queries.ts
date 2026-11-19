@@ -23,10 +23,10 @@ export { dashboardKeys };
  * model in `routes/modules.py`.
  */
 
-/** Points a `kind:"viz"` card at a module dataset (manifest `datasets:`). */
-export interface DatasetRef {
+/** Points a `kind:"viz"` card at a module output (manifest `outputs:`). */
+export interface OutputRef {
   module_id: string;
-  dataset_id: string;
+  output_id: string;
 }
 
 /** Layout-only card kinds (module `layout.json`, never dashboards): a markdown
@@ -54,8 +54,8 @@ export interface DashboardItem {
   /** widget cards: present when kind is "widget" (or legacy). */
   module_id?: string;
   widget_id?: string;
-  /** viz cards: the dataset + chosen generic viz + field mapping. */
-  dataset_ref?: DatasetRef | null;
+  /** viz cards: the output + chosen generic viz + field mapping. */
+  output_ref?: OutputRef | null;
   viz_id?: string | null;
   mapping?: Record<string, unknown>;
   title?: string | null;
@@ -238,7 +238,7 @@ export interface WidgetPropSchema {
     group?: string;
     help?: string;
     /** Generic viz options only: fill `enum`/`enumLabels` from the bound
-     * dataset when the form renders (column ids or KPI measure keys). Use
+     * output when the form renders (column ids or KPI measure keys). Use
      * `type: "array"` for a multiselect, a string type for a single pick. */
     enumFrom?: "columns" | "numericColumns" | "categoryColumns" | "datetimeColumns" | "measures";
   };
@@ -373,12 +373,12 @@ export function useCardCatalog() {
   });
 }
 
-/** One module *dataset* (manifest `datasets:`) the palette can drop as a
- * generic-viz card. Mirrors `DatasetCatalogEntry` in `routes/datasets.py`. */
-export interface DatasetCatalogEntry {
+/** One module *output* (manifest `outputs:`) the palette can drop as a
+ * generic-viz card. Mirrors `OutputCatalogEntry` in `routes/outputs.py`. */
+export interface OutputCatalogEntry {
   module_id: string;
   module_name: string;
-  dataset_id: string;
+  output_id: string;
   title: string;
   description: string | null;
   icon: string | null;
@@ -390,13 +390,13 @@ export interface DatasetCatalogEntry {
   params_schema: WidgetConfigSchema | null;
 }
 
-/** Every dataset exposed by the modules the user owns – powers the palette's
+/** Every output exposed by the modules the user owns – powers the palette's
  * generic-viz section. Filtered by the board's `log_model` client-side, exactly
  * like `useCardCatalog`. */
-export function useDatasetCatalog() {
+export function useOutputCatalog() {
   return useQuery({
-    queryKey: ["datasets", "catalog"],
-    queryFn: () => api<DatasetCatalogEntry[]>("/api/v1/datasets/catalog"),
+    queryKey: ["module-outputs", "catalog"],
+    queryFn: () => api<OutputCatalogEntry[]>("/api/v1/module-outputs/catalog"),
     staleTime: 60_000,
   });
 }

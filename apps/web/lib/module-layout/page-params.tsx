@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
 
 /**
  * Page parameters of a module layout page: the values a `controls` card edits
- * and every dataset card / `action` card on the page sends to its route.
+ * and every output card / `action` card on the page sends to its route.
  *
  * Held in memory, scoped to the page (shared across its tabs). Only values the
  * user changed are stored; a route's own Python defaults apply otherwise.

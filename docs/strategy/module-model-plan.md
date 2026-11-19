@@ -19,7 +19,7 @@ With repo-only modules none of this does anything useful: every module is loaded
 "uninstall" only hides it. The table now has two **accidental** jobs:
 1. **A per-user visibility list.**
 2. **A tenant gate**, read in about 15 places: bus delivery (`loader.py:1410,1471,1625-1638`),
-   registry (`loader.py:1731-1733`), processing, datasets (`datasets.py:74-99,120`), MCP
+   registry (`loader.py:1731-1733`), processing, module outputs (`datasets.py:74-99,120`, now `routes/module_outputs.py`), MCP
    (`mcp/toolsets/analysis.py:50-63,164-174`), AI nav, admin pages.
 
 That gate is what breaks shared dashboards (viewer doesn't "own" the module), the first visit
@@ -44,7 +44,7 @@ No per-user install, no ownership, no upload.
 **One rule for every call site** (new `modules/access.py` with `available_ids()` and `is_active()`):
 - **Data paths use "loaded"**, so nothing breaks:
   - module routes and assets
-  - datasets
+  - module outputs
   - registry RPC
   - dependencies (`precompute_deps`)
   - user-triggered runs (`ensure`)
@@ -108,9 +108,10 @@ SELECT count(*) FROM user_settings WHERE key='modules_defaults_seeded';
 - 58 users, 55 with install rows, 55 seeded. 3 users have no rows and get every default active
   after stage 3.
 - Rows per module: 55 for most repo modules; `performance_java` 48, `temporal_mapper` 41.
-  Open: did those users deactivate them, or were the modules added after they were seeded? Only
-  the first must become `enabled=false`. Check `installed_at` / `source` before writing the
-  migration.
+  Checked: every missing row is a user who was never offered the module (its id is not in their
+  `modules_defaults_seeded` list; 7 and 14 users, 0 deliberate removals). All rows are
+  `source=default`. So stage 3 gives these users both modules, and no row becomes
+  `enabled=false` from this gap.
 - Rows for modules not in the repo: `alpha_miner_java`, `case_count`, `num_cases` (1 each),
   uploads that stopped loading when upload was switched off. Stage 3 ignores them; they are
   archived and deleted in stage 4 (D5).
@@ -181,7 +182,9 @@ stays, new users can't toggle anything.
   - `ai_nav.py:329`
   - `analysis.py:206`
   - `routes/ai_guidance.py:150-160`, fixing the wrong `True` fallback at `:159`.
-- **Migration `0017_module_activation`** (data only, no schema change, Postgres + SQLite):
+- **Migration `NNNN_module_activation`** (data only, no schema change, Postgres + SQLite; takes the
+  next free number: `0017_rename_module_outputs` is the current head, and the dataset hub plan also
+  claims the next one, so check `alembic heads` when building it):
   - for each user whose `modules_defaults_seeded` is a list, and each id in it that is **in
     `modules/` today** and has no install row (= the user removed it): set
     `module_configs.enabled=false` (update `enabled` only, keep `config_json`);
@@ -202,7 +205,7 @@ stays, new users can't toggle anything.
   - registry scoping uses loaded.
 - **Processing** (`processing.py:44,302,514,599,711,738,806`): owned → loaded. Auto-run at `:580,833`
   stays on active, and `ensure()` ignores activation.
-- **Datasets** (`datasets.py:28,59-99,120,151`): the catalog is all loaded modules + `active`, and
+- **Module outputs** (`datasets.py:28,59-99,120,151`, now `routes/module_outputs.py`): the catalog is all loaded modules + `active`, and
   fetch requires only loaded. This fixes shared-dashboard viewers.
 - **MCP:**
   - `_installed_module_ids` / `_ensure_installed` and **`list_modules` (`analysis.py:164-174,192`)**
@@ -246,7 +249,7 @@ stays, new users can't toggle anything.
      other users unaffected; an unloaded id gives 404.
   4. Producer chain: a deactivated producer is skipped on auto-run, but `ensure(consumer)` still
      runs it.
-  5. Shared-dashboard viewer who deactivated X can still fetch X's dataset.
+  5. Shared-dashboard viewer who deactivated X can still fetch X's module outputs.
   6. MCP: the two tools are gone; `list_modules` works for a user with no rows; `modules:manage`
      alone does not widen scopes.
   7. Migration on SQLite: list-minus-installs gives exactly one `enabled=false`; `config_json` is
@@ -257,7 +260,7 @@ stays, new users can't toggle anything.
      returns 0 hits outside `db/models.py` and alembic.
   10. Pyright counts do not rise (`scripts/ci/pyright-baseline.json`).
 - **Manual:**
-  - run 0017 on a Postgres restore of the prod dump;
+  - run the activation migration on a Postgres restore of the prod dump;
   - in `make lite`: deactivate discovery → it leaves the grid and AI nav; import a log → no
     auto-run; dashboard cards still render; re-activate from `/modules/discovery`;
   - `make e2e`.
@@ -269,7 +272,7 @@ stays, new users can't toggle anything.
 
 ### Stage 4 (a later release, after stage 3 has been stable): Drop the table
 
-- **`0018_drop_module_installs`:**
+- **`NNNN_drop_module_installs`** (the number after the activation migration):
   - drop `module_installs` + index;
   - delete the `modules_defaults_seeded`, `modules.default_ids` and
     `modules.default_excluded_ids` settings;
@@ -277,7 +280,7 @@ stays, new users can't toggle anything.
 - Remove `ModuleInstall` from `models.py`.
 - **Runbook** in `DEPLOY.md`: archive `data/uploaded_modules/` (incl. `case_count`, `num_cases`)
   and S3 `_system/modules/` offline, then delete them.
-- **Rollback:** `alembic downgrade 0017` before starting an older image. **Risk:** low for
+- **Rollback:** `alembic downgrade` to the activation migration before starting an older image. **Risk:** low for
   behaviour; the data is irreversible without the offline copy.
 
 ## 4. Safety rules

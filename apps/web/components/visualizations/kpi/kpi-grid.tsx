@@ -10,13 +10,13 @@ import {
   pickMeasures,
 } from "@/components/visualizations/charts/chart-common";
 
-/** Headline measures for a `kpi`-shaped dataset (complexity metrics,
+/** Headline measures for a `kpi`-shaped output (complexity metrics,
  * conformance score, ...). `measures` picks and orders them; `layout` is a
  * wrapping grid or a single horizontal strip. */
-export function KpiGridViz({ dataset, options }: VizComponentProps) {
-  const items = pickMeasures(kpiItems(dataset), listOption(options, "measures"));
+export function KpiGridViz({ output, options }: VizComponentProps) {
+  const items = pickMeasures(kpiItems(output), listOption(options, "measures"));
   if (items.length === 0) {
-    return <VizEmpty message={dataset.meta?.note} />;
+    return <VizEmpty message={output.meta?.note} />;
   }
   const tiles = items.map((m) => (
     <KpiTile

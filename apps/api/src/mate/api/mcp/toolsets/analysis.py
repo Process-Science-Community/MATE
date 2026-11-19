@@ -1,7 +1,7 @@
-"""Analysis toolset: module outputs, results, datasets + module lifecycle.
+"""Analysis toolset: module outputs, results + module lifecycle.
 
 Reads ride the guidance-payload path (curated, aggregate-only module outputs)
-plus the module result cache and the dataset layer. Every module read runs
+plus the module result cache and the module-output layer. Every module read runs
 behind the structural data wall (``restrict_event_log=True``): the module sees
 its own cached outputs but every raw event-log accessor raises, so nothing can
 leak XES/parquet rows into an MCP response. Per-user module ownership
@@ -275,7 +275,7 @@ async def get_process_overview(ctx: MCPContext, log_id: str) -> dict[str, Any]:
     return await guarded(p, "get_process_overview", {"log_id": log_id}, _impl())
 
 
-# ── result cache / datasets / cached guidance (direct curated reads) ─────────
+# ── result cache / module outputs / cached guidance (direct curated reads) ───
 
 
 async def _module_results(user_id: str, log_id: str, module_id: str) -> dict[str, Any]:
@@ -341,48 +341,48 @@ async def get_module_results(ctx: MCPContext, log_id: str, module_id: str) -> di
 
 
 @mcp_tool(toolset="analysis", idempotent=True)
-async def list_datasets(ctx: MCPContext) -> list[dict[str, Any]]:
-    """List the named, typed data outputs (datasets) your installed modules expose.
+async def list_module_outputs(ctx: MCPContext) -> list[dict[str, Any]]:
+    """List the named, typed data outputs your installed modules expose.
 
-    Each entry has ``module_id``, ``dataset_id``, ``shape``
+    Each entry has ``module_id``, ``output_id``, ``shape``
     (table|graph|kpi|tree|blob), ``log_models`` and an optional
-    ``params_schema``. Fetch one with get_dataset.
+    ``params_schema``. Fetch one with get_module_output_data.
     """
     p = await authz(ctx, SCOPE_MODULES_READ)
 
     async def _impl() -> list[dict[str, Any]]:
-        from mate.api.routes.datasets import list_datasets as dataset_catalog
+        from mate.api.routes.module_outputs import list_outputs as output_catalog
 
         sm = get_sessionmaker()
         async with sm() as session:
             try:
-                entries = await dataset_catalog(session, p.user)
+                entries = await output_catalog(session, p.user)
             except HTTPException as exc:
                 raise from_http_exception(exc) from exc
         return [e.model_dump() for e in entries]
 
-    return await guarded(p, "list_datasets", {}, _impl())
+    return await guarded(p, "list_module_outputs", {}, _impl())
 
 
 @mcp_tool(toolset="analysis", idempotent=True)
-async def get_dataset(
+async def get_module_output_data(
     ctx: MCPContext,
     module_id: str,
-    dataset_id: str,
+    output_id: str,
     log_id: str,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Resolve one module dataset to its canonical envelope for a process.
+    """Resolve one module output to its canonical envelope for a process.
 
     Serves the committed (canonical) view of the log - no ephemeral filters -
     and runs behind the data wall, so it returns the module's computed data,
-    never raw event rows. ``params`` are passed to the dataset's route (see the
-    dataset's ``params_schema`` from list_datasets).
+    never raw event rows. ``params`` are passed to the output's route (see the
+    output's ``params_schema`` from list_module_outputs).
     """
     p = await authz(ctx, SCOPE_MODULES_READ)
 
     async def _impl() -> dict[str, Any]:
-        from mate.api.datasets.adapters import resolve_dataset
+        from mate.api.module_outputs.adapters import resolve_output
         from mate.api.modules import get_module_loader
 
         sm = get_sessionmaker()
@@ -395,10 +395,10 @@ async def get_dataset(
         except HTTPException as exc:
             raise from_http_exception(exc) from exc
         try:
-            envelope = await resolve_dataset(
+            envelope = await resolve_output(
                 loader,
                 module_id,
-                dataset_id,
+                output_id,
                 log_id,
                 p.user.id,
                 params=params,
@@ -407,7 +407,7 @@ async def get_dataset(
         except PermissionError as exc:
             raise tool_error(
                 CODE_CONFLICT,
-                f"Dataset '{module_id}/{dataset_id}' has no computed results for this process.",
+                f"Output '{module_id}/{output_id}' has no computed results for this process.",
             ) from exc
         except HTTPException as exc:
             raise from_http_exception(exc) from exc
@@ -417,15 +417,15 @@ async def get_dataset(
             {
                 "log_id": log_id,
                 "module_id": module_id,
-                "dataset_id": dataset_id,
-                "dataset": envelope.model_dump(by_alias=True),
+                "output_id": output_id,
+                "output": envelope.model_dump(by_alias=True),
             }
         )
 
     return await guarded(
         p,
-        "get_dataset",
-        {"log_id": log_id, "module_id": module_id, "dataset_id": dataset_id},
+        "get_module_output_data",
+        {"log_id": log_id, "module_id": module_id, "output_id": output_id},
         _impl(),
     )
 

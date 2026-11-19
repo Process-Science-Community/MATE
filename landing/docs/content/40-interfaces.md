@@ -97,18 +97,20 @@ The table is generated from that schema: after changing a route, a request model
 | Modules | `POST /modules/restore-defaults` | — | `200` `{"restored":["…"]}` |
 | Modules | `GET /modules` | — | `200` `[{"id":"018f2c9a…","name":"nightly import","version":"…","category":"…",…}]` |
 | Modules | `GET /modules/cards` | — | `200` `[{"module_id":"018f2c9a…","module_name":"…","widget_id":"018f2c9a…",…}]` |
+| Modules | `GET /modules/install/status` | — | `200` `{"enabled":false,"detail":"…"}` |
 | Modules | `GET /modules/readme` | — | `200` `null` |
 | Modules | `DELETE /modules/{module_id}` | — | `204` — |
 | Modules | `GET /modules/{module_id}/assets/{asset_path}` | — | `200` `null` |
 | Modules | `GET /modules/{module_id}/config` | — | `200` `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` |
 | Modules | `PUT /modules/{module_id}/config` | `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` | `200` `{"config":null,"enabled":true,"controlled_by_admin":false,"controlled_cards":null}` |
 | Modules | `GET /modules/{module_id}/config-schema` | — | `200` `null` |
-| Modules | `GET /modules/{module_id}/layout` | `?log_id=018f2c9a…` | `200` `{"layout":null}` |
+| Modules | `GET /modules/{module_id}/guide` | — | `200` `{"module_id":"018f2c9a…","markdown":"…"}` |
+| Modules | `GET /modules/{module_id}/layout` | — | `200` `{"layout":null}` |
 | Modules | `PUT /modules/{module_id}/layout` | `?log_id=018f2c9a…` · `{"layout":null}` | `200` `{"layout":null}` |
 | Modules | `GET /modules/{module_id}/manifest` | — | `200` `null` |
-| Datasets | `GET /datasets/catalog` | — | `200` `[{"module_id":"018f2c9a…","module_name":"…","dataset_id":"018f2c9a…",…}]` |
-| Datasets | `GET /datasets/{module_id}/{dataset_id}` | `?log_id=018f2c9a…` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |
-| Datasets | `POST /datasets/{module_id}/{dataset_id}/transform` | `{"log_id":"018f2c9a…","transforms":["…"]}` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |
+| Module outputs | `GET /module-outputs/catalog` | — | `200` `[{"module_id":"018f2c9a…","module_name":"…","output_id":"018f2c9a…",…}]` |
+| Module outputs | `GET /module-outputs/{module_id}/{output_id}` | `?log_id=018f2c9a…` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |
+| Module outputs | `POST /module-outputs/{module_id}/{output_id}/transform` | `{"log_id":"018f2c9a…","transforms":["…"]}` | `200` `{"shape":"table","schema":{"columns":[{…}]},"data":{"columns":[{…}],…},"meta":{…}}` |
 | Dashboards | `POST /dashboards/import` | `{"name":"nightly import","description":"…","log_model":"case_centric","items":[{…}],…}` | `201` `{"id":"018f2c9a…","name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` |
 | Dashboards | `GET /dashboards` | — | `200` `[{"id":"018f2c9a…","name":"nightly import","description":"…",…}]` |
 | Dashboards | `POST /dashboards` | `{"name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` | `201` `{"id":"018f2c9a…","name":"nightly import","description":"…","event_log_id":"018f2c9a…",…}` |
@@ -264,14 +266,14 @@ while True:
         raise RuntimeError(states)
     time.sleep(2)
 
-# 3. read a dataset a module publishes — rows live under `data` in the envelope
+# 3. read an output a module publishes — rows live under `data` in the envelope
 rows = client.get(
-    "/datasets/performance_java/activity-performance", params={"log_id": log_id}
+    "/module-outputs/performance_java/activity-performance", params={"log_id": log_id}
 ).json()["data"]["rows"]
 print(rows)
 ```
 
-Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; ask `POST /event-logs/{id}/module-runs/{module}` (idempotent) before reading a module's results, because they only exist once its run is `ready`; the dataset endpoint takes only `log_id` (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.
+Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; ask `POST /event-logs/{id}/module-runs/{module}` (idempotent) before reading a module's results, because they only exist once its run is `ready`; the module-output endpoint takes only `log_id` (an output's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.
 
 # MCP server
 
@@ -315,7 +317,7 @@ Independently of the credential, each user opts in once to *external data access
 | Scope | Grants |
 | --- | --- |
 | `processes:read` / `processes:write` | Log metadata and aggregates / import, rename, filter, delete, folders |
-| `modules:read` / `modules:write` / `modules:manage` | Module outputs and datasets / per-module configuration / install lifecycle |
+| `modules:read` / `modules:write` / `modules:manage` | Module outputs and the typed output catalogue / per-module configuration / install lifecycle |
 | `dashboards:read` / `dashboards:write` | Read boards (own and shared) / create, edit, share, delete |
 | `jobs:read` / `jobs:control` | List, get, wait / cancel, retry, queue pause and resume |
 | `watched:read` / `watched:write` | Read watched folders / create, update, scan, delete |
@@ -326,7 +328,7 @@ Independently of the credential, each user opts in once to *external data access
 | --- | --- |
 | `meta` (always on) | `get_server_info`, `whoami` |
 | `processes` | Log listing and detail, activities, variants, data quality, OCEL views, folders, import, remap, re-import, duplicate, delete |
-| `analysis` | Module inventory and availability, curated module outputs, dataset catalogue, cached guidance, module configuration, plus the convenience readers `get_bottlenecks`, `get_conformance`, `get_process_model`, `get_drifts` |
+| `analysis` | Module inventory and availability, curated module outputs, the typed module-output catalogue (`list_module_outputs` / `get_module_output_data`), cached guidance, module configuration, plus the convenience readers `get_bottlenecks`, `get_conformance`, `get_process_model`, `get_drifts` |
 | `dashboards` | Board CRUD, card catalogue, export and import, shares, share targets |
 | `jobs` | List, get, wait, cancel, retry, queue control |
 | `watched` | Watched-folder CRUD and scan |

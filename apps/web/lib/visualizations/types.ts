@@ -1,10 +1,10 @@
 /**
- * The Phase-1 dataset contract + generic-visualization registry types.
+ * The Phase-1 output contract + generic-visualization registry types.
  *
- * A *module dataset* (manifest `datasets:`) is fetched from the module's own
+ * A *module output* (manifest `outputs:`) is fetched from the module's own
  * route and normalized (client-side, `adapters.ts`) into a shape-tagged
- * `DatasetEnvelope`. A `VizSpec` declares which shape(s) a generic
- * visualization accepts and how its fields bind to the dataset's columns
+ * `OutputEnvelope`. A `VizSpec` declares which shape(s) a generic
+ * visualization accepts and how its fields bind to the output's columns
  * (Power-BI-style). The envelope + adapter are provisional (promoted
  * server-side in Phase 2); the envelope/viz TYPES are permanent.
  */
@@ -16,10 +16,10 @@ import type { ValueFormat } from "@/lib/format";
 
 export type { ValueFormat };
 
-/** The five data shapes a dataset can take. Process-mining data is not purely
+/** The five data shapes an output can take. Process-mining data is not purely
  * tabular (a DFG is a graph, a process tree a hierarchy), so the contract is a
  * small tagged union rather than "everything is a table". */
-export type DatasetShape = "table" | "graph" | "kpi" | "tree" | "blob";
+export type OutputShape = "table" | "graph" | "kpi" | "tree" | "blob";
 
 /** Column value types - drives which viz fields a column may bind to. */
 export type ColumnType =
@@ -116,20 +116,20 @@ export interface BlobData {
   value: string;
 }
 
-export type DatasetPayload = TableData | GraphData | KpiData | TreeData | BlobData;
+export type OutputPayload = TableData | GraphData | KpiData | TreeData | BlobData;
 
-export interface DatasetEnvelope {
-  shape: DatasetShape;
+export interface OutputEnvelope {
+  shape: OutputShape;
   /** Field-mapping reads `schema.columns`; meaningful for `table`, empty for
    * shapes that need no mapping (graph/kpi/tree/blob). */
   schema: { columns: ColumnSpec[] };
-  data: DatasetPayload;
+  data: OutputPayload;
   meta?: {
     title?: string;
     sourceKind?: string;
     rowCount?: number;
     truncated?: boolean;
-    /** A short note rendered when the dataset is empty/needs a prior step
+    /** A short note rendered when the output is empty/needs a prior step
      * (e.g. conformance with no run yet). */
     note?: string;
   };
@@ -138,7 +138,7 @@ export interface DatasetEnvelope {
 // ── Visualization registry ─────────────────────────────────────────────────
 
 /** One bindable field on a viz (e.g. x / y / series / value). `accepts` filters
- * which dataset columns the user may bind to it. */
+ * which output columns the user may bind to it. */
 export interface VizFieldDef {
   key: string;
   label: string;
@@ -149,7 +149,7 @@ export interface VizFieldDef {
 }
 
 export interface VizComponentProps {
-  dataset: DatasetEnvelope;
+  output: OutputEnvelope;
   mapping: FieldMapping;
   options: Record<string, unknown>;
 }
@@ -179,7 +179,7 @@ export interface VizSpec {
   /** Lucide icon name (must be in card-icon.tsx's map). */
   icon: string;
   group: VizGroup;
-  accepts: DatasetShape[];
+  accepts: OutputShape[];
   /** Empty ⇒ the viz needs no field-mapping (table, kpi-grid, process-map). */
   fields: VizFieldDef[];
   /** Non-field options, in the existing card `config_schema` dialect. */
@@ -188,9 +188,9 @@ export interface VizSpec {
   Component: VizComponent;
   /** One-line palette description. */
   description?: string;
-  /** One sentence: which dataset shape/fields this viz needs. */
+  /** One sentence: which output shape/fields this viz needs. */
   needs?: string;
-  /** A raw route response that normalize() turns into a renderable dataset of
+  /** A raw route response that normalize() turns into a renderable output of
    * an accepted shape (drives the "Needs data" snippet). */
   example?: unknown;
   presets?: VizPreset[];

@@ -34,7 +34,7 @@ def apply_resource_limits(conn: duckdb.DuckDBPyConnection) -> None:
     Every ``duckdb.connect()`` is its own database instance with DuckDB's
     defaults - a thread per core and ~80% of the *host's* RAM - so each
     connection the API opens (the per-request ``EventLogAccess`` behind the
-    Events/Variants tabs, OCEL access, dataset transforms) must call this, or
+    Events/Variants tabs, OCEL access, module-output transforms) must call this, or
     a handful of concurrent queries on a big log can exhaust the container.
     Queries over the limit spill to ``<DATA_DIR>/duckdb-tmp`` instead (on the
     data volume, not the container's root filesystem).

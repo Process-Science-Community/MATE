@@ -68,7 +68,7 @@ The wait is measured from the timestamp of the first event to the timestamp of t
 
 ### Dashboard cards
 
-The module has no cards of its own. It offers three datasets in the **Cards & data** palette of a dashboard, which show them with the platform's generic visualizations and follow the dashboard's filters:
+The module has no cards of its own. It offers three outputs in the **Cards & data** palette of a dashboard, which show them with the platform's generic visualizations and follow the dashboard's filters:
 
 - **Performance KPIs (Java)**: cases, variants, cycle-time percentiles and throughput.
 - **Activity performance**: the activities ranked by the total time cases stay in them.

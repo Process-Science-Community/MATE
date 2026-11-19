@@ -131,15 +131,24 @@ async def user_can_access_log(session: AsyncSession, log_id: str, user_id: str) 
 def _dashboard_module_ids(layout_json: object) -> set[str]:
     """Module ids referenced by the cards of a dashboard ``layout_json`` blob.
 
+    A card names its module via top-level ``module_id`` and, for a viz card, via
+    ``output_ref.module_id`` (a viz card is valid with only ``output_ref``, e.g. one
+    saved through MCP ``create_dashboard``); both count.
+
     Decoded in Python (portable across Postgres/SQLite). Tolerant of shape drift:
-    anything that isn't a list of dict items with a string ``module_id`` is ignored.
+    anything that isn't a list of dict items with a string module id is ignored.
     """
     ids: set[str] = set()
     items = layout_json.get("items") if isinstance(layout_json, dict) else None
     if isinstance(items, list):
         for it in items:
-            if isinstance(it, dict):
-                mid = it.get("module_id")
+            if not isinstance(it, dict):
+                continue
+            ref = it.get("output_ref")
+            for mid in (
+                it.get("module_id"),
+                ref.get("module_id") if isinstance(ref, dict) else None,
+            ):
                 if isinstance(mid, str) and mid:
                     ids.add(mid)
     return ids

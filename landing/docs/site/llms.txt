@@ -55,7 +55,7 @@ MATE is a self-hosted, modular process-mining platform. This file indexes the pu
 - [Handlers and the context](handlers-and-the-context.html): module.py holds one Module subclass with three kinds of handler, all receiving an injected ModuleContext.
 - [Logs, jobs and results](logs-jobs-and-results.html): Reading the log, declaring long-running work, and storing results.
 - [Module communication](module-communication.html): Modules never import each other. They communicate through two declared mechanisms and order themselves through one reserved topic.
-- [Frontend: panels, widgets and datasets](frontend-panels-widgets-and-datasets.html): A module page is either a layout.json card grid built in the Studio, or a TSX panel. TSX (panels and widgets) is TypeScript regardless of the backend language; the platform bundles it with esbuild into .dist/ at start…
+- [Frontend: panels, widgets and outputs](frontend-panels-widgets-and-outputs.html): A module page is either a layout.json card grid built in the Studio, or a TSX panel. TSX (panels and widgets) is TypeScript regardless of the backend language; the platform bundles it with esbuild into .dist/ at start…
 - [Dependencies, isolation and runtimes](dependencies-isolation-and-runtimes.html): Where a module's code runs, and which libraries it can import.
 - [Testing and publishing](testing-and-publishing.html): Module tests are ordinary pytest in modules/<id>/tests/; make new writes a first one. mate.sdk.testing builds a fake ModuleContext over a small sample log, so a handler runs without the platform.
 

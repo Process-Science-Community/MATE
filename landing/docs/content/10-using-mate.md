@@ -72,7 +72,7 @@ Filtering, editing, and organising logs after the first import.
 | --- | --- | --- | --- |
 | Column filter | Events tab | The log | Persisted, and **re-runs the modules you have already opened** on commit; the rest compute when opened. |
 | Board filter | Dashboard filter bar | One board | Scopes every card without touching module caches. |
-| Card options | Card inspector | One card | Options the widget or dataset declares. |
+| Card options | Card inspector | One card | Options the widget or module output declares. |
 
 Operators are deliberately few: `contains`, `equals`, `gte`, `lte`, `is_null`, `is_not_null`, `in`. Time ranges apply to the timestamp column.
 
@@ -213,10 +213,10 @@ Each module name links to its guide, the same text the app shows behind the modu
 
 | Module | Id | Category | Needs | Produces |
 | --- | --- | --- | --- | --- |
-| [Discovery](guide-discovery.html) | `discovery` | foundation | `case_id`, `activity`, `timestamp`; ≥50 events, ≥2 cases | DFG, Petri nets, process tree, heuristics net, BPMN; datasets + 3 widgets |
+| [Discovery](guide-discovery.html) | `discovery` | foundation | `case_id`, `activity`, `timestamp`; ≥50 events, ≥2 cases | DFG, Petri nets, process tree, heuristics net, BPMN; outputs + 3 widgets |
 | [Performance](guide-performance.html) | `performance` | foundation | case, activity, timestamp | Throughput, cycle and lead times, P90, bottleneck ranking; 3 widgets |
 | [OCEL discovery](guide-ocel-discovery.html) | `ocel_discovery` | foundation | object-centric log | OC-DFG, object-centric Petri net, per-type summaries; 4 widgets |
-| [Performance (JVM)](guide-performance-java.html) | `performance_java` | foundation | case, activity, timestamp; a JRE | Timing metrics computed in Java; 3 datasets |
+| [Performance (JVM)](guide-performance-java.html) | `performance_java` | foundation | case, activity, timestamp; a JRE | Timing metrics computed in Java; 3 outputs |
 | [Complexity](guide-complexity.html) | `complexity` | advanced | ≥50 events, ≥2 cases | Entropy, Lempel-Ziv, affinity, structure, Pentland metrics; 2 widgets |
 | [Complexity v2](guide-complexity-v2.html) | `complexity_v2` | advanced | ≥50 events, ≥2 cases | A 28-metric suite plus a transition-probability matrix |
 | [Complexity over time](guide-complexity-over-time.html) | `complexity_over_time` | advanced | ≥50 events, ≥2 cases | Complexity metrics per time slice |
@@ -232,7 +232,7 @@ Each module name links to its guide, the same text the app shows behind the modu
 | [PComp](guide-pcomp.html) | `pcomp` | comparison | two logs | Two-sample hypothesis test on Earth Mover's Distance |
 | [Process comparison](guide-process-comparison.html) | `process_comparison` | comparison | two logs | Side-by-side DFG diff, variant differences, EMD similarity |
 
-Three modules have notable behaviour: **Discovery** can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as datasets other modules can render. **Performance** declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. **Concept drift explainer** is the reference for a module with an external dependency chain and an `ai_models` block that renders its own model pickers.
+Three modules have notable behaviour: **Discovery** can derive Petri nets (Alpha, Alpha+, Inductive, ILP, IMF), process trees, heuristics nets, and BPMN, and publishes its models as outputs other modules can render. **Performance** declares an optional dependency on Discovery so graphs arrive labelled, and runs in a killable worker because its native work can be long. **Concept drift explainer** is the reference for a module with an external dependency chain and an `ai_models` block that renders its own model pickers.
 
 ## Ownership
 
@@ -291,7 +291,7 @@ A dashboard is a canvas of cards from any module, scoped by one filter bar and s
 
 :::steps
 1. Open **Dashboards** and choose **New dashboard**, **Start from template**, or **Import** a JSON snapshot.
-2. Switch to edit mode: the palette lists widgets modules ship and datasets the platform renders.
+2. Switch to edit mode: the palette lists widgets modules ship and module outputs the platform renders.
 3. Drag a card onto the grid, move it by its body, resize it by its corner.
 4. Select a card to open the inspector: title, and the options the card declares.
 5. Leave edit mode — changes autosave, there is no save button.
@@ -311,7 +311,7 @@ Card filtering is deliberately not per card: filtering belongs to the board or t
 | Kind | Source | When to use it |
 | --- | --- | --- |
 | Widget | A React component the module ships, declared in `manifest.frontend.widgets` | The visual is the point: a bespoke chart or layout. |
-| Dataset | A typed data output (`table`, `graph`, `kpi`, `tree`, `blob`) rendered by the platform | The result is data: you get the platform's table, graph, or KPI rendering for free. |
+| Output | A typed data output (`table`, `graph`, `kpi`, `tree`, `blob`) the module declares under `outputs:`, rendered by the platform | The result is data: you get the platform's table, graph, or KPI rendering for free. |
 
 ## Sharing
 

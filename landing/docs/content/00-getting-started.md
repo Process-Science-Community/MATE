@@ -23,7 +23,7 @@ MATE is a self-hosted platform for process mining: it turns event logs into proc
   - `module runs` · one per (log, module), started when a module is first opened
   - `filters & edits` · committing a filter re-runs the modules you have already opened
 - `module results` · cached per (log, module)
-  - panels, widgets, and datasets
+  - panels, widgets, and outputs
   - `MATE AI` · aggregates only, behind the data wall
 - `dashboards` · cards from any module, on one canvas
 :::
@@ -67,7 +67,7 @@ Process mining has its own vocabulary; MATE adds a few terms.
 | **Capability** | A named request/response function one module publishes for another. |
 | **Event bus** | In-process pub/sub; modules emit and subscribe to declared topics. |
 | **Job** | A persisted, observable long operation: import, precompute, install, re-import. |
-| **Dataset** | A typed data output (`table`, `graph`, `kpi`, `tree`, `blob`) the platform renders itself. |
+| **Output** | A typed data output a module declares under `outputs:` (`table`, `graph`, `kpi`, `tree`, `blob`); the platform renders it itself. |
 | **Widget** | A dashboard card a module ships as a React component. |
 | **Guidance** | Cached, module-scoped AI explanation, generated on demand. |
 | **Data wall** | The rule that raw event rows never reach an AI model — MATE AI or MCP. |
@@ -204,7 +204,7 @@ Open **Discovery** for the process as a directly-follows graph (and Petri net, p
 
 :::steps
 1. Open **Dashboards** and create a board, or start from a template.
-2. In edit mode, drag cards from the palette: widgets modules ship, and datasets the platform renders.
+2. In edit mode, drag cards from the palette: widgets modules ship, and module outputs the platform renders.
 3. Select a card to set its options; the board's filter bar scopes every card at once.
 4. Share the board read-only with a user or a team.
 :::

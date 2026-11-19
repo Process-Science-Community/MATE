@@ -117,6 +117,6 @@ A decision that a reader would otherwise have to reverse-engineer belongs in a d
 
 ## Specified but unimplemented
 
-Documenting them prevents conflicting implementations: Node and R runtimes for modules (the protocol needs no host change), git-URL and registry module installs (today the only channel is an uploaded archive), multi-node deployments (the S3 layer is the groundwork, and the open seams are named in `S3_OFFLOAD.md`), and additional dataset shapes (the envelope is shape-tagged, so new shapes are additive).
+Documenting them prevents conflicting implementations: Node and R runtimes for modules (the protocol needs no host change), git-URL and registry module installs (today the only channel is an uploaded archive), multi-node deployments (the S3 layer is the groundwork, and the open seams are named in `S3_OFFLOAD.md`), and additional module-output shapes (the envelope is shape-tagged, so new shapes are additive).
 
 Deliberately out of scope: a multi-tenant SaaS, a plugin marketplace with ranking, anything that requires a managed cloud service, and replacing the analyst — modules produce results and explanations; interpretation stays with people.

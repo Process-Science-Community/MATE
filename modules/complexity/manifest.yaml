@@ -107,7 +107,7 @@ frontend:
         read: "Higher entropy means less predictable behaviour — more distinct paths carrying meaningful share."
         computed: "Entropy over the log's variant distribution."
 # Data-only output for the platform's generic visualization layer.
-datasets:
+outputs:
   - id: metrics
     title: Complexity metrics
     description: Headline EPA-based complexity measures (magnitude, variety, entropy, Lempel-Ziv).

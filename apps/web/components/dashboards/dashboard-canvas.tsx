@@ -21,11 +21,11 @@ import {
   rowsForPx,
   STACK_BELOW_PX,
   useCardCatalog,
-  useDatasetCatalog,
+  useOutputCatalog,
   type CanvasSettings,
   type DashboardCard as CatalogCard,
   type DashboardItem,
-  type DatasetCatalogEntry,
+  type OutputCatalogEntry,
   type ElementKind,
   type WidgetConfigSchema,
 } from "@/lib/dashboard-queries";
@@ -170,13 +170,13 @@ type FreeResize = {
 };
 
 /** A palette item being added: a module-authored widget card, a generic-viz
- * card bound to a module dataset, or a layout-only element (module Studio). */
+ * card bound to a module output, or a layout-only element (module Studio). */
 export type AddRequest =
   | { kind: "widget"; card: CatalogCard }
   | {
       kind: "viz";
-      /** The bound dataset; null places an unbound "Needs data" card (Studio only). */
-      dataset: DatasetCatalogEntry | null;
+      /** The bound output; null places an unbound "Needs data" card (Studio only). */
+      output: OutputCatalogEntry | null;
       /** A Studio catalog entry: the viz and its preset options/mapping. */
       vizId?: string;
       options?: Record<string, unknown>;
@@ -186,15 +186,15 @@ export type AddRequest =
     }
   | { kind: "element"; element: ElementKind; moduleId: string };
 
-/** The viz a viz add request places: the catalog's pick, else the dataset shape's default. */
+/** The viz a viz add request places: the catalog's pick, else the output shape's default. */
 function addVizId(req: Extract<AddRequest, { kind: "viz" }>): string {
-  return req.vizId ?? defaultVizForShape(req.dataset?.shape ?? "table");
+  return req.vizId ?? defaultVizForShape(req.output?.shape ?? "table");
 }
 
 function addTitle(req: AddRequest): string {
   if (req.kind === "widget") return req.card.title;
   if (req.kind === "element") return ELEMENT_DEFAULTS[req.element].title;
-  return req.title ?? req.dataset?.title ?? vizRegistry[addVizId(req)]?.title ?? "Visualization";
+  return req.title ?? req.output?.title ?? vizRegistry[addVizId(req)]?.title ?? "Visualization";
 }
 
 /** Synchronously begins a palette→canvas add at the pointer's position. The
@@ -205,7 +205,7 @@ function addTitle(req: AddRequest): string {
 export type AddStarter = (req: AddRequest, e: React.PointerEvent | null) => void;
 
 /** Drop size for an add request: the widget's declared size, or the default
- * viz's default geometry for a dataset (sized by its shape's default viz). */
+ * viz's default geometry for an output (sized by its shape's default viz). */
 function addGeometry(req: AddRequest): { w: number; h: number } {
   if (req.kind === "widget") return { w: req.card.default_w, h: req.card.default_h };
   if (req.kind === "element") return ELEMENT_DEFAULTS[req.element];
@@ -214,8 +214,8 @@ function addGeometry(req: AddRequest): { w: number; h: number } {
 }
 
 /** Build the placed item for an add request at `(x, y)`. A widget card carries
- * `module_id`/`widget_id`; a viz card carries `dataset_ref` + a default viz for
- * the dataset's shape (empty mapping ⇒ renders immediately or prompts config). */
+ * `module_id`/`widget_id`; a viz card carries `output_ref` + a default viz for
+ * the output's shape (empty mapping ⇒ renders immediately or prompts config). */
 function buildAddItem(req: AddRequest, i: string, x: number, y: number): DashboardItem {
   if (req.kind === "widget") {
     const c = req.card;
@@ -247,14 +247,17 @@ function buildAddItem(req: AddRequest, i: string, x: number, y: number): Dashboa
       config: structuredClone(d.config),
     };
   }
-  const ds = req.dataset;
+  const out = req.output;
   const vizId = addVizId(req);
   const g = vizRegistry[vizId]?.defaults;
+  // A viz card reads its output through the module's own route, so it belongs to
+  // that module: stamp `module_id` (sharing grants recipients access per card module).
+  const moduleId = req.moduleId ?? out?.module_id;
   return {
     i,
     kind: "viz",
-    ...(req.moduleId ? { module_id: req.moduleId } : {}),
-    ...(ds ? { dataset_ref: { module_id: ds.module_id, dataset_id: ds.dataset_id } } : {}),
+    ...(moduleId ? { module_id: moduleId } : {}),
+    ...(out ? { output_ref: { module_id: out.module_id, output_id: out.output_id } } : {}),
     viz_id: vizId,
     mapping: structuredClone(req.mapping ?? {}),
     title: addTitle(req),
@@ -429,7 +432,7 @@ export function DashboardCanvas({
   const schemaFor = useMemo(() => {
     const map = new Map<string, WidgetConfigSchema | null>();
     for (const c of catalog ?? []) map.set(`${c.module_id}:${c.widget_id}`, c.config_schema);
-    // viz cards drive their settings from the viz registry + dataset columns
+    // viz cards drive their settings from the viz registry + output columns
     // (see VizSettings), not a widget config_schema.
     return (it: DashboardItem) =>
       it.kind === "viz" ? undefined : map.get(`${it.module_id}:${it.widget_id}`);
@@ -437,11 +440,11 @@ export function DashboardCanvas({
   // Each card's manifest description — surfaced by the card header's ⓘ tooltip.
   // A placed item only stores its identity, so (like `schemaFor`) we resolve the
   // description from the catalog: widget cards by `(module_id, widget_id)`, viz
-  // cards by their dataset ref `(module_id, dataset_id)`.
+  // cards by their output ref `(module_id, output_id)`.
   // Structured help + drill target, resolved from the catalog the same way as
   // the description (a placed item only stores its identity). Drill applies to
   // widget cards only — a viz card renders a platform visualization of a
-  // dataset, so there's no module view behind it to open.
+  // output, so there's no module view behind it to open.
   const cardMetaFor = useMemo(() => {
     const map = new Map<string, CatalogCard>();
     for (const c of catalog ?? []) map.set(`${c.module_id}:${c.widget_id}`, c);
@@ -463,23 +466,23 @@ export function DashboardCanvas({
     },
     [logId, cardMetaFor],
   );
-  const { data: datasetCatalog } = useDatasetCatalog();
+  const { data: outputCatalog } = useOutputCatalog();
   const descriptionFor = useMemo(() => {
     const widgets = new Map<string, string | null>();
     for (const c of catalog ?? []) widgets.set(`${c.module_id}:${c.widget_id}`, c.description);
-    const datasets = new Map<string, string | null>();
-    for (const d of datasetCatalog ?? [])
-      datasets.set(`${d.module_id}:${d.dataset_id}`, d.description);
+    const outputs = new Map<string, string | null>();
+    for (const d of outputCatalog ?? [])
+      outputs.set(`${d.module_id}:${d.output_id}`, d.description);
     return (it: DashboardItem): string | null => {
       if (it.kind === "viz") {
-        const ref = it.dataset_ref;
+        const ref = it.output_ref;
         // Bound cards describe their data only; the viz blurb is for Studio placeholders.
-        if (ref) return datasets.get(`${ref.module_id}:${ref.dataset_id}`) ?? null;
+        if (ref) return outputs.get(`${ref.module_id}:${ref.output_id}`) ?? null;
         return (it.viz_id ? vizRegistry[it.viz_id]?.description : null) ?? null;
       }
       return widgets.get(`${it.module_id}:${it.widget_id}`) ?? null;
     };
-  }, [catalog, datasetCatalog]);
+  }, [catalog, outputCatalog]);
   // Per-widget grid constraints from the catalog, keyed by `module:widget`:
   //  - `resizable`       whether the user may resize the card at all,
   //  - `minW`/`minH`     the resize floor for a resizable card (and the size an
@@ -548,7 +551,7 @@ export function DashboardCanvas({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [resizingId, setResizingId] = useState<string | null>(null);
   // Live palette→canvas add state. `addReq` is the item being added - a widget
-  // card or a dataset viz (drives the ghost + chip); `addPointer` positions the
+  // card or an output viz (drives the ghost + chip); `addPointer` positions the
   // chip; `addCell` is the snapped grid cell under the cursor (null when off-grid).
   const [addReq, setAddReq] = useState<AddRequest | null>(null);
   const [addPointer, setAddPointer] = useState<{ x: number; y: number } | null>(null);

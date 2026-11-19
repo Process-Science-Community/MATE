@@ -62,7 +62,7 @@ export function useDashboardFilter(): DashboardFilterContextValue {
 }
 
 /** Non-throwing variant for code that may run outside a dashboard (e.g. the
- * shared dataset-fetch hook). Returns `null` when no provider is mounted. */
+ * shared output-fetch hook). Returns `null` when no provider is mounted. */
 export function useDashboardFilterOptional(): DashboardFilterContextValue | null {
   return useContext(DashboardFilterContext);
 }

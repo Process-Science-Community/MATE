@@ -910,7 +910,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
         <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
         <li><a class="side-link" href="module-communication.html">Module communication</a></li>
-        <li><a class="side-link" href="frontend-panels-widgets-and-datasets.html">Frontend: panels, widgets and datasets</a></li>
+        <li><a class="side-link" href="frontend-panels-widgets-and-outputs.html">Frontend: panels, widgets and outputs</a></li>
         <li><a class="side-link" href="dependencies-isolation-and-runtimes.html">Dependencies, isolation and runtimes</a></li>
         <li><a class="side-link" href="testing-and-publishing.html">Testing and publishing</a></li>
       </ul>
@@ -983,7 +983,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
 <h3 id="dashboard-cards">Dashboard cards<a class="h-anchor" href="#dashboard-cards" aria-label="Link to this section">#</a></h3>
 <p>Cards follow the filters of their dashboard. Each has an info icon with a short explanation and an arrow (<strong>Open in module</strong>) that opens this page. They show the latest result for the active model and the technique set in the module's configuration, and ask you to run a check when there is none.</p>
 <ul><li><strong>Conformance score</strong>: the tiles Fitness, Precision, Conforming and Deviations.</li><li><strong>Top deviations</strong>: a bar chart of the activities with the most deviations. <strong>Activities shown</strong> (3 to 25, default 10) sets how many bars it draws.</li></ul>
-<p>The module also offers the datasets <strong>Conformance KPIs</strong> and <strong>Per-activity deviations</strong> in the <strong>Cards &amp; data</strong> palette of a dashboard.</p>
+<p>The module also offers the outputs <strong>Conformance KPIs</strong> and <strong>Per-activity deviations</strong> in the <strong>Cards &amp; data</strong> palette of a dashboard.</p>
 <h2 id="tips-and-limits">Tips and limits<a class="h-anchor" href="#tips-and-limits" aria-label="Link to this section">#</a></h2>
 <ul><li>Start with token replay. It is fast. Alignments give more precise diagnostics but can take very long on large or varied logs, so MATE refuses them above the limits in the configuration. Then the run fails with &quot;Alignments refused: log has N cases and M variants&quot;, and you can switch the technique or raise the limits.</li><li>On a large log the precision is skipped above the event limit, and fitness and deviations are still computed. Raise <strong>Precision – max events</strong> to compute it anyway, at the cost of memory.</li><li>A token-replay deviation is counted at the model task where the replay had trouble, and an alignment deviation at the activity that was added or skipped, so the two techniques do not give identical counts.</li><li>Only labelled tasks are matched. Gateways and events of the model are not coloured.</li><li>A check says how the log relates to the model, not which of them is right. Look at the deviating variants before you change the model or the process.</li><li>To see how the process actually runs before you check it, use Discovery.</li></ul>
 <h2 id="method">Method<a class="h-anchor" href="#method" aria-label="Link to this section">#</a></h2>

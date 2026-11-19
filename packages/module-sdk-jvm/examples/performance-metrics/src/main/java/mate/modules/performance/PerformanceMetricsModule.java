@@ -18,7 +18,7 @@ import mate.sdk.RouteSpec;
  * <p>On every log import a precompute job computes the three result sets and
  * caches them; the routes serve the cache and compute on a miss (so a log
  * imported before this module existed still answers). Each result set is a
- * {@code datasets:} entry in the manifest, so the platform's generic
+ * {@code outputs:} entry in the manifest, so the platform's generic
  * visualizations render them without any module frontend code.
  *
  * <p>The log never leaves the platform: every figure comes from SQL that runs

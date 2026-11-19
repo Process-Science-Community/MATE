@@ -56,7 +56,7 @@ dependencies:
 # Data for the platform's generic visualizations (Studio catalog, layout.json,
 # dashboards). Each entry reads an existing GET route; the web adapters
 # (apps/web/lib/visualizations/adapters.ts) turn the response into the shape.
-datasets:
+outputs:
   - id: overview
     title: OCEL overview
     description: Number of objects, events and activities.

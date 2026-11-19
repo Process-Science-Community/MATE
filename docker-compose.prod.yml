@@ -174,7 +174,7 @@ services:
       #  - DuckDB otherwise takes its default limit of 80% of *host* RAM,
       #    per connection, with a thread per core. Every connection the API
       #    opens (DuckDBPool, the per-request EventLogAccess behind the
-      #    Events/Variants tabs, OCEL access, dataset transforms) applies
+      #    Events/Variants tabs, OCEL access, module-output transforms) applies
       #    these via duckdb.pool.apply_resource_limits; the limit is per
       #    connection, and a query over it spills to ./data/duckdb-tmp.
       #  - glibc keeps up to 8 arenas per core and never returns them, which

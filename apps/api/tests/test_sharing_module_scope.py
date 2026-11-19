@@ -23,8 +23,10 @@ def _now() -> datetime:
 
 
 async def _seed(shared_module: str) -> str:
-    """Owner uploads a log; a dashboard bound to it shows only ``shared_module``;
-    the board is shared with RECIPIENT. Returns the log id."""
+    """Owner uploads a log; a dashboard bound to it shows only ``shared_module`` (a
+    widget card) and ``conformance`` (a viz card that names its module only through
+    ``output_ref``, as MCP ``create_dashboard`` may save it); the board is shared
+    with RECIPIENT. Returns the log id."""
     from mate.api.db.engine import get_sessionmaker
     from mate.api.db.models import Dashboard, DashboardShare, EventLog, User
 
@@ -52,7 +54,17 @@ async def _seed(shared_module: str) -> str:
                 user_id=TEST_USER_ID,
                 name="one-module board",
                 event_log_id=log_id,
-                layout_json={"items": [{"i": "c1", "kind": "widget", "module_id": shared_module}]},
+                layout_json={
+                    "items": [
+                        {"i": "c1", "kind": "widget", "module_id": shared_module},
+                        {
+                            "i": "c2",
+                            "kind": "viz",
+                            "viz_id": "table",
+                            "output_ref": {"module_id": "conformance", "output_id": "rows"},
+                        },
+                    ]
+                },
             )
         )
         s.add(
@@ -81,6 +93,8 @@ async def test_share_grants_only_the_shared_board_module() -> None:
         assert await user_can_access_log_module(s, log_id, TEST_USER_ID, "performance") is True
         # Recipient reads ONLY the module the shared board places.
         assert await user_can_access_log_module(s, log_id, RECIPIENT, "discovery") is True
+        # A viz card's module counts even without a top-level module_id.
+        assert await user_can_access_log_module(s, log_id, RECIPIENT, "conformance") is True
         assert await user_can_access_log_module(s, log_id, RECIPIENT, "performance") is False
         # A stranger reads nothing.
         assert await user_can_access_log_module(s, log_id, STRANGER, "discovery") is False

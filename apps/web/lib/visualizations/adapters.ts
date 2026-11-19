@@ -1,5 +1,5 @@
 /**
- * Client-side `kind → DatasetEnvelope` normalizers (Phase 1).
+ * Client-side `kind → OutputEnvelope` normalizers (Phase 1).
  *
  * Existing module routes already return `kind`-tagged JSON and already honor
  * the ambient `X-FF-Event-Filter` header + result-cache variant, so a generic
@@ -12,8 +12,8 @@
 import type {
   ColumnSpec,
   ColumnType,
-  DatasetEnvelope,
-  DatasetShape,
+  OutputEnvelope,
+  OutputShape,
   GraphData,
   GraphEdge,
   GraphNode,
@@ -220,11 +220,11 @@ function kpiFormat(key: string, value: number): KpiMeasure["format"] {
 }
 
 function envelope(
-  shape: DatasetShape,
-  data: DatasetEnvelope["data"],
+  shape: OutputShape,
+  data: OutputEnvelope["data"],
   columns: ColumnSpec[] = [],
-  meta?: DatasetEnvelope["meta"],
-): DatasetEnvelope {
+  meta?: OutputEnvelope["meta"],
+): OutputEnvelope {
   return { shape, schema: { columns }, data, meta };
 }
 
@@ -363,15 +363,15 @@ const arrayOr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 // ── public entry ───────────────────────────────────────────────────────────
 
 /** Normalize a module route's response into the declared shape. `shape` comes
- * from the dataset catalog entry; `json` is the raw route response. */
-export function normalize(shape: DatasetShape, json: unknown): DatasetEnvelope {
+ * from the output catalog entry; `json` is the raw route response. */
+export function normalize(shape: OutputShape, json: unknown): OutputEnvelope {
   const obj: Json = isObject(json) ? json : {};
   const kind = typeof obj.kind === "string" ? obj.kind : "";
 
   // Envelope passthrough: a route that already returns `{shape, data}` of the
   // declared shape is used as-is (a table's schema is inferred when missing).
   if (obj.shape === shape && isObject(obj.data)) {
-    const meta = isObject(obj.meta) ? (obj.meta as DatasetEnvelope["meta"]) : undefined;
+    const meta = isObject(obj.meta) ? (obj.meta as OutputEnvelope["meta"]) : undefined;
     if (shape !== "table") {
       // Default the collections the vizzes iterate, so a partial envelope renders empty instead of throwing.
       const d = obj.data as Json;
@@ -383,7 +383,7 @@ export function normalize(shape: DatasetShape, json: unknown): DatasetEnvelope {
             : shape === "tree"
               ? { ...d, root: treeDefaults(d.root) }
               : d;
-      return envelope(shape, data as unknown as DatasetEnvelope["data"], [], meta);
+      return envelope(shape, data as unknown as OutputEnvelope["data"], [], meta);
     }
     const table = tableFromData(obj.data);
     return envelope("table", table, table.columns, {

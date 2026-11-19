@@ -12,7 +12,7 @@ export const textSpecs: VizSpec[] = [
     icon: "MessageSquareText",
     group: "text",
     description: "Status or summary text with {field} values from the data.",
-    needs: "A table (first row), KPI or text dataset; {field} in the text is replaced by that column, measure or {value}.",
+    needs: "A table (first row), KPI or text output; {field} in the text is replaced by that column, measure or {value}.",
     example: {
       rows: [
         {
@@ -47,7 +47,7 @@ export const textSpecs: VizSpec[] = [
       {
         id: "data-text",
         title: "Text from data",
-        description: "Plain markdown text taken from a dataset field.",
+        description: "Plain markdown text taken from an output field.",
         icon: "Type",
         options: { tone: "none" },
       },

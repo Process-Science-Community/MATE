@@ -45,7 +45,7 @@ GROUP_ORDER = [
     "Jobs",
     "Events",
     "Modules",
-    "Datasets",
+    "Module outputs",
     "Dashboards",
     "Sharing",
     "AI",
@@ -101,8 +101,8 @@ def group_of(method: str, path: str) -> str:
         return "Events"
     if path.startswith("/modules"):
         return "Modules"
-    if path.startswith("/datasets"):
-        return "Datasets"
+    if path.startswith("/module-outputs"):
+        return "Module outputs"
     if path.startswith("/dashboards"):
         return "Dashboards"
     if path.startswith("/sharing"):

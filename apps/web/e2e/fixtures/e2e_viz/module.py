@@ -1,4 +1,4 @@
-"""Module e2e_viz: static sample data in every dataset shape and adapter rule.
+"""Module e2e_viz: static sample data in every output shape and adapter rule.
 
 Test fixture for apps/web/e2e/studio-catalog.spec.ts; scripts/e2e-studio.sh copies it to
 modules/e2e_viz for the run and removes it after. Nothing here reads the event log.
@@ -166,7 +166,7 @@ class E2eVizModule(Module):
 
     @route.get("/data/{name}")
     async def data(self, ctx: ModuleContext, name: str) -> Any:
-        """One sample response per manifest dataset (`route: /data/<name>`)."""
+        """One sample response per manifest output (`route: /data/<name>`)."""
         if name not in SAMPLES:
             raise HTTPException(status_code=404, detail=f"No sample {name!r}")
         return SAMPLES[name]

@@ -45,12 +45,12 @@ keywords:
 frontend:
   # The panel is plain TSX like any other module's - the platform's frontend
   # never knew the backend is a jar. It reads the same three routes the
-  # datasets below do, so the log filter bar above it applies unchanged.
+  # outputs below do, so the log filter bar above it applies unchanged.
   panel: ./panel/index.tsx
 
 # Dashboard-side outputs: typed data rendered by the platform's generic
 # visualizations, no widget code of our own.
-datasets:
+outputs:
   - id: kpis
     title: Performance KPIs (Java)
     description: Cases, variants, cycle-time percentiles and throughput.

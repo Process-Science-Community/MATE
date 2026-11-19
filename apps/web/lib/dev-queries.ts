@@ -39,7 +39,7 @@ export interface DevModuleStatus {
   folder: string;
   has_panel: boolean;
   has_layout: boolean;
-  datasets: string[];
+  outputs: string[];
   widgets: string[];
   isolation: string;
   execution: string;
@@ -151,10 +151,10 @@ export function useSaveModuleLayout(moduleId: string) {
   });
 }
 
-/** Caches derived from a module's manifest (its datasets, widget cards, dev
+/** Caches derived from a module's manifest (its outputs, widget cards, dev
  * status). Never includes `["module-layout"]`: the Studio's draft hydrates
  * from it, so a focus refresh must not touch it. */
-export const MANIFEST_QUERY_KEYS = [["dev"], ["datasets"], ["dashboard-cards"]] as const;
+export const MANIFEST_QUERY_KEYS = [["dev"], ["module-outputs"], ["dashboard-cards"]] as const;
 
 export function useReloadModule(moduleId: string) {
   const qc = useQueryClient();
@@ -164,7 +164,7 @@ export function useReloadModule(moduleId: string) {
       api<DevModuleStatus>(`/api/v1/dev/modules/${encodeURIComponent(moduleId)}/reload`, {
         method: "POST",
       }),
-    // A reload can change datasets, widgets and the layout, so drop every
+    // A reload can change outputs, widgets and the layout, so drop every
     // cache that is derived from the loaded manifest.
     onSettled: () => {
       for (const key of [...MANIFEST_QUERY_KEYS, ["module-layout"], ["modules"]]) {

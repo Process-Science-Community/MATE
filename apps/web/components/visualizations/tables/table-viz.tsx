@@ -44,13 +44,13 @@ function href(value: unknown, template: string): string | undefined {
   return /^(https?:\/\/|\/)/.test(v) ? v : undefined;
 }
 
-/** Typed table for any `table`-shaped dataset. Header click sorts (asc, desc,
+/** Typed table for any `table`-shaped output. Header click sorts (asc, desc,
  * off); optional search and pagination; per-column formats (duration, percent,
  * datetime), data bars, chips and links come from the viz options. Array cells
  * always render as `A → B` chips. */
-export function TableViz({ dataset, options }: VizComponentProps) {
+export function TableViz({ output, options }: VizComponentProps) {
   const o = options ?? {};
-  const table = asTable(dataset);
+  const table = asTable(output);
   const [sort, setSort] = useState<Sort>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -117,7 +117,7 @@ export function TableViz({ dataset, options }: VizComponentProps) {
   }, [filtered, sort]);
 
   if (table.columns.length === 0 || table.rows.length === 0) {
-    return <VizEmpty message={dataset.meta?.note} />;
+    return <VizEmpty message={output.meta?.note} />;
   }
   const pages = pageSize > 0 ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
   const current = Math.min(page, pages - 1);
@@ -217,13 +217,13 @@ export function TableViz({ dataset, options }: VizComponentProps) {
         </Table>
         {sorted.length === 0 && <VizEmpty message="No rows match." />}
       </div>
-      {(pages > 1 || dataset.meta?.truncated) && (
+      {(pages > 1 || output.meta?.truncated) && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-2 py-1 text-[11px] text-muted-foreground">
           <span>
             {pages > 1
               ? `${formatNumber(current * pageSize + 1)}–${formatNumber(current * pageSize + rows.length)} of ${formatNumber(sorted.length)}`
               : `${formatNumber(sorted.length)} rows`}
-            {dataset.meta?.truncated && " (source truncated)"}
+            {output.meta?.truncated && " (source truncated)"}
           </span>
           {pages > 1 && (
             <span className="flex items-center gap-1">

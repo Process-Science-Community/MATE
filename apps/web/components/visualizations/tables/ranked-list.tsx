@@ -21,13 +21,13 @@ interface Item {
 
 const keyOf = (v: unknown) => (Array.isArray(v) ? v.join("\u0000") : String(v ?? ""));
 
-/** Ranked list for a `table`-shaped dataset: label (an array label renders as
+/** Ranked list for a `table`-shaped output: label (an array label renders as
  * `A → B` chips, e.g. variants), value with an optional bar relative to the
  * max, and a secondary caption. Without a value column it counts rows per
  * label. Top N with "Show all"; `layout: chips` wraps compact label/value chips. */
-export function RankedListViz({ dataset, mapping, options }: VizComponentProps) {
+export function RankedListViz({ output, mapping, options }: VizComponentProps) {
   const o = options ?? {};
-  const table = asTable(dataset);
+  const table = asTable(output);
   const [all, setAll] = useState(false);
   const cols = table.columns;
   const has = (k: unknown): k is string => typeof k === "string" && cols.some((c) => c.id === k);
@@ -70,7 +70,7 @@ export function RankedListViz({ dataset, mapping, options }: VizComponentProps) 
     return out;
   }, [table, labelKey, valueKey, secondaryKey, sort]);
 
-  if (items.length === 0) return <VizEmpty message={dataset.meta?.note} />;
+  if (items.length === 0) return <VizEmpty message={output.meta?.note} />;
   const shown = all || topN === 0 ? items : items.slice(0, topN);
   const max = Math.max(1e-9, ...items.map((i) => Math.abs(i.value ?? 0)));
   const label = (v: unknown) =>

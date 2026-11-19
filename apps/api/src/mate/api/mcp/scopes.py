@@ -56,7 +56,7 @@ PAT_GRANTABLE_SCOPES: tuple[str, ...] = READ_SCOPES + WRITE_SCOPES
 SCOPE_DESCRIPTIONS: dict[str, str] = {
     SCOPE_PROCESSES_READ: "List processes (event logs) and read their aggregate stats.",
     SCOPE_PROCESSES_WRITE: "Import, rename, filter, remap, duplicate and delete processes.",
-    SCOPE_MODULES_READ: "Read module analysis outputs and datasets for your processes.",
+    SCOPE_MODULES_READ: "Read module analysis results and outputs for your processes.",
     SCOPE_MODULES_WRITE: "Change per-module configuration (enable/disable, settings).",
     SCOPE_MODULES_MANAGE: "Uninstall modules and restore default modules.",
     SCOPE_DASHBOARDS_READ: "List and read dashboards (own and shared with you).",

@@ -340,6 +340,20 @@ def test_mcp_inner_path_is_root() -> None:
     assert mcp.settings.streamable_http_path == "/"
 
 
+def test_duplicate_tool_name_fails_at_registration() -> None:
+    """FastMCP silently keeps one of two same-named tools, so a rename that lands on
+    an existing name (e.g. the module-output tool vs the curated ``get_module_output``)
+    would shadow a tool. The registry must refuse it instead."""
+    import mate.api.mcp.toolsets.analysis  # noqa: F401 - registers get_module_output
+    from mate.api.mcp.registry import mcp_tool
+
+    async def get_module_output() -> None:  # same name as the curated tool
+        return None
+
+    with pytest.raises(ValueError, match="Duplicate MCP tool name 'get_module_output'"):
+        mcp_tool(toolset="analysis")(get_module_output)
+
+
 # ── Admin governance gating ─────────────────────────────────────────────────
 
 

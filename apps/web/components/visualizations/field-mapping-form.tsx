@@ -17,15 +17,15 @@ import {
 } from "@/components/visualizations/charts/chart-common";
 import { vizSpecs, vizzesForShape } from "@/lib/visualizations/registry";
 import {
-  useDatasetCatalog,
+  useOutputCatalog,
   type DashboardItem,
-  type DatasetRef,
+  type OutputRef,
   type WidgetPropSchema,
 } from "@/lib/dashboard-queries";
 import type {
   ColumnSpec,
-  DatasetEnvelope,
-  DatasetShape,
+  OutputEnvelope,
+  OutputShape,
   FieldMapping,
   KpiData,
   VizFieldDef,
@@ -38,22 +38,22 @@ export interface VizPatch {
   viz_id?: string | null;
   mapping?: Record<string, unknown>;
   config?: Record<string, unknown>;
-  dataset_ref?: DatasetRef | null;
+  output_ref?: OutputRef | null;
 }
 
 const AUTO = "__auto__";
 const NO_DATA = "__none__";
 
-/** Resolve an option's `ui.enumFrom` against the bound dataset. Null when the
- * dataset offers no choices (the option is then hidden). */
-function resolveEnum(prop: WidgetPropSchema, dataset?: DatasetEnvelope): WidgetPropSchema | null {
+/** Resolve an option's `ui.enumFrom` against the bound output. Null when the
+ * output offers no choices (the option is then hidden). */
+function resolveEnum(prop: WidgetPropSchema, output?: OutputEnvelope): WidgetPropSchema | null {
   const from = prop.ui?.enumFrom;
   if (!from) return prop;
-  const cols = dataset?.schema.columns ?? [];
+  const cols = output?.schema.columns ?? [];
   const choices: { id: string; label: string }[] =
     from === "measures"
-      ? dataset?.shape === "kpi"
-        ? (dataset.data as KpiData).items.map((m) => ({ id: m.key, label: m.label }))
+      ? output?.shape === "kpi"
+        ? (output.data as KpiData).items.map((m) => ({ id: m.key, label: m.label }))
         : []
       : from === "numericColumns"
         ? numericCols(cols)
@@ -112,13 +112,13 @@ function ColumnBinder({
         </SelectContent>
       </Select>
       {opts.length === 0 && (
-        <p className="text-[11px] text-muted-foreground">No matching columns in this dataset.</p>
+        <p className="text-[11px] text-muted-foreground">No matching columns in this output.</p>
       )}
     </div>
   );
 }
 
-/** Studio only: which of this module's datasets the card reads. Datasets the
+/** Studio only: which of this module's outputs the card reads. Outputs the
  * current viz can't render are listed but disabled, with the reason. */
 function DataSelect({
   item,
@@ -128,18 +128,18 @@ function DataSelect({
 }: {
   item: DashboardItem;
   moduleId: string;
-  accepts?: DatasetShape[];
+  accepts?: OutputShape[];
   onChange: (patch: VizPatch) => void;
 }) {
-  const { data: catalog } = useDatasetCatalog();
+  const { data: catalog } = useOutputCatalog();
   const own = (catalog ?? []).filter((d) => d.module_id === moduleId);
-  const ref = item.dataset_ref;
+  const ref = item.output_ref;
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">Data</Label>
       <Select
-        value={ref?.module_id === moduleId ? ref.dataset_id : NO_DATA}
-        // A different dataset has different columns: drop the old bindings and
+        value={ref?.module_id === moduleId ? ref.output_id : NO_DATA}
+        // A different output has different columns: drop the old bindings and
         // the options that name its columns/measures (`ui.enumFrom`).
         onValueChange={(v) => {
           const props = vizSpecs.find((s) => s.id === item.viz_id)?.options?.properties ?? {};
@@ -149,14 +149,14 @@ function DataSelect({
             ),
           );
           onChange({
-            dataset_ref: v === NO_DATA ? null : { module_id: moduleId, dataset_id: v },
+            output_ref: v === NO_DATA ? null : { module_id: moduleId, output_id: v },
             mapping: {},
             config,
           });
         }}
       >
         <SelectTrigger className="h-8 text-xs">
-          <SelectValue placeholder="Choose a dataset" />
+          <SelectValue placeholder="Choose an output" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NO_DATA} className="text-xs">
@@ -165,7 +165,7 @@ function DataSelect({
           {own.map((d) => {
             const ok = !accepts || accepts.includes(d.shape);
             return (
-              <SelectItem key={d.dataset_id} value={d.dataset_id} disabled={!ok} className="text-xs">
+              <SelectItem key={d.output_id} value={d.output_id} disabled={!ok} className="text-xs">
                 {d.title}
                 {!ok && ` (${d.shape}: this visualization needs ${accepts?.join(" or ")})`}
               </SelectItem>
@@ -175,7 +175,7 @@ function DataSelect({
       </Select>
       {own.length === 0 && (
         <p className="text-[11px] text-muted-foreground">
-          This module declares no datasets yet.
+          This module declares no outputs yet.
         </p>
       )}
     </div>
@@ -184,29 +184,29 @@ function DataSelect({
 
 /**
  * Settings for a generic-viz card: a Title, a visualization picker (filtered to
- * the dataset's shape), per-field column binders (Power-BI style) and the viz's
+ * the output's shape), per-field column binders (Power-BI style) and the viz's
  * non-field options (reusing the card `config_schema` `Field` renderer).
  *
  * `studioModuleId` (module Studio only, never dashboards) adds the Data select
- * and lists every viz while the card has no dataset.
+ * and lists every viz while the card has no output.
  */
 export function FieldMappingForm({
   item,
-  dataset,
+  output,
   shape,
   onChange,
   studioModuleId,
 }: {
   item: DashboardItem;
-  dataset?: DatasetEnvelope;
-  shape?: DatasetShape;
+  output?: OutputEnvelope;
+  shape?: OutputShape;
   onChange: (patch: VizPatch) => void;
   studioModuleId?: string;
 }) {
-  const unbound = !item.dataset_ref;
+  const unbound = !item.output_ref;
   const vizzes = shape ? vizzesForShape(shape) : studioModuleId && unbound ? vizSpecs : [];
   const spec = item.viz_id ? vizzes.find((v) => v.id === item.viz_id) : undefined;
-  const columns = dataset?.schema.columns ?? [];
+  const columns = output?.schema.columns ?? [];
   const mapping = (item.mapping ?? {}) as FieldMapping;
 
   const setMapping = (key: string, value: string | string[] | undefined) =>
@@ -218,8 +218,8 @@ export function FieldMappingForm({
   const durationChoices =
     spec?.id === "table"
       ? numericCols(columns).filter((c) => c.type !== "duration")
-      : spec?.group === "kpi" && dataset?.shape === "kpi"
-        ? (dataset.data as KpiData).items
+      : spec?.group === "kpi" && output?.shape === "kpi"
+        ? (output.data as KpiData).items
             .filter((m) => typeof m.value === "number" && m.format !== "duration")
             .map((m) => ({ id: m.key, label: m.label }))
         : [];
@@ -265,7 +265,7 @@ export function FieldMappingForm({
       </div>
 
       {/* KPI data has no columns to bind; the vizzes auto-bind label/value. */}
-      {spec && !unbound && dataset?.shape !== "kpi" && spec.fields.length > 0 && (
+      {spec && !unbound && output?.shape !== "kpi" && spec.fields.length > 0 && (
         <div className="space-y-3 border-t border-border/60 pt-3">
           {spec.fields.map((f) => {
             if (!f.multiple) {
@@ -290,7 +290,7 @@ export function FieldMappingForm({
                 prop={{
                   type: "array",
                   title: `${f.label}${f.required ? " *" : ""}`,
-                  description: opts.length ? "None picked: Auto." : "No matching columns in this dataset.",
+                  description: opts.length ? "None picked: Auto." : "No matching columns in this output.",
                   enum: opts.map((c) => c.id),
                   enumLabels: opts.map((c) => c.label),
                 }}
@@ -329,7 +329,7 @@ export function FieldMappingForm({
       {spec?.options?.properties && (
         <div className="space-y-3 border-t border-border/60 pt-3">
           {Object.entries(spec.options.properties).map(([key, raw]) => {
-            const prop = resolveEnum(raw, dataset);
+            const prop = resolveEnum(raw, output);
             if (!prop) return null;
             const single = !!raw.ui?.enumFrom && raw.type !== "array";
             const value = (item.config ?? {})[key];

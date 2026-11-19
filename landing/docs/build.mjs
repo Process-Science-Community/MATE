@@ -2519,5 +2519,43 @@ chapters.forEach((c, i) => {
   written.push(file);
 });
 
+/* Retired chapter URLs → their current slug, so external bookmarks keep working.
+   Each stub replaces itself in <head> (meta refresh as the no-JS fallback) and
+   carries the #anchor across, renamed where the section heading changed too. */
+const REDIRECTS = {
+  // Module "datasets" were renamed to "outputs".
+  "frontend-panels-widgets-and-datasets": {
+    to: "frontend-panels-widgets-and-outputs",
+    anchors: { datasets: "outputs" },
+  },
+};
+for (const [from, { to, anchors }] of Object.entries(REDIRECTS)) {
+  if (!chapters.some((c) => c.slug === to)) throw new Error(`redirect ${from}: no chapter ${to}`);
+  const file = `${from}.html`;
+  writeFileSync(
+    join(OUT, file),
+    `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MATE | Documentation</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="${to}.html">
+<script>
+  (function () {
+    var map = ${JSON.stringify(anchors)};
+    var h = location.hash.slice(1);
+    location.replace("${to}.html" + (h ? "#" + (map[h] || h) : ""));
+  })();
+</script>
+<meta http-equiv="refresh" content="0; url=${to}.html">
+</head>
+<body><p>Moved to <a href="${to}.html">${to}.html</a>.</p></body>
+</html>
+`,
+  );
+  written.push(file);
+}
+
 console.log(`docs: ${written.length} pages written to ${OUT}`);
 for (const c of chapters) console.log(`  ${c.slug}.html  (${c.group} · ${c.title})`);
