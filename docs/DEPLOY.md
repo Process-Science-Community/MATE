@@ -918,6 +918,14 @@ Restore one with
 and copy them off the VM regularly, since a backup on the same disk does not
 survive losing the VM.
 
+**Uploaded module sources.** Before any change to the module model
+(`docs/strategy/module-model-plan.md`, stages 3 and 4), archive the folder next
+to the database dump (sources only, the venvs are rebuilt):
+
+```bash
+tar czf ~/backups/uploaded-modules-$(date +%F).tgz --exclude=.venv --exclude=.dist -C ~/mate/data uploaded_modules
+```
+
 
 `./data/` (SQLite metadata + Parquet logs + module results + cached runtimes)
 is bind-mounted – back it up by copying the directory. Keycloak users live in

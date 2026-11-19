@@ -200,6 +200,8 @@ on the user's own machine, not in the Hub's own server process.
       logs (4TU, BPI Challenges) with DOI and link to the source.
 - [ ] Shared example logs (stored once, visible to every user, read-only), see
       §7.2; this is also the first step towards dataset pages.
+      Both items: proposal in [`dataset-hub-plan.md`](./dataset-hub-plan.md)
+      (brought forward for the course case-study log).
 - [ ] Research index keyed by DOI (arXiv when present): metadata only, link to
       the publisher, auto-link modules and datasets whose cards cite the DOI,
       author claiming via ORCID.

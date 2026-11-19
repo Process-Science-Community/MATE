@@ -45,7 +45,6 @@ from mate.api.middleware import UsageTrackingMiddleware
 from mate.api.modules import CapabilityRegistry, ModuleLoader, set_module_loader
 from mate.api.modules.hot_reload import HotReload, sweep_stale_workdirs
 from mate.api.modules.install_jobs import register_module_install_handlers
-from mate.api.modules.maintenance import gc_orphaned_uploaded_modules
 from mate.api.modules.processing import ModuleProcessingCoordinator, set_coordinator
 from mate.api.routes import v1
 from mate.api.routes.analytics import prune_expired, record_server_event
@@ -338,21 +337,16 @@ async def lifespan(app: FastAPI):
     set_module_loader(loader)
     register_module_install_handlers(runtime, loader)
 
-    # S3 mode: reclaim orphaned uploaded-module dirs (zero install rows), then
-    # re-materialise any *owned* upload whose source is missing locally (fresh
-    # VM). Both run before the loader discovers modules, so it sees the right set
-    # and rebuilds venvs/bundles. Scoped to the install-row set so GC + restore
-    # never fight over a dir.
-    if get_storage_settings().is_s3:
+    # S3 mode with upload on: re-materialise any *owned* upload whose source is
+    # missing locally (fresh VM), before the loader discovers modules. Nothing at
+    # boot deletes an uploaded-module folder: the earlier sweep keyed on install
+    # rows, so any change to those rows could have wiped module sources.
+    if get_storage_settings().is_s3 and settings.module_upload_enabled:
         async with get_sessionmaker()() as session:
             rows = await session.execute(select(ModuleInstall.module_id).distinct())
             install_ids = {mid for (mid,) in rows.all()}
         up_dir = settings.uploaded_modules_dir.resolve()
-        await asyncio.to_thread(gc_orphaned_uploaded_modules, up_dir, install_ids)
-        # Uploaded modules only load while upload is on (see loader.load_all),
-        # so don't pull their sources back from the bucket otherwise.
-        if settings.module_upload_enabled:
-            await asyncio.to_thread(restore_missing_modules_sync, up_dir, install_ids)
+        await asyncio.to_thread(restore_missing_modules_sync, up_dir, install_ids)
 
     try:
         await loader.load_all()
