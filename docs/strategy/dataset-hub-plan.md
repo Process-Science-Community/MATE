@@ -11,6 +11,15 @@ Status: proposal, 2026-11-19, revised after the security, storage-scale, legal-l
 
 Code claims below were checked against `/home/user/MATE` unless marked *(unverified)*.
 
+**Owner input (2026-11-19):**
+- Course start: as soon as possible. Ship the course path (Stage 0 → 1a → 1b) first.
+- The chair's answers on the case-study log (§8 questions) are pending. Walk through the §10
+  decisions with the owner once they are in; until then the recommendations are not approved.
+- The module side may change: if modules always run isolated (like HF Spaces/models), the
+  per-log sidecar and cache layout changes too. Copy-on-use fits that model (an isolated runner
+  gets its own read-only input), so keep the hub-dataset storage independent of module internals.
+- The owner finds "datasets" a misleading name for module data outputs; see §2.
+
 ---
 
 ## 0. Core recommendation (TL;DR)
@@ -64,6 +73,13 @@ Code claims below were checked against `/home/user/MATE` unless marked *(unverif
 - the manifest `datasets:` key.
 
 In code the new concept is the **hub dataset**: tables `hub_datasets*`, package `mate/api/hub/`, routes `/api/v1/hub/datasets`, MCP `search_hub_datasets`/`get_hub_dataset`. The UI says **"Datasets"** at `/datasets`, which does not exist today. MCP tool descriptions must say "hub dataset (published event log)" to avoid the clash. Renaming module outputs is a separate cleanup.
+
+*Preferred alternative (owner remark, 2026-11-19):* rename the module concept instead (manifest
+`datasets:` → `outputs:`, `/api/v1/datasets/catalog` → `/api/v1/module-outputs/catalog`, package
+`mate/api/datasets/` → `mate/api/outputs/`, MCP `list_datasets`/`get_dataset` →
+`list_module_outputs`/`get_module_output` with the old MCP names kept as aliases for one release).
+All 10 manifests using the key are in the repo and upload is off, so one PR can switch them. That
+PR goes before Stage 1a, and the hub concept is then simply "dataset" in code and UI, as on HF.
 
 | Term | Meaning | Storage | Mutable? |
 |---|---|---|---|
@@ -448,7 +464,7 @@ Do not choose a CC license on someone else's behalf. The conservative default is
 
 ## 10. Open decisions for the owner
 
-1. **Naming**: "hub dataset" in code, "Datasets" in the UI; module outputs keep `/api/v1/datasets`. *Rec: yes.*
+1. **Naming**: rename module data outputs (`datasets:` → `outputs:`) in a PR before Stage 1a, so "dataset" means only published event logs. *Rec: yes (owner leaning, see §2).* Fallback: "hub dataset" in code.
 2. **Use model**: copy-on-use (Stage 1) vs reference logs. *Rec: copy-on-use; reference logs only if Stage 0 shows 60 × (Parquet + results) over the disk budget.*
 3. **`use` idempotent per (user, revision)** with an explicit "Add another copy". *Rec: yes.*
 4. **Publishers in Phase 1**: `may_curate_datasets` (admin and not sandboxed). *Rec: yes; `curator` in Stage 5.*
