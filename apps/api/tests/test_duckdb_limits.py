@@ -73,3 +73,42 @@ async def test_event_log_access_connection_is_limited(_tight_limits: None) -> No
         assert str(mem).endswith("MiB") and float(str(mem).split()[0]) < 512, mem
         # The view over the log still works under the limits.
         assert await access.duckdb_fetch("SELECT count(*) FROM events") == [(1,)]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_query_does_not_strand_its_worker_thread() -> None:
+    """A job cancelled mid-query (user cancel, shutdown) leaves `EventLogAccess`
+    while its DuckDB query still runs on a worker thread. Closing the connection
+    from the event loop under that thread used to leave it blocked forever: the
+    loop's executor could not join it (300 s at shutdown) and prod leaked a
+    thread per cancel. The exit must stop the query and let the thread go."""
+    import asyncio
+
+    from mate.api.ingest.storage import log_paths
+    from mate.api.modules.event_log_access import EventLogAccess
+
+    log_id = str(uuid.uuid4())
+    paths = log_paths(log_id, TEST_USER_ID)
+    paths.root.mkdir(parents=True, exist_ok=True)
+    events = str(paths.events).replace("'", "''")
+    duckdb.connect(":memory:").execute(
+        "COPY (SELECT 'c1' AS case_id, 'a' AS activity, TIMESTAMP '2026-01-01' AS timestamp)"
+        f" TO '{events}' (FORMAT parquet)"
+    )
+
+    access = EventLogAccess(log_id, TEST_USER_ID)
+    await access.__aenter__()
+    # A cross join of 10^12 rows: runs for minutes unless interrupted.
+    query = asyncio.create_task(
+        access.duckdb_fetch("SELECT sum(a.range * b.range) FROM range(1000000) a, range(1000000) b")
+    )
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10
+    while access._conn is None and loop.time() < deadline:  # pyright: ignore[reportPrivateUsage]
+        await asyncio.sleep(0.01)
+    assert access._conn is not None, "query never started"  # pyright: ignore[reportPrivateUsage]
+
+    query.cancel()
+    await asyncio.wait_for(access.__aexit__(None, None, None), timeout=10)
+    # Every worker thread must be free again: this is the join that hung.
+    await asyncio.wait_for(loop.shutdown_default_executor(), timeout=10)

@@ -14,8 +14,9 @@ import contextlib
 import os
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import duckdb
 
@@ -33,6 +34,12 @@ from mate.api.schemas.event_log_data import (
 )
 from mate.api.storage import eviction
 from mate.api.storage import sync as storage_sync
+
+T = TypeVar("T")
+
+# How often `EventLogAccess.__aexit__` re-interrupts a query still running on
+# a worker thread while it waits to close the connection.
+_INTERRUPT_EVERY_S = 0.05
 
 CANONICAL_ROLES: dict[str, ColumnRole] = {
     "case_id": "case_id",
@@ -201,6 +208,12 @@ class EventLogAccess:
         self._active_filter = active_filter or None
         self._paths = log_paths(log_id, user_id)
         self._conn: duckdb.DuckDBPyConnection | None = None
+        # Every use of `_conn` runs on a worker thread; this lock serialises them
+        # with the close in `__aexit__`. DuckDB must not close a connection while
+        # another thread executes on it: a job cancelled mid-query used to close
+        # it from the event loop and leave the worker thread blocked forever.
+        self._conn_lock = threading.Lock()
+        self._closed = False
         # Pins the log dir against the S3 cache reaper for the read's lifetime.
         self._lease: str | None = None
 
@@ -225,13 +238,42 @@ class EventLogAccess:
         return self
 
     async def __aexit__(self, *exc: object) -> None:
-        if self._conn is not None:
-            with contextlib.suppress(Exception):
-                self._conn.close()
-            self._conn = None
-        if self._lease is not None:
-            eviction.release_lease(self._lease)
-            self._lease = None
+        try:
+            # A worker thread may still be querying (a cancelled job). Close under
+            # the lock once it lets go, and interrupt it (thread-safe) until then:
+            # `interrupt()` only stops a statement that is already running, so a
+            # single call can land between two statements and miss the long one.
+            # The close task is not cancelled with us: a second cancel must not
+            # leave the connection open.
+            close = asyncio.ensure_future(asyncio.to_thread(self._close_conn))
+            while not close.done():
+                conn = self._conn
+                if conn is not None:
+                    with contextlib.suppress(Exception):
+                        conn.interrupt()
+                await asyncio.wait([close], timeout=_INTERRUPT_EVERY_S)
+            await close
+        finally:
+            if self._lease is not None:
+                eviction.release_lease(self._lease)
+                self._lease = None
+
+    def _close_conn(self) -> None:
+        with self._conn_lock:
+            self._closed = True
+            if self._conn is not None:
+                with contextlib.suppress(Exception):
+                    self._conn.close()
+                self._conn = None
+
+    def _with_conn(self, fn: Callable[[duckdb.DuckDBPyConnection], T]) -> T:
+        """Run ``fn`` on this read's connection (worker thread only)."""
+        with self._conn_lock:
+            if self._closed:
+                raise RuntimeError(f"Event log {self.log_id} read is closed")
+            self._ensure_conn()
+            assert self._conn is not None
+            return fn(self._conn)
 
     @property
     def events_path(self) -> Path:
@@ -254,9 +296,7 @@ class EventLogAccess:
             )
 
         def _run() -> Any:
-            self._ensure_conn()
-            assert self._conn is not None
-            return self._conn.execute("SELECT * FROM events").df()
+            return self._with_conn(lambda c: c.execute("SELECT * FROM events").df())
 
         return await asyncio.to_thread(_run)
 
@@ -290,9 +330,7 @@ class EventLogAccess:
             )
 
         def _run() -> Any:
-            self._ensure_conn()
-            assert self._conn is not None
-            return self._conn.execute("SELECT * FROM events").pl()
+            return self._with_conn(lambda c: c.execute("SELECT * FROM events").pl())
 
         return await asyncio.to_thread(_run)
 
@@ -323,9 +361,7 @@ class EventLogAccess:
 
     async def duckdb_fetch(self, sql: str, params: list | tuple | None = None) -> list[tuple]:
         def _run() -> list[tuple]:
-            self._ensure_conn()
-            assert self._conn is not None
-            return self._conn.execute(sql, params or []).fetchall()
+            return self._with_conn(lambda c: c.execute(sql, params or []).fetchall())
 
         return await asyncio.to_thread(_run)
 
@@ -337,11 +373,12 @@ class EventLogAccess:
         """
 
         def _run() -> tuple[list[str], list[tuple]]:
-            self._ensure_conn()
-            assert self._conn is not None
-            cur = self._conn.execute(sql, params or [])
-            cols = [d[0] for d in cur.description] if cur.description else []
-            return cols, cur.fetchall()
+            def _q(c: duckdb.DuckDBPyConnection) -> tuple[list[str], list[tuple[Any, ...]]]:
+                cur = c.execute(sql, params or [])
+                cols = [d[0] for d in cur.description] if cur.description else []
+                return cols, cur.fetchall()
+
+            return self._with_conn(_q)
 
         return await asyncio.to_thread(_run)
 
@@ -399,14 +436,12 @@ class EventLogAccess:
         if specs is None:
             specs = await self.column_specs()
 
-        def _quality() -> DataQuality:
-            self._ensure_conn()
-            assert self._conn is not None
-            (total,) = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
+        def _quality(conn: duckdb.DuckDBPyConnection) -> DataQuality:
+            (total,) = conn.execute("SELECT COUNT(*) FROM events").fetchone()  # type: ignore[misc]
             cols: list[ColumnQuality] = []
             for spec in specs:
                 quoted = _quote_ident(spec.name)
-                null_count, distinct_count = self._conn.execute(  # type: ignore[union-attr]
+                null_count, distinct_count = conn.execute(  # type: ignore[misc]
                     f"SELECT COUNT_IF({quoted} IS NULL), COUNT(DISTINCT {quoted}) FROM events"
                 ).fetchone()
                 cols.append(
@@ -422,7 +457,7 @@ class EventLogAccess:
                 )
             return DataQuality(total_events=int(total or 0), columns=cols)
 
-        return await asyncio.to_thread(_quality)
+        return await asyncio.to_thread(self._with_conn, _quality)
 
 
 def _infer_column_type(series: Any) -> ColumnType:
