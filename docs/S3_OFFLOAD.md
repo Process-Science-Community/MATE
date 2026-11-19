@@ -147,13 +147,14 @@ reclaimed.
    `{prefix}/_system/modules/{mid}.tar.gz`. At boot (S3 mode) any *owned* upload
    whose dir is missing is re-materialised before the loader runs, which then
    rebuilds the venv/bundle locally. The archive is deleted on last-owner
-   uninstall. Restore + GC are both scoped to the `module_installs` set so they
-   never fight over a dir.
-4. **Uploaded-module GC** (`modules/maintenance.py`). At boot (S3 mode) any
-   `uploaded_modules/{mid}` dir with zero install rows is removed, reclaiming its
-   venv + bundle + source. **Deferred:** capping `data/uv-python/` to
-   live-manifest interpreters — `uv` self-manages that cache; lower value, do
-   later.
+   uninstall. Restore is scoped to the `module_installs` set and only runs while
+   module upload is enabled.
+4. **No boot-time uploaded-module GC.** An earlier sweep removed any
+   `uploaded_modules/{mid}` dir with zero install rows at boot. It was removed:
+   a change to install rows must never delete module sources
+   (`docs/strategy/module-model-plan.md`, stage 1). Leftover folders are cleaned
+   up by hand. **Deferred:** capping `data/uv-python/` to live-manifest
+   interpreters — `uv` self-manages that cache; lower value, do later.
 
 ### Operating
 

@@ -106,10 +106,10 @@ SELECT count(*) FROM user_settings WHERE key='modules_defaults_seeded';
 - **Why first:** in S3 mode the boot GC deletes `data/uploaded_modules/<id>` folders that have no
   install row (`main.py:346-351`, `modules/maintenance.py`). Any later change to install rows
   could wipe sources.
-- **Change:**
-  - delete the GC/restore block (`main.py:340-355`) and `modules/maintenance.py`, plus its tests
-    (`test_storage_module_archive.py:125-137`);
-  - `docs/DEPLOY.md`: add the `pg_dump` + `data/uploaded_modules/` backup step.
+- **Done (2026-11-19):** the delete sweep and `modules/maintenance.py` are gone, with their two
+  tests. The restore step stays until stage 2 removes `storage/module_archive.py`: it only adds
+  missing folders, and only with S3 and upload both on. `docs/DEPLOY.md` has the
+  `data/uploaded_modules/` backup command; the nightly `pg_dump` already runs.
 - **Verify:** take a backup, deploy, confirm `ls data/uploaded_modules` is unchanged.
 - **Rollback:** previous image. **Risk:** very low.
 

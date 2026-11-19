@@ -1,4 +1,4 @@
-"""Uploaded-module archive → S3 + boot restore + GC (S3_OFFLOAD Phase 2.3/2.4).
+"""Uploaded-module archive → S3 + boot restore (S3_OFFLOAD Phase 2.3).
 
 S3 ops stubbed; archives are real tarballs round-tripped through a fake bucket dir.
 """
@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from mate.api.modules.maintenance import gc_orphaned_uploaded_modules
 from mate.api.storage import module_archive
 from mate.api.storage.s3 import S3Object
 
@@ -120,18 +119,3 @@ def test_delete_archive(s3_env: Path, tmp_path: Path) -> None:
     assert (s3_env / "_system" / "modules" / "demo.tar.gz").exists()
     module_archive.delete_module_archive_sync("demo")
     assert not (s3_env / "_system" / "modules" / "demo.tar.gz").exists()
-
-
-def test_gc_removes_only_unowned_dirs(tmp_path: Path) -> None:
-    uploaded = tmp_path / "uploaded"
-    for mid in ("keep", "orphan_a", "orphan_b"):
-        (uploaded / mid).mkdir(parents=True)
-    removed = gc_orphaned_uploaded_modules(uploaded, {"keep"})
-    assert set(removed) == {"orphan_a", "orphan_b"}
-    assert (uploaded / "keep").exists()
-    assert not (uploaded / "orphan_a").exists()
-    assert not (uploaded / "orphan_b").exists()
-
-
-def test_gc_missing_dir_is_safe(tmp_path: Path) -> None:
-    assert gc_orphaned_uploaded_modules(tmp_path / "nope", set()) == []
