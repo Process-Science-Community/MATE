@@ -119,7 +119,7 @@ frontend:
         read: "A detection marks WHEN behaviour shifted, not what changed — use the drift explainer for that."
         computed: "Detected by the configured computer-vision drift model over the log's time series."
 # Data-only output for the platform's generic visualization layer.
-datasets:
+outputs:
   - id: detections
     title: Drift detections
     description: Computer-vision-detected concept drifts with type and confidence.

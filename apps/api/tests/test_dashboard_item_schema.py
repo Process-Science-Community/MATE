@@ -45,28 +45,28 @@ def test_legacy_item_without_kind_loads_as_widget() -> None:
     assert item.module_id == "discovery"
 
 
-def test_viz_kind_requires_dataset_ref() -> None:
+def test_viz_kind_requires_output_ref() -> None:
     item = DashboardItem(
         i="b",
         kind="viz",
-        dataset_ref={"module_id": "discovery", "dataset_id": "dfg"},
+        output_ref={"module_id": "discovery", "output_id": "dfg"},
     )
     assert item.kind == "viz"
-    assert item.dataset_ref is not None
-    assert item.dataset_ref.dataset_id == "dfg"
+    assert item.output_ref is not None
+    assert item.output_ref.output_id == "dfg"
     # Unconfigured viz card is valid: viz_id/mapping fill in later.
     assert item.viz_id is None
     assert item.mapping == {}
 
     with pytest.raises(ValidationError):
-        DashboardItem(i="b", kind="viz", viz_id="bar")  # no dataset_ref
+        DashboardItem(i="b", kind="viz", viz_id="bar")  # no output_ref
 
 
 def test_viz_kind_roundtrips_mapping_and_options() -> None:
     raw = {
         "i": "c",
         "kind": "viz",
-        "dataset_ref": {"module_id": "conformance", "dataset_id": "per_activity"},
+        "output_ref": {"module_id": "conformance", "output_id": "per_activity"},
         "viz_id": "bar",
         "mapping": {"x": "activity", "y": "deviations"},
         "config": {"stacked": True},
@@ -80,6 +80,22 @@ def test_viz_kind_roundtrips_mapping_and_options() -> None:
     assert dumped["kind"] == "viz"
     assert dumped["mapping"] == {"x": "activity", "y": "deviations"}
     assert dumped["config"] == {"stacked": True}
+    assert dumped["output_ref"] == {"module_id": "conformance", "output_id": "per_activity"}
+
+
+def test_viz_card_from_pre_rename_export_file_imports_as_output_ref() -> None:
+    """Board export files written before the ``datasets`` -> ``outputs`` rename
+    carry ``dataset_ref``/``dataset_id``; importing one must not 422 or drop the
+    binding, and must never re-emit the old keys."""
+    legacy = {
+        "i": "d",
+        "kind": "viz",
+        "dataset_ref": {"module_id": "conformance", "dataset_id": "per_activity"},
+        "viz_id": "bar",
+    }
+    dumped = DashboardItem.model_validate(legacy).model_dump()
+    assert dumped["output_ref"] == {"module_id": "conformance", "output_id": "per_activity"}
+    assert "dataset_ref" not in dumped
 
 
 # ── 12-column grid bounds ────────────────────────────────────────────────────

@@ -2,9 +2,9 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /**
  * The Studio's visualization catalog: groups, the custom-widget footer, catalog
- * entries that bind the module's first compatible dataset (fixture module
+ * entries that bind the module's first compatible output (fixture module
  * e2e_viz, apps/web/e2e/fixtures) or fall back to a "Needs data" placeholder
- * (e2e_studio, one table dataset). `make e2e` loads both modules.
+ * (e2e_studio, one table output). `make e2e` loads both modules.
  */
 
 const API = process.env.E2E_API_URL ?? "http://127.0.0.1:8777";
@@ -136,7 +136,7 @@ test("catalog entries bind the module's data, render, and survive save", async (
   expect((await onPage.evaluateAll((els) => els.map((e) => e.getAttribute("data-viz-id") ?? ""))).sort()).toEqual(ids);
 });
 
-test("the scaffolded widget template renders its dataset", async ({ page }) => {
+test("the scaffolded widget template renders its output", async ({ page }) => {
   await openStudio(page, VIZ_MODULE);
   await addEntry(page, "Sample bars");
   await expect(page.locator("[data-grid-id] .recharts-wrapper").first()).toBeVisible();

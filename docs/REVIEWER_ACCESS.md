@@ -53,7 +53,7 @@ A reviewer cannot see another reviewer's data or anyone else's:
   role (see *Sandbox* above): module upload, custom watched-folder paths, and
   API tokens.
 - Routes that take a free-form `log_id` now check it before it reaches a file
-  path: the module dataset routes and the AI chat context check read access
+  path: the module output routes and the AI chat context check read access
   (own or shared), and every log/result path rejects ids that are not a single
   plain path segment (no `../`). Before this change, a crafted `log_id` there
   could read another account's files. That affected every account, not only

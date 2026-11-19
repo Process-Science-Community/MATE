@@ -1,9 +1,9 @@
-"""Server-side ``kind -> DatasetEnvelope`` adapters + module-dataset resolution.
+"""Server-side ``kind -> OutputEnvelope`` adapters + module-output resolution.
 
 Python port of ``apps/web/lib/visualizations/adapters.ts``. Resolves a module
-dataset by invoking its route handler through the loader (reusing the module's
+output by invoking its route handler through the loader (reusing the module's
 result cache + the per-request ephemeral filter) and normalizes the response
-into the canonical :class:`DatasetEnvelope`.
+into the canonical :class:`OutputEnvelope`.
 """
 
 from __future__ import annotations
@@ -11,12 +11,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from mate.api.datasets.envelope import (
+from mate.api.module_outputs.envelope import (
     ColumnSpec,
     ColumnType,
-    DatasetEnvelope,
-    DatasetMeta,
-    DatasetSchema,
     FieldRole,
     GraphData,
     GraphEdge,
@@ -24,6 +21,9 @@ from mate.api.datasets.envelope import (
     KpiData,
     KpiFormat,
     KpiMeasure,
+    OutputEnvelope,
+    OutputMeta,
+    OutputSchema,
     TreeData,
     TreeNode,
 )
@@ -202,18 +202,18 @@ def _tree_from_prefix(raw: dict[str, Any]) -> TreeData:
     return TreeData(root=root or TreeNode(id="root", label="start"))
 
 
-def adapt(shape: str, raw: Any) -> DatasetEnvelope:
+def adapt(shape: str, raw: Any) -> OutputEnvelope:
     """Normalize a module route response into the declared ``shape``."""
     obj: dict[str, Any] = raw if isinstance(raw, dict) else {}
     kind = obj.get("kind") if isinstance(obj.get("kind"), str) else ""
 
     if shape == "graph":
         g = _graph_from_petri(obj) if kind == "petri_net" else _graph_from_dfg(obj)
-        return DatasetEnvelope(shape="graph", data=g, meta=DatasetMeta(sourceKind=kind))
+        return OutputEnvelope(shape="graph", data=g, meta=OutputMeta(sourceKind=kind))
 
     if shape == "tree":
         t = _tree_from_prefix(obj) if kind == "prefix_tree" else _tree_from_process_tree(obj)
-        return DatasetEnvelope(shape="tree", data=t, meta=DatasetMeta(sourceKind=kind))
+        return OutputEnvelope(shape="tree", data=t, meta=OutputMeta(sourceKind=kind))
 
     if shape == "kpi":
         items: list[KpiMeasure] = []
@@ -229,19 +229,19 @@ def adapt(shape: str, raw: Any) -> DatasetEnvelope:
                 items += _measures_from(obj["enriched"], "enriched")
         else:
             items = _measures_from(obj)
-        return DatasetEnvelope(
-            shape="kpi", data=KpiData(items=items), meta=DatasetMeta(sourceKind=kind, note=note)
+        return OutputEnvelope(
+            shape="kpi", data=KpiData(items=items), meta=OutputMeta(sourceKind=kind, note=note)
         )
 
     if shape == "blob":
         value = obj.get("xml") if isinstance(obj.get("xml"), str) else obj.get("value") or ""
         media = "bpmn-xml" if kind == "bpmn" else "text"
-        from mate.api.datasets.envelope import BlobData
+        from mate.api.module_outputs.envelope import BlobData
 
-        return DatasetEnvelope(
+        return OutputEnvelope(
             shape="blob",
             data=BlobData(media=media, value=str(value)),
-            meta=DatasetMeta(sourceKind=kind),
+            meta=OutputMeta(sourceKind=kind),
         )
 
     # table (default)
@@ -259,39 +259,39 @@ def adapt(shape: str, raw: Any) -> DatasetEnvelope:
                 rows = v
                 break
     columns, rows = table_from_rows(rows)
-    from mate.api.datasets.envelope import TableData
+    from mate.api.module_outputs.envelope import TableData
 
-    return DatasetEnvelope(
+    return OutputEnvelope(
         shape="table",
-        schema=DatasetSchema(columns=columns),
+        schema=OutputSchema(columns=columns),
         data=TableData(columns=columns, rows=rows),
-        meta=DatasetMeta(
+        meta=OutputMeta(
             sourceKind=kind, rowCount=len(rows), note=None if rows else (note or "No rows.")
         ),
     )
 
 
-async def resolve_dataset(
+async def resolve_output(
     loader: Any,
     module_id: str,
-    dataset_id: str,
+    output_id: str,
     log_id: str,
     user_id: str,
     *,
     filter_override: list[dict[str, Any]] | None = None,
     params: dict[str, Any] | None = None,
     restrict_event_log: bool = False,
-) -> DatasetEnvelope:
-    """Resolve a module dataset to a canonical envelope by invoking its route
+) -> OutputEnvelope:
+    """Resolve a module output to a canonical envelope by invoking its route
     handler through the loader (reuses the module's result cache + filtering).
     ``restrict_event_log=True`` walls off raw event rows (AI/MCP callers)."""
     loaded = loader.loaded.get(module_id)
     if loaded is None:
         raise ValueError(f"Module {module_id!r} is not loaded.")
-    entry = next((d for d in loaded.manifest.datasets if d.id == dataset_id), None)
+    entry = next((d for d in loaded.manifest.outputs if d.id == output_id), None)
     if entry is None:
-        raise ValueError(f"Module {module_id!r} has no dataset {dataset_id!r}.")
-    raw = await loader.run_dataset_route(
+        raise ValueError(f"Module {module_id!r} has no output {output_id!r}.")
+    raw = await loader.run_output_route(
         module_id,
         entry.route,
         log_id,

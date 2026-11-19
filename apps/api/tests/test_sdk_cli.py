@@ -47,7 +47,7 @@ def test_list_shows_modules_and_flags_invalid(
     assert main(["list", str(tmp_path)]) == 0
     out = capsys.readouterr().out
     line = next(ln for ln in out.splitlines() if ln.startswith(MOD))
-    assert "in_process/thread" in line and "panel, layout, 1 dataset" in line
+    assert "in_process/thread" in line and "panel, layout, 1 output" in line
     assert "invalid manifest" in out and "2 module(s)." in out
     assert main(["list", str(tmp_path / "missing")]) == 1
 
@@ -79,13 +79,13 @@ def test_new_refuses_bad_id(tmp_path: Path, bad: str) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
-def test_validate_catches_layout_with_missing_dataset(
+def test_validate_catches_layout_with_missing_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert main(["new", MOD, "--dir", str(tmp_path)]) == 0
     path = tmp_path / MOD / "layout.json"
     layout = json.loads(path.read_text())
-    _card(layout, "viz")["dataset_ref"]["dataset_id"] = "nope"
+    _card(layout, "viz")["output_ref"]["output_id"] = "nope"
     path.write_text(json.dumps(layout))
     capsys.readouterr()
     assert main(["validate", str(tmp_path)]) == 1
@@ -162,9 +162,9 @@ async def test_scaffolded_module_loads_in_the_platform(tmp_path: Path) -> None:
                     "GET /api/v1/modules/{id}/layout does not serve layout.json yet "
                     f"(status {resp.status_code}: {resp.text[:120]}); backend owner's endpoint."
                 )
-            assert _card(layout, "viz")["dataset_ref"] == {
+            assert _card(layout, "viz")["output_ref"] == {
                 "module_id": MOD,
-                "dataset_id": "summary",
+                "output_id": "summary",
             }
             assert [it["kind"] for it in layout["items"]] == ["text", "controls", "action", "viz"]
     finally:
@@ -294,7 +294,7 @@ def test_validate_controls_need_a_params_schema(
     manifest.write_text(text[: text.index("    # Query params")])
     capsys.readouterr()
     assert main(["validate", str(tmp_path / MOD)]) == 1
-    assert "nothing to control; declare a dataset's `params_schema`" in capsys.readouterr().out
+    assert "nothing to control; declare an output's `params_schema`" in capsys.readouterr().out
 
 
 # -- widget scaffold, entry files, placeholder viz cards ----------------------
@@ -395,12 +395,12 @@ def test_placeholder_viz_loads_but_fails_validate(
 ) -> None:
     path, layout = _scaffold_layout(tmp_path)
     viz = _card(layout, "viz")
-    del viz["dataset_ref"]
+    del viz["output_ref"]
     viz["viz_id"] = "petri-net"
     path.write_text(json.dumps(layout))
     assert ModuleLayout.load(tmp_path / MOD) is not None  # the Studio may save it
     capsys.readouterr()
     assert main(["validate", str(tmp_path / MOD)]) == 1
-    assert "has no data yet; declare a graph dataset" in capsys.readouterr().out
+    assert "has no data yet; declare a graph output" in capsys.readouterr().out
     with pytest.raises(ValidationError, match="viz_id"):
         ModuleLayout.model_validate({"items": [_item(kind="viz")]})

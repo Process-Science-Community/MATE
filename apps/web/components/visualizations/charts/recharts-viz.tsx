@@ -77,12 +77,12 @@ function foldSeries(data: Array<Record<string, unknown>>, keys: string[], n: num
  * categories; line/area: `top_n` keeps the largest series and folds the rest
  * into "Other". */
 function Cartesian({
-  dataset,
+  output,
   mapping,
   options,
   kind,
 }: VizComponentProps & { kind: "bar" | "line" | "area" }) {
-  const table = asTable(dataset);
+  const table = asTable(output);
   const cols = table.columns;
   const x = resolveX(cols, mapping);
   const series = resolveSeries(cols, mapping);
@@ -98,7 +98,7 @@ function Cartesian({
       : first;
 
   if (!x || ys.length === 0 || table.rows.length === 0) {
-    return <VizEmpty message={dataset.meta?.note ?? "Map an X and a measure to plot."} />;
+    return <VizEmpty message={output.meta?.note ?? "Map an X and a measure to plot."} />;
   }
 
   const built = buildChartData(table, x, ys, series);
@@ -244,8 +244,8 @@ const timeTick = (v: unknown) => new Date(Number(v)).toLocaleDateString();
 
 /** Scatter: x/y columns, optional color series. `x_time` plots x as a time
  * axis (dotted chart); a non-numeric y becomes a category axis. */
-export function ScatterViz({ dataset, mapping, options }: VizComponentProps) {
-  const table = asTable(dataset);
+export function ScatterViz({ output, mapping, options }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const nums = numericCols(cols);
   const pick = (k: string) => (typeof mapping[k] === "string" && cols.some((c) => c.id === mapping[k]) ? (mapping[k] as string) : undefined);
@@ -255,7 +255,7 @@ export function ScatterViz({ dataset, mapping, options }: VizComponentProps) {
   const y = pick("y") ?? nums.find((c) => c.id !== x)?.id ?? nums[0]?.id;
   const series = resolveSeries(cols, mapping);
   if (!x || !y || table.rows.length === 0) {
-    return <VizEmpty message={dataset.meta?.note ?? "Needs two numeric columns."} />;
+    return <VizEmpty message={output.meta?.note ?? "Needs two numeric columns."} />;
   }
   const rows = xTime
     ? table.rows.map((r) => ({ ...r, [x]: typeof r[x] === "number" ? r[x] : Date.parse(String(r[x])) }))
@@ -307,13 +307,13 @@ export function ScatterViz({ dataset, mapping, options }: VizComponentProps) {
   );
 }
 
-export function PieViz({ dataset, mapping, options }: VizComponentProps) {
-  const table = asTable(dataset);
+export function PieViz({ output, mapping, options }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const cat = (typeof mapping.category === "string" && mapping.category) || categoryCols(cols)[0]?.id || cols[0]?.id;
   const val = resolveValue(cols, mapping);
   if (!cat || !val || table.rows.length === 0) {
-    return <VizEmpty message={dataset.meta?.note ?? "Map a category and a value."} />;
+    return <VizEmpty message={output.meta?.note ?? "Map a category and a value."} />;
   }
   // Default: data order, first 12 slices (stored cards). `top_n` sorts largest
   // first and folds the tail past n into "Other".
@@ -349,8 +349,8 @@ export function PieViz({ dataset, mapping, options }: VizComponentProps) {
 /** Histogram. Raw mode bins one numeric column (`bins`); prebinned mode plots
  * `bin_start`/`bin_end`/`count` rows as they are. `reference_keys` draws a
  * marker per key: its value comes from `meta.scalars` or the first row. */
-export function HistogramViz({ dataset, mapping, options }: VizComponentProps) {
-  const table = asTable(dataset);
+export function HistogramViz({ output, mapping, options }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const has = (id: string | undefined) => !!id && cols.some((c) => c.id === id);
   const pick = (k: string) => (typeof mapping[k] === "string" && has(mapping[k] as string) ? (mapping[k] as string) : undefined);
@@ -365,7 +365,7 @@ export function HistogramViz({ dataset, mapping, options }: VizComponentProps) {
   let buckets: Array<{ label: string; lo: number; hi: number; count: number }>;
   if (prebinned) {
     if (!countCol || !startCol || table.rows.length === 0) {
-      return <VizEmpty message={dataset.meta?.note ?? "Map bin start and count columns."} />;
+      return <VizEmpty message={output.meta?.note ?? "Map bin start and count columns."} />;
     }
     buckets = table.rows.map((r) => {
       const lo = Number(r[startCol]);
@@ -375,7 +375,7 @@ export function HistogramViz({ dataset, mapping, options }: VizComponentProps) {
   } else {
     const val = resolveValue(cols, mapping);
     if (!val || table.rows.length === 0) {
-      return <VizEmpty message={dataset.meta?.note ?? "Map a numeric column to bin."} />;
+      return <VizEmpty message={output.meta?.note ?? "Map a numeric column to bin."} />;
     }
     const values = table.rows.map((r) => Number(r[val])).filter((v) => Number.isFinite(v));
     if (values.length === 0) return <VizEmpty />;
@@ -398,7 +398,7 @@ export function HistogramViz({ dataset, mapping, options }: VizComponentProps) {
   }
 
   // Reference markers: one line per bucket; markers in the same bucket share it.
-  const scalars = (dataset.meta as { scalars?: Record<string, unknown> } | undefined)?.scalars ?? {};
+  const scalars = (output.meta as { scalars?: Record<string, unknown> } | undefined)?.scalars ?? {};
   const markers = new Map<string, string[]>();
   for (const key of listOption(options, "reference_keys")) {
     const v = Number(key in scalars ? scalars[key] : table.rows[0]?.[key]);

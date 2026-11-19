@@ -69,9 +69,9 @@ export function bandFor(bands: unknown, v: number): { tone: Tone; label: string 
 
 /** Single headline number: the `measure` option, else the first numeric
  * measure. `prefix`, `decimals` and threshold `bands` (verdict) apply. */
-export function NumberTileViz({ dataset, options }: VizComponentProps) {
-  const m = pickMeasure(kpiItems(dataset), options);
-  if (!m) return <VizEmpty message={dataset.meta?.note} />;
+export function NumberTileViz({ output, options }: VizComponentProps) {
+  const m = pickMeasure(kpiItems(output), options);
+  if (!m) return <VizEmpty message={output.meta?.note} />;
   const band = typeof m.value === "number" ? bandFor(options.bands, m.value) : undefined;
   const prefix = typeof options.prefix === "string" ? options.prefix : "";
   return (
@@ -96,11 +96,11 @@ const optNum = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v 
 /** Radial gauge for one KPI measure (`measure` option, else the first). The
  * scale is `min`..`max`; without `max` a percent measure uses 0..1 and any
  * other measure its share of the sum of all measures (legacy behaviour). */
-export function GaugeViz({ dataset, options }: VizComponentProps) {
-  const items = kpiItems(dataset);
+export function GaugeViz({ output, options }: VizComponentProps) {
+  const items = kpiItems(output);
   const m = pickMeasure(items, options);
   if (!m || typeof m.value !== "number") {
-    return <VizEmpty message={dataset.meta?.note ?? "Needs a numeric KPI."} />;
+    return <VizEmpty message={output.meta?.note ?? "Needs a numeric KPI."} />;
   }
   const min = optNum(options.min) ?? 0;
   const total = items.reduce((s, i) => (typeof i.value === "number" ? s + i.value : s), 0) || 1;
@@ -125,11 +125,11 @@ export function GaugeViz({ dataset, options }: VizComponentProps) {
 
 /** KPI measures (`measures` option, else all; max 8) as concentric radial
  * bars on a shared `min`..`max` scale (default 0..largest). */
-export function RadialBarViz({ dataset, options }: VizComponentProps) {
-  const items = pickMeasures(kpiItems(dataset), listOption(options, "measures"))
+export function RadialBarViz({ output, options }: VizComponentProps) {
+  const items = pickMeasures(kpiItems(output), listOption(options, "measures"))
     .filter((i) => typeof i.value === "number")
     .slice(0, 8);
-  if (!items.length) return <VizEmpty message={dataset.meta?.note} />;
+  if (!items.length) return <VizEmpty message={output.meta?.note} />;
   const max = optNum(options.max) ?? Math.max(...items.map((i) => i.value as number), 1);
   const min = optNum(options.min) ?? 0;
   const data = items.map((i, idx) => ({
@@ -168,13 +168,13 @@ export function RadialBarViz({ dataset, options }: VizComponentProps) {
 }
 
 /** Radar/spider: a category column on the angles, one measure as the radius. */
-export function RadarViz({ dataset, mapping }: VizComponentProps) {
-  const table = asTable(dataset);
+export function RadarViz({ output, mapping }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const cat = (typeof mapping.category === "string" && mapping.category) || categoryCols(cols)[0]?.id;
   const val = resolveValue(cols, mapping);
   if (!cat || !val || !table.rows.length) {
-    return <VizEmpty message={dataset.meta?.note ?? "Map a category and a value."} />;
+    return <VizEmpty message={output.meta?.note ?? "Map a category and a value."} />;
   }
   const data = table.rows.slice(0, 12).map((r) => ({ name: String(r[cat] ?? ""), value: Number(r[val]) || 0 }));
   return (
@@ -190,13 +190,13 @@ export function RadarViz({ dataset, mapping }: VizComponentProps) {
 }
 
 /** Funnel: a category + value, sorted descending. */
-export function FunnelViz({ dataset, mapping }: VizComponentProps) {
-  const table = asTable(dataset);
+export function FunnelViz({ output, mapping }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const cat = (typeof mapping.category === "string" && mapping.category) || categoryCols(cols)[0]?.id;
   const val = resolveValue(cols, mapping);
   if (!cat || !val || !table.rows.length) {
-    return <VizEmpty message={dataset.meta?.note ?? "Map a category and a value."} />;
+    return <VizEmpty message={output.meta?.note ?? "Map a category and a value."} />;
   }
   const data = [...table.rows]
     .map((r) => ({ name: String(r[cat] ?? ""), value: Number(r[val]) || 0 }))
@@ -230,13 +230,13 @@ export function FunnelViz({ dataset, mapping }: VizComponentProps) {
 }
 
 /** Treemap: a category + value (area-proportional tiles). */
-export function TreemapViz({ dataset, mapping }: VizComponentProps) {
-  const table = asTable(dataset);
+export function TreemapViz({ output, mapping }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const cat = (typeof mapping.category === "string" && mapping.category) || categoryCols(cols)[0]?.id;
   const val = resolveValue(cols, mapping);
   if (!cat || !val || !table.rows.length) {
-    return <VizEmpty message={dataset.meta?.note ?? "Map a category and a value."} />;
+    return <VizEmpty message={output.meta?.note ?? "Map a category and a value."} />;
   }
   const data = table.rows
     .map((r, i) => ({ name: String(r[cat] ?? ""), size: Number(r[val]) || 0, fill: CHART_COLORS[i % CHART_COLORS.length] }))
@@ -253,15 +253,15 @@ export function TreemapViz({ dataset, mapping }: VizComponentProps) {
 }
 
 /** Bubble: x/y numeric + a size measure. */
-export function BubbleViz({ dataset, mapping }: VizComponentProps) {
-  const table = asTable(dataset);
+export function BubbleViz({ output, mapping }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const nums = numericCols(cols);
   const x = (typeof mapping.x === "string" && mapping.x) || nums[0]?.id;
   const y = (typeof mapping.y === "string" && mapping.y) || nums[1]?.id || nums[0]?.id;
   const size = (typeof mapping.size === "string" && mapping.size) || nums[2]?.id || nums[0]?.id;
   if (!x || !y || !table.rows.length) {
-    return <VizEmpty message={dataset.meta?.note ?? "Needs numeric columns."} />;
+    return <VizEmpty message={output.meta?.note ?? "Needs numeric columns."} />;
   }
   const fmtOf = (id: string) => (v: unknown) => formatValue(v, columnFormat(cols, id));
   const byName = new Map([x, y, size].map((id) => [labelOf(cols, id), fmtOf(id)]));

@@ -158,21 +158,21 @@ function build(g: GraphData, o: MapOptions): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges };
 }
 
-/** Read-only node-link process map for a `graph`-shaped dataset (DFG, heuristics
+/** Read-only node-link process map for a `graph`-shaped output (DFG, heuristics
  * net, relation graph), laid out with ELK. Node shade = frequency; edge width,
  * colour and label follow the chosen metric. Rank sliders keep the top N % of
  * nodes/edges (the most frequent connections always stay so nothing floats). */
-export function ProcessMapViz({ dataset, options }: VizComponentProps) {
-  const graph = dataset.shape === "graph" ? (dataset.data as GraphData) : null;
+export function ProcessMapViz({ output, options }: VizComponentProps) {
+  const graph = output.shape === "graph" ? (output.data as GraphData) : null;
   const o = readOptions(options ?? {});
   const key = JSON.stringify(o);
-  // `dataset` is memoized per fetch by the card, so this rebuilds only when
+  // `output` is memoized per fetch by the card, so this rebuilds only when
   // the data or an option value changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const built = useMemo(() => (graph ? build(graph, o) : null), [graph, key]);
 
   if (!graph || graph.nodes.length === 0 || !built) {
-    return <VizEmpty message={dataset.meta?.note ?? "No process model."} />;
+    return <VizEmpty message={output.meta?.note ?? "No process model."} />;
   }
   return <ElkCanvas nodes={built.nodes} edges={built.edges} direction={o.direction} />;
 }

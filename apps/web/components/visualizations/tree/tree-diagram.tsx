@@ -141,12 +141,12 @@ function build(root: TreeNode, horizontal: boolean): { nodes: Node[]; edges: Edg
   return { nodes, edges };
 }
 
-/** Node-link diagram for a `tree`-shaped dataset: process trees show operators
+/** Node-link diagram for a `tree`-shaped output: process trees show operators
  * (→ sequence, × choice, ∧ parallel, ↺ loop, ∨ or) as round nodes and τ as a
  * black box; prefix trees shade each node by its frequency. Sibling order is
  * kept (it matters for sequences). */
-export function TreeDiagramViz({ dataset, options }: VizComponentProps) {
-  const data = dataset.shape === "tree" ? (dataset.data as TreeData) : null;
+export function TreeDiagramViz({ output, options }: VizComponentProps) {
+  const data = output.shape === "tree" ? (output.data as TreeData) : null;
   const o = options ?? {};
   const horizontal = optStr(o, "orientation") === "LR";
   const maxDepth = Math.max(0, Math.round(optNum(o, "max_depth", 0)));
@@ -158,7 +158,7 @@ export function TreeDiagramViz({ dataset, options }: VizComponentProps) {
   }, [data, maxDepth, foldTau, horizontal]);
 
   if (!data || !built || isTau(data.root)) {
-    return <VizEmpty message={dataset.meta?.note ?? "No tree."} />;
+    return <VizEmpty message={output.meta?.note ?? "No tree."} />;
   }
   return (
     <div className="relative h-full w-full">

@@ -29,7 +29,7 @@ import {
   isElementKind,
   type CardChrome,
   type DashboardItem,
-  type DatasetRef,
+  type OutputRef,
   type WidgetConfigSchema,
   type WidgetHelp,
 } from "@/lib/dashboard-queries";
@@ -41,8 +41,8 @@ export interface CardPatch {
   config?: Record<string, unknown>;
   viz_id?: string | null;
   mapping?: Record<string, unknown>;
-  /** Studio only: (re)bind a viz card to a module dataset. */
-  dataset_ref?: DatasetRef | null;
+  /** Studio only: (re)bind a viz card to a module output. */
+  output_ref?: OutputRef | null;
   /** Geometry, set from the inspector's Layout section. Typing an exact size
    * is the only way to make two cards match precisely — dragging can't. */
   x?: number;
@@ -54,7 +54,7 @@ export interface CardPatch {
 /**
  * One placed card on the dashboard grid. Dispatches on `item.kind`:
  *   - "widget" (default/legacy): a module-authored bundle via `useWidget`.
- *   - "viz": a generic visualization bound to a module dataset.
+ *   - "viz": a generic visualization bound to a module output.
  *   - "text" | "controls" | "action": layout-only elements (module layouts).
  * The header chrome (drag handle, settings popover, remove) is shared; only the
  * body and the settings form differ.
@@ -79,7 +79,7 @@ export const DashboardCard = memo(function DashboardCard({
   editing: boolean;
   schema: WidgetConfigSchema | null | undefined;
   chrome?: CardChrome;
-  /** The widget/dataset's manifest description, surfaced via the header ⓘ.
+  /** The widget/output's manifest description, surfaced via the header ⓘ.
    * Resolved from the catalog by the canvas (a placed item doesn't store it). */
   description?: string | null;
   /** Structured `help:` from the manifest. Preferred over `description`, which
@@ -266,7 +266,7 @@ export const DashboardCard = memo(function DashboardCard({
                     item={item}
                     logId={logId}
                     onChange={onUpdate}
-                    studioModuleId={item.dataset_ref ? undefined : item.module_id}
+                    studioModuleId={item.output_ref ? undefined : item.module_id}
                   />
                 ) : isElement ? (
                   <ElementSettings item={item} onChange={onUpdate} />
@@ -306,12 +306,12 @@ export const DashboardCard = memo(function DashboardCard({
       >
         {/* Modules compute lazily: a board is an explicit request to see this data,
             so the card starts the run it needs and shows compact progress, then
-            its body mounts. The module is the widget's, or the viz card's dataset. */}
+            its body mounts. The module is the widget's, or the viz card's output. */}
         <CardRunGate
           logId={logId}
           // Elements are never gated: an action card is how a run gets started.
           moduleId={
-            isElement ? undefined : isViz ? item.dataset_ref?.module_id : item.module_id
+            isElement ? undefined : isViz ? item.output_ref?.module_id : item.module_id
           }
           isOwner={isOwner}
         >

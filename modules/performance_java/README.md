@@ -11,9 +11,9 @@ rankings, and how dwell time and hand-off wait are measured. The app shows it
 behind the **How to use** button on the module page. This README is the
 development and provenance notes for the jar.
 
-## Datasets and routes
+## Outputs and routes
 
-| Dataset | Route | Shape | Payload |
+| Output | Route | Shape | Payload |
 | --- | --- | --- | --- |
 | `kpis` | `/kpis` | `kpi` | A flat map of numbers (`cases`, `events`, `variants`, `cycle_time_*_seconds`, `throughput_cases_per_day`, ...). `processing_time_avg_seconds` and `waiting_time_share` are present only when the log has `end_timestamp`, `resources` only when it has `resource`. |
 | `activity-performance` | `/activities` | `table` | One row per activity, ranked by total dwell. |
@@ -36,7 +36,7 @@ development and provenance notes for the jar.
 - `panel/index.tsx` is the module's own page: a KPI strip plus a ranked
   activities / hand-offs view. Plain TSX like any other module's panel - the
   frontend never knew the backend is a jar.
-- The manifest's `datasets:` entries additionally let the platform's generic
+- The manifest's `outputs:` entries additionally let the platform's generic
   visualizations render the same three results as dashboard cards, with no
   widget code of our own.
 

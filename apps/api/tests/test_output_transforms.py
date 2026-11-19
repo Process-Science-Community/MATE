@@ -1,11 +1,11 @@
-"""Unit tests for the dataset transform engine (Phase 2)."""
+"""Unit tests for the module-output transform engine (Phase 2)."""
 
 from __future__ import annotations
 
 import pytest
 
-from mate.api.datasets.envelope import ColumnSpec, table_envelope
-from mate.api.datasets.transforms import TransformError, apply_transforms, join_envelopes
+from mate.api.module_outputs.envelope import ColumnSpec, table_envelope
+from mate.api.module_outputs.transforms import TransformError, apply_transforms, join_envelopes
 
 
 def _sample():

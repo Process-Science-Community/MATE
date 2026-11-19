@@ -3,12 +3,12 @@
 A module can ship its page as data instead of a hand-written TSX panel. The
 layout is a grid of cards on the platform's 12-column board grid. A card is one of:
 
-- ``viz``: a generic visualization bound to one of the module's manifest ``datasets``
+- ``viz``: a generic visualization bound to one of the module's manifest ``outputs``
   (unbound = a Studio placeholder that ``mate-module validate`` rejects).
 - ``widget``: one of the module's ``frontend.widgets`` (TSX).
 - ``text``: markdown (``config.markdown``), e.g. a heading and an intro.
 - ``controls``: a form over page params (``config.source: "params"``, keys from the
-  datasets' ``params_schema``) or over the module config (``source: "config"``, keys
+  outputs' ``params_schema``) or over the module config (``source: "config"``, keys
   from ``config_schema``). ``config.keys: []`` means all of them.
 - ``action``: a button that POSTs ``config.route`` (a module route, often a ``@job``)
   with the log id and the current page params.
@@ -37,9 +37,11 @@ GRID_COLS = 12
 ElementKind = Literal["text", "controls", "action"]
 
 
-class LayoutDatasetRef(BaseModel):
+class LayoutOutputRef(BaseModel):
+    """Points a ``viz`` card at one module output (manifest ``outputs:`` entry)."""
+
     module_id: str
-    dataset_id: str
+    output_id: str
 
 
 class LayoutTab(BaseModel):
@@ -59,7 +61,7 @@ class LayoutItem(BaseModel):
     tab: str | None = None
     module_id: str | None = None
     widget_id: str | None = None
-    dataset_ref: LayoutDatasetRef | None = None
+    output_ref: LayoutOutputRef | None = None
     viz_id: str | None = None
     mapping: dict[str, Any] = Field(default_factory=dict)
     title: str | None = None
@@ -69,10 +71,22 @@ class LayoutItem(BaseModel):
     h: int = Field(ge=1)
     config: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_renamed_keys(cls, data: Any) -> Any:
+        # `extra="allow"` would keep a pre-rename `dataset_ref` as an unknown key and
+        # leave the card unbound; fail loud with the new name instead.
+        if isinstance(data, dict) and "dataset_ref" in data:
+            raise ValueError(
+                f"card {data.get('i')!r}: `dataset_ref` was renamed to `output_ref` "
+                "(and its `dataset_id` to `output_id`)"
+            )
+        return data
+
     @model_validator(mode="after")
     def _check_kind(self) -> LayoutItem:
         c, name = self.config, f"{self.kind} card {self.i!r}"
-        # No dataset_ref = a Studio placeholder ("Needs data"); `validate` flags it.
+        # No output_ref = a Studio placeholder ("Needs data"); `validate` flags it.
         if self.kind == "viz" and not self.viz_id:
             raise ValueError(f"{name} needs viz_id")
         if self.kind == "widget" and not self.widget_id:
@@ -148,8 +162,8 @@ class ModuleLayout(BaseModel):
 __all__ = [
     "LAYOUT_FILENAME",
     "ElementKind",
-    "LayoutDatasetRef",
     "LayoutItem",
+    "LayoutOutputRef",
     "LayoutTab",
     "ModuleLayout",
 ]

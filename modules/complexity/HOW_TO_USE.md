@@ -64,7 +64,7 @@ Cards follow the filters of their dashboard. Each has an info icon with a short 
 - **Complexity metrics**: up to eight tiles: Magnitude, Variety, Distinct traces, Avg trace len, Variant entropy, Sequence entropy, Lempel–Ziv and Pentland, which is the process complexity. The two entropies are the normalised values. Until you choose, a card shows all eight. The **Figures** list in the card's settings has one checkbox per tile, where Avg trace len reads Avg trace length and Pentland reads Pentland process complexity. It starts with Sequence entropy, Lempel-Ziv and Pentland process complexity unticked, and once you change any box the card shows exactly the ticked tiles. Each tile has an info icon with the explanation and source of the measure.
 - **Entropy comparison**: a bar chart from 0 to 1 of the normalised variant entropy, sequence entropy and the linear and exponential forgetting variants.
 
-The module also offers the dataset **Complexity metrics** in the **Cards & data** palette of a dashboard.
+The module also offers the output **Complexity metrics** in the **Cards & data** palette of a dashboard.
 
 ## Tips and limits
 

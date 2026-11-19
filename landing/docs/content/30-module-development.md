@@ -37,7 +37,7 @@ Needs `uv`, `pnpm` (Node) and Python 3.12; see [Contributing](contributing.html#
    make new ID=my_module         # = uv run mate-module new my_module [--panel]
    ```
 
-   The scaffold passes validation as written: a `manifest.yaml` (`in_process`, one `summary` table dataset with a `top` param), a `module.py` (`GET /summary` plus a `POST /recount` job), a `HOW_TO_USE.md`, a `layout.json` with one card of each common kind, and `tests/test_my_module.py`.
+   The scaffold passes validation as written: a `manifest.yaml` (`in_process`, one `summary` table output with a `top` param), a `module.py` (`GET /summary` plus a `POST /recount` job), a `HOW_TO_USE.md`, a `layout.json` with one card of each common kind, and `tests/test_my_module.py`.
 
 2. **Run** — start the lite stack with only your module loaded and leave it running, then open the sample log and the module.
 
@@ -47,7 +47,7 @@ Needs `uv`, `pnpm` (Node) and Python 3.12; see [Contributing](contributing.html#
 
    No Docker and no `.env`: you are signed in as an admin demo user, a sample log (120 cases) is imported on first start, and data lives under `data/lite/`. Hard dependencies are added to `MODULES` automatically; leave it out to load every module.
 
-3. **Build the page** — open **Dev** in the sidebar (`/dev`), then **Open Studio**. **Save** writes `modules/my_module/layout.json` — see [The Studio](frontend-panels-widgets-and-datasets.html#the-studio). Edit `module.py`, `manifest.yaml` and `HOW_TO_USE.md` alongside. Saving `module.py` or `manifest.yaml` reloads the module; `HOW_TO_USE.md` is read fresh on every request.
+3. **Build the page** — open **Dev** in the sidebar (`/dev`), then **Open Studio**. **Save** writes `modules/my_module/layout.json` — see [The Studio](frontend-panels-widgets-and-outputs.html#the-studio). Edit `module.py`, `manifest.yaml` and `HOW_TO_USE.md` alongside. Saving `module.py` or `manifest.yaml` reloads the module; `HOW_TO_USE.md` is read fresh on every request.
 4. **Test** — in a second terminal, `make test ID=my_module` runs `modules/my_module/tests` — see [Testing and publishing](testing-and-publishing.html).
 5. **Validate** — `make validate` checks every module's manifest, guide and `layout.json`, and exits `1` on any problem.
 6. **Ship** — open a pull request that commits the folder (it becomes a bundled module). Archive upload under **Modules → Install a module** works in lite mode and where `MODULE_UPLOAD_ENABLED=true`; it is off by default, because uploaded code is not sandboxed. A new bundled module also needs its manual page: run `make docs` and commit `landing/docs/site/`.
@@ -167,7 +167,7 @@ dependencies:
 | Change requirements or dependencies | Save; gating re-evaluates, and a changed dependency block triggers `uv sync` for that module. |
 | Change the page | A Studio **Save** rewrites `layout.json` without restarting anything. A panel or widget is rebuilt by the bundler; refocus the tab. |
 | Change platform code | uvicorn restarts the API, which drops an attached debugger; attach again. |
-| List modules | `make modules`: id, version, name, runtime, UI (panel, layout, widgets, datasets). |
+| List modules | `make modules`: id, version, name, runtime, UI (panel, layout, widgets, outputs). |
 | Start from scratch | `make reset` deletes `data/lite/` and nothing else. |
 | Free a busy port | Lite never kills another process: `DEBUGPY_PORT=5679 make lite PORT=8001 WEB_PORT=3001`. |
 
@@ -243,7 +243,7 @@ frontend:
   log_filter: true
   widgets: [...]                    # see the frontend chapter
 
-datasets:
+outputs:                            # typed data the platform renders
   - id: ranking
     title: Activity ranking
     shape: table                    # table | graph | kpi | tree | blob
@@ -281,12 +281,14 @@ config_schema:                      # renders the per-user settings form
 | `precompute` | `lazy` (default) computes the first time a log opens the module; `eager` also runs it in the background right after every import. Reserve `eager` for the one module whose output is opened first — it costs CPU on every import, and an admin can override it per module. |
 | `isConfidentialSafe` | Set `true` only when the log never leaves the host. |
 | `source` / `artifacts` | Citations and links, at most 20 each. |
+| `outputs` | Typed data outputs (`table`, `graph`, `kpi`, `tree`, `blob`), each an existing GET route the platform renders on module pages and dashboards; see [Outputs](frontend-panels-widgets-and-outputs.html#outputs). |
 | `config_schema` | JSON-Schema-flavoured; the platform renders the form. |
 | `ai_models` / `model_store` | Opt into generated AI-model selectors or a model-file upload card. |
 
 ## Validation rules
 
 - A package cannot be in both `packages` and `inherit`.
+- A top-level `datasets:` key is a hard error: it was renamed to `outputs:` (the entries keep the same shape).
 - Declaring `author`, `author_url`, `authors`, `paper_url`, or `papers` is a hard error — credit belongs in `source[].fullCitation`, in IEEE style with the DOI omitted (the DOI goes in `url`).
 - A foreign `runtime` must not declare `packages`, `inherit`, or `requires-python`, and may not force `isolation: in_process`; its `jar` must be folder-relative.
 - `log_model` is the single switch between the two log worlds: `case_centric` reads `ctx.event_log`, `object_centric` reads `ctx.object_log`, and a module never appears on the wrong kind of log.
@@ -417,7 +419,7 @@ async def precompute(self, ctx: ModuleContext, payload: dict) -> None:
 
 | Output | Where |
 | --- | --- |
-| Structured result (KPIs, rankings, summaries) | `ctx.cache` as JSON — readable by routes, datasets, and MCP tools. |
+| Structured result (KPIs, rankings, summaries) | `ctx.cache` as JSON — readable by routes, outputs, and MCP tools. |
 | Tabular result | `ctx.cache` as a DataFrame (stored as Parquet). |
 | Large binary or model artifact | `ctx.cache` as bytes; `ctx.workdir` only for scratch. |
 | Transient per-request computation | Nothing — compute and return. |
@@ -495,7 +497,7 @@ async def overlay(self, ctx: ModuleContext, payload: dict) -> None:
 | "Run after module X" | `@on_event("X.completed")` + `@job`. |
 | "Reuse another module's widget" | `useWidget(moduleId, widgetId)` in the frontend. |
 
-# Frontend: panels, widgets and datasets
+# Frontend: panels, widgets and outputs
 
 A module page is either a `layout.json` card grid built in the Studio, or a TSX panel. TSX (panels and widgets) is TypeScript regardless of the backend language; the platform bundles it with esbuild into `.dist/` at startup, the Next.js build never sees your sources, and it may only import the packages listed in `apps/web/lib/runtime-externals.json`.
 
@@ -514,22 +516,22 @@ A module page is either a `layout.json` card grid built in the Studio, or a TSX 
 | Kind | Shows | Needs |
 | --- | --- | --- |
 | `text` | Markdown, frameless on the page. | `config.markdown` |
-| `controls` | A form over the page params (`source: params`, from datasets' `params_schema`) or the module config (`source: config`, with **Save**). | `module_id`; optional `config.keys` (omitted or `[]` = all) |
+| `controls` | A form over the page params (`source: params`, from outputs' `params_schema`) or the module config (`source: config`, with **Save**). | `module_id`; optional `config.keys` (omitted or `[]` = all) |
 | `action` | A button that POSTs a module route. A `@job` route shows progress, then refetches the page's cards. | `module_id`, `config.route` |
-| `viz` | A platform visualization of one of the module's datasets; chart and field mapping are set in the inspector. | `viz_id`, `dataset_ref` |
+| `viz` | A platform visualization of one of the module's outputs; chart and field mapping are set in the inspector. | `viz_id`, `output_ref` |
 | `widget` | One of the module's `frontend.widgets`. | `widget_id` (plus `module_id`) |
 
-`text`, `controls` and `action` exist only in `layout.json`; dashboards never offer them. Param values live on the page, shared by all tabs, and each viz card sends only the params its own dataset declares. **Tabs** adds, renames and deletes tabs (`"tabs": [{"id": "overview", "title": "Overview"}]`); a card without `tab` belongs to the first.
+`text`, `controls` and `action` exist only in `layout.json`; dashboards never offer them. Param values live on the page, shared by all tabs, and each viz card sends only the params its own output declares. **Tabs** adds, renames and deletes tabs (`"tabs": [{"id": "overview", "title": "Overview"}]`); a card without `tab` belongs to the first.
 
-The palette's **Visualizations** section is the catalog, in six groups: Charts, Process models & graphs, Matrices, KPIs, Tables & lists, Text & status. Each row shows `→ <dataset>` when the module has a dataset of a shape it accepts, else `needs data`. Adding a row binds the first compatible dataset; pick another under **Data** in the inspector. Without one, the card is a **Needs data** placeholder that shows the manifest `datasets:` item and the `@route.get` to paste. The Studio saves a placeholder, but `make validate` fails until it is bound.
+The palette's **Visualizations** section is the catalog, in six groups: Charts, Process models & graphs, Matrices, KPIs, Tables & lists, Text & status. Each row shows `→ <output>` when the module has an output of a shape it accepts, else `needs data`. Adding a row binds the first compatible output; pick another under **Data** in the inspector. Without one, the card is a **Needs data** placeholder that shows the manifest `outputs:` item and the `@route.get` to paste. The Studio saves a placeholder, but `make validate` fails until it is bound.
 
-When nothing in the catalog fits, scaffold a TSX widget: it writes `widgets/MyWidget.tsx` (a bar chart over the first dataset's route) and adds the `frontend.widgets` entry to the manifest. It appears in the palette's module group within seconds.
+When nothing in the catalog fits, scaffold a TSX widget: it writes `widgets/MyWidget.tsx` (a bar chart over the first output's route) and adds the `frontend.widgets` entry to the manifest. It appears in the palette's module group within seconds.
 
 ```bash title="Terminal"
-make widget ID=my_module NAME=my-widget   # = uv run mate-module widget my_module my-widget [--title T] [--dataset D]
+make widget ID=my_module NAME=my-widget   # = uv run mate-module widget my_module my-widget [--title T] [--output O]
 ```
 
-Every `layout.json` rule — tabs, params, actions, validation, and the route shapes each dataset accepts — is in [`docs/DEV_LITE.md`](https://github.com/Process-Science-Community/MATE/blob/main/docs/DEV_LITE.md).
+Every `layout.json` rule — tabs, params, actions, validation, and the route shapes each output accepts — is in [`docs/DEV_LITE.md`](https://github.com/Process-Science-Community/MATE/blob/main/docs/DEV_LITE.md).
 
 ## Panels
 
@@ -620,12 +622,12 @@ export default function Bottlenecks({ logId, config, onDrill }: WidgetProps) {
 
 Graphs, maps, and diagrams render through `CanvasShell`, which provides the dotted grid, the minimap, the initial fit, the drag guard, and pseudo-fullscreen. Every control belongs in its settings popover (built from the `CanvasSetting*` primitives), expensive settings commit on release (`onCommit`), and a busy canvas keeps its last result instead of unmounting to show a spinner.
 
-## Datasets
+## Outputs
 
-When the output is data rather than pixels, declare a dataset and skip React entirely:
+When the result is data rather than pixels, declare an output and skip React entirely:
 
-```yaml title="A dataset declaration"
-datasets:
+```yaml title="An output declaration"
+outputs:
   - id: ranking
     title: Activity ranking
     shape: table            # table | graph | kpi | tree | blob
@@ -648,7 +650,7 @@ async def ranking(self, ctx: ModuleContext, top_n: int = 10) -> dict:
     return payload
 ```
 
-| Use a dataset when | Use a widget when |
+| Use an output when | Use a widget when |
 | --- | --- |
 | The result is tabular, a graph, or figures | The visual is the point |
 | You want the platform's table, pagination, and export | You need bespoke layout or interaction |
@@ -750,7 +752,7 @@ Name tests as expectations.
 | --- | --- |
 | Pure computation | Plain functions — fast, and where the subtle bugs live. |
 | Handler wiring | Fakes for the two or three context members it uses. |
-| Dataset payloads | Shape assertions against the declared `shape`. |
+| Output payloads | Shape assertions against the declared `shape`. |
 | Frontend | A manual pass: loading, empty, and error states; live updates; dark mode and compact density; the card at exactly `min_px_w` × `min_px_h`. |
 
 | Make target | `mate-module` equivalent | Does |

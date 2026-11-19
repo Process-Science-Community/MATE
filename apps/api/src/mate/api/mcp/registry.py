@@ -76,10 +76,14 @@ def mcp_tool(
         raise ValueError(f"Unknown toolset '{toolset}'")
 
     def deco(fn: F) -> F:
+        tool_name = name or fn.__name__
+        # FastMCP silently keeps one of two same-named tools; fail at import instead.
+        if any(s.name == tool_name for s in _TOOL_SPECS):
+            raise ValueError(f"Duplicate MCP tool name '{tool_name}'")
         _TOOL_SPECS.append(
             ToolSpec(
                 fn=fn,
-                name=name or fn.__name__,
+                name=tool_name,
                 toolset=toolset,
                 write=write,
                 destructive=destructive,

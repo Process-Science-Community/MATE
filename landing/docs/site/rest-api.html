@@ -899,7 +899,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
         <li><a class="side-link" href="handlers-and-the-context.html">Handlers and the context</a></li>
         <li><a class="side-link" href="logs-jobs-and-results.html">Logs, jobs and results</a></li>
         <li><a class="side-link" href="module-communication.html">Module communication</a></li>
-        <li><a class="side-link" href="frontend-panels-widgets-and-datasets.html">Frontend: panels, widgets and datasets</a></li>
+        <li><a class="side-link" href="frontend-panels-widgets-and-outputs.html">Frontend: panels, widgets and outputs</a></li>
         <li><a class="side-link" href="dependencies-isolation-and-runtimes.html">Dependencies, isolation and runtimes</a></li>
         <li><a class="side-link" href="testing-and-publishing.html">Testing and publishing</a></li>
       </ul>
@@ -1304,7 +1304,10 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <span class="j-key">&quot;module_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
     <span class="j-key">&quot;widget_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
   <span class="j-pun">}</span>
-<span class="j-pun">]</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/readme</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-delete">DELETE</span><code>/modules/{module_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/assets/{asset_path}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/config</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/install/status</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;detail&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/readme</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-delete">DELETE</span><code>/modules/{module_id}</code></td><td>—</td><td><code>204</code> —</td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/assets/{asset_path}</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/config</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
   <span class="j-key">&quot;config&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span><span class="j-pun">,</span>
   <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
   <span class="j-key">&quot;controlled_by_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
@@ -1319,13 +1322,16 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
   <span class="j-key">&quot;enabled&quot;</span><span class="j-pun">:</span> <span class="j-lit">true</span><span class="j-pun">,</span>
   <span class="j-key">&quot;controlled_by_admin&quot;</span><span class="j-pun">:</span> <span class="j-lit">false</span><span class="j-pun">,</span>
   <span class="j-key">&quot;controlled_cards&quot;</span><span class="j-pun">:</span> <span class="j-lit">null</span>
-<span class="j-pun">}</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/config-schema</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/layout</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <code>{&quot;layout&quot;:null}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-put">PUT</span><code>/modules/{module_id}/layout</code></td><td><code>?log_id=018f2c9a…</code> · <code>{&quot;layout&quot;:null}</code></td><td><code>200</code> <code>{&quot;layout&quot;:null}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/manifest</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Datasets</td><td><span class="mchip m-get">GET</span><code>/datasets/catalog</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/config-schema</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/guide</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+  <span class="j-key">&quot;module_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
+  <span class="j-key">&quot;markdown&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/layout</code></td><td>—</td><td><code>200</code> <code>{&quot;layout&quot;:null}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-put">PUT</span><code>/modules/{module_id}/layout</code></td><td><code>?log_id=018f2c9a…</code> · <code>{&quot;layout&quot;:null}</code></td><td><code>200</code> <code>{&quot;layout&quot;:null}</code></td></tr><tr><td>Modules</td><td><span class="mchip m-get">GET</span><code>/modules/{module_id}/manifest</code></td><td>—</td><td><code>200</code> <code>null</code></td></tr><tr><td>Module outputs</td><td><span class="mchip m-get">GET</span><code>/module-outputs/catalog</code></td><td>—</td><td><code>200</code> <pre class="jblock"><span class="j-pun">[</span>
   <span class="j-pun">{</span>
     <span class="j-key">&quot;module_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
     <span class="j-key">&quot;module_name&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;…&quot;</span><span class="j-pun">,</span>
-    <span class="j-key">&quot;dataset_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
+    <span class="j-key">&quot;output_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span> <span class="j-ell">…</span>
   <span class="j-pun">}</span>
-<span class="j-pun">]</span></pre></td></tr><tr><td>Datasets</td><td><span class="mchip m-get">GET</span><code>/datasets/{module_id}/{dataset_id}</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
+<span class="j-pun">]</span></pre></td></tr><tr><td>Module outputs</td><td><span class="mchip m-get">GET</span><code>/module-outputs/{module_id}/{output_id}</code></td><td><code>?log_id=018f2c9a…</code></td><td><code>200</code> <pre class="jblock"><span class="j-pun">{</span>
   <span class="j-key">&quot;shape&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;table&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;schema&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span>
     <span class="j-key">&quot;columns&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
@@ -1338,7 +1344,7 @@ footer { border-top: 1px solid var(--line-soft); padding: 40px 0 52px; font-size
     <span class="j-pun">]</span><span class="j-pun">,</span> <span class="j-ell">…</span>
   <span class="j-pun">}</span><span class="j-pun">,</span>
   <span class="j-key">&quot;meta&quot;</span><span class="j-pun">:</span> <span class="j-pun">{</span><span class="j-ell">…</span><span class="j-pun">}</span>
-<span class="j-pun">}</span></pre></td></tr><tr><td>Datasets</td><td><span class="mchip m-post">POST</span><code>/datasets/{module_id}/{dataset_id}/transform</code></td><td><pre class="jblock"><span class="j-pun">{</span>
+<span class="j-pun">}</span></pre></td></tr><tr><td>Module outputs</td><td><span class="mchip m-post">POST</span><code>/module-outputs/{module_id}/{output_id}/transform</code></td><td><pre class="jblock"><span class="j-pun">{</span>
   <span class="j-key">&quot;log_id&quot;</span><span class="j-pun">:</span> <span class="j-str">&quot;018f2c9a…&quot;</span><span class="j-pun">,</span>
   <span class="j-key">&quot;transforms&quot;</span><span class="j-pun">:</span> <span class="j-pun">[</span>
     <span class="j-str">&quot;…&quot;</span>
@@ -1874,13 +1880,13 @@ while True:
         raise RuntimeError(states)
     time.sleep(2)
 
-<span class="t-note"># 3. read a dataset a module publishes — rows live under `data` in the envelope</span>
+<span class="t-note"># 3. read an output a module publishes — rows live under `data` in the envelope</span>
 rows = client.get(
-    &quot;/datasets/performance_java/activity-performance&quot;, params={&quot;log_id&quot;: log_id}
+    &quot;/module-outputs/performance_java/activity-performance&quot;, params={&quot;log_id&quot;: log_id}
 ).json()[&quot;data&quot;][&quot;rows&quot;]
 print(rows)</code></pre>
 </figure>
-<p>Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; ask <span class="mchip m-post">POST</span><code>/event-logs/{id}/module-runs/{module}</code> (idempotent) before reading a module's results, because they only exist once its run is <code>ready</code>; the dataset endpoint takes only <code>log_id</code> (a dataset's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.</p>
+<p>Rules that keep such a script correct: retry transport errors and 5xx, never 4xx; poll instead of a tight loop; ask <span class="mchip m-post">POST</span><code>/event-logs/{id}/module-runs/{module}</code> (idempotent) before reading a module's results, because they only exist once its run is <code>ready</code>; the module-output endpoint takes only <code>log_id</code> (an output's declared parameters are set on its card, not as query parameters); and remember that importing the same file twice creates two logs — de-duplicate on your side.</p>
     </div>
   <nav class="pager" aria-label="Pagination">
     <a class="prev" href="testing-and-publishing.html" rel="prev"><span class="dir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Previous</span><b>Testing and publishing</b></a>

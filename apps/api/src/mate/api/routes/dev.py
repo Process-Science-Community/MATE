@@ -63,7 +63,7 @@ def _status(loader: ModuleLoader, d: DiscoveredModule, load_error: str | None) -
         "folder": str(d.folder),
         "has_panel": bool(m.frontend.panel),
         "has_layout": (d.folder / LAYOUT_FILENAME).is_file(),
-        "datasets": [ds.id for ds in m.datasets],
+        "outputs": [o.id for o in m.outputs],
         "widgets": [w.id for w in m.frontend.widgets],
         "isolation": m.dependencies.python.isolation,
         "execution": m.dependencies.python.execution,

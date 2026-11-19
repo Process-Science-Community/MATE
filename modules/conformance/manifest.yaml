@@ -118,7 +118,7 @@ frontend:
         computed: "Counted from alignment results over the filtered log."
 # Data-only outputs for the platform's generic visualization layer. Both point
 # at /results; the adapter slices the relevant part by the declared shape.
-datasets:
+outputs:
   - id: results
     title: Conformance KPIs
     description: Fitness, precision and conforming-trace share of the latest run.

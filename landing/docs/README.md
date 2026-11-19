@@ -25,7 +25,7 @@ python3 -m http.server -d landing 8081   # preview → http://localhost:8081/doc
 | `content/10-using-mate.md` | Using MATE | Importing event logs · Working with logs · Exploring a process · Modules (incl. the bundled catalogue) · Jobs and the interface · Dashboards · MATE AI · Settings and admin |
 | `modules/*/HOW_TO_USE.md` | Module guides | One chapter per module, sorted by name · see *Module guides* below |
 | `content/20-platform.md` | Platform | Architecture and data · Jobs, modules and isolation · Security and privacy |
-| `content/30-module-development.md` | Module development | Your first module · The manifest · Handlers and the context · Logs, jobs and results · Module communication · Frontend: panels, widgets and datasets · Dependencies, isolation and runtimes · Testing and publishing |
+| `content/30-module-development.md` | Module development | Your first module · The manifest · Handlers and the context · Logs, jobs and results · Module communication · Frontend: panels, widgets and outputs · Dependencies, isolation and runtimes · Testing and publishing |
 | `content/40-interfaces.md` | Interfaces | REST API · MCP server |
 | `content/50-operate.md` | Operate | Deployment · Configuration · Backup, storage and limits · Troubleshooting |
 | `content/60-project.md` | Project | Contributing and development |

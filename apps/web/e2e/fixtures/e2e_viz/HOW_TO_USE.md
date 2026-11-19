@@ -1,6 +1,6 @@
 # How to use E2E viz fixture
 
-E2E viz fixture serves static sample data in every dataset shape so the Studio catalog can be tested end to end.
+E2E viz fixture serves static sample data in every output shape so the Studio catalog can be tested end to end.
 
 ## When to use it
 
@@ -17,9 +17,9 @@ This module has no settings.
 
 ## Reading the results
 
-### Sample datasets
+### Sample outputs
 
-Each dataset returns a fixed response: rows, a Petri net, a process tree, KPIs, parallel arrays, a dense grid, column and row arrays, buckets, KPI items, a DFG, envelope responses, a prefix tree and a note.
+Each output returns a fixed response: rows, a Petri net, a process tree, KPIs, parallel arrays, a dense grid, column and row arrays, buckets, KPI items, a DFG, envelope responses, a prefix tree and a note.
 
 ## Tips and limits
 

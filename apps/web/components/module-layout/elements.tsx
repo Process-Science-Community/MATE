@@ -15,9 +15,9 @@ import { VizEmpty } from "@/components/visualizations/viz-shell";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import {
-  useDatasetCatalog,
+  useOutputCatalog,
   type DashboardItem,
-  type DatasetCatalogEntry,
+  type OutputCatalogEntry,
 } from "@/lib/dashboard-queries";
 import { useDevStatus } from "@/lib/dev-queries";
 import { jobProgress } from "@/lib/job-progress";
@@ -30,7 +30,7 @@ import { subscribeJob } from "@/lib/ws";
  * Layout-only card kinds (`layout.json`, never dashboards):
  *   - `text`:     markdown copy (`config.markdown`)
  *   - `controls`: page params (`source: "params"`, keys from the module's
- *                 datasets' `params_schema`) or module config (`source: "config"`)
+ *                 outputs' `params_schema`) or module config (`source: "config"`)
  *   - `action`:   a button that POSTs a module route (`config.route`) with the
  *                 log and the page params, then refreshes the module's cards
  */
@@ -45,9 +45,9 @@ const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : 
 const strList = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((k): k is string => typeof k === "string") : [];
 
-/** Every page param the module's datasets declare (first declaration wins). */
+/** Every page param the module's outputs declare (first declaration wins). */
 function paramsUnion(
-  catalog: DatasetCatalogEntry[] | undefined,
+  catalog: OutputCatalogEntry[] | undefined,
   moduleId: string | undefined,
 ): Record<string, PropSchema> {
   const out: Record<string, PropSchema> = {};
@@ -108,13 +108,13 @@ export function ElementBody({
 }
 
 function ParamControls({ moduleId, keys }: { moduleId: string; keys: string[] }) {
-  const { data: catalog } = useDatasetCatalog();
+  const { data: catalog } = useOutputCatalog();
   const page = usePageParamsOptional();
   const properties = useMemo(() => paramsUnion(catalog, moduleId), [catalog, moduleId]);
 
   if (!catalog) return null;
   if (Object.keys(properties).length === 0) {
-    return <Hint>Nothing to control: declare params_schema on a dataset.</Hint>;
+    return <Hint>Nothing to control: declare params_schema on an output.</Hint>;
   }
   if (!page) return <Hint>Page controls work on the module page.</Hint>;
   return (
@@ -358,7 +358,7 @@ function ControlsSettings({
   cfg: Record<string, unknown>;
   onChange: (patch: { config: Record<string, unknown> }) => void;
 }) {
-  const { data: catalog } = useDatasetCatalog();
+  const { data: catalog } = useOutputCatalog();
   const manifest = useModuleManifest(moduleId);
   const source = cfg.source === "config" ? "config" : "params";
   const available =
@@ -382,7 +382,7 @@ function ControlsSettings({
         description: keys.length
           ? "None selected shows all."
           : source === "params"
-            ? "No dataset declares params_schema."
+            ? "No output declares params_schema."
             : "The module declares no config_schema.",
         enum: keys,
         enumLabels: keys.map((k) => available[k]?.title ?? k),

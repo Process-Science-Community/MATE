@@ -18,7 +18,8 @@ Code claims below were checked against `/home/user/MATE` unless marked *(unverif
 - The module side may change: if modules always run isolated (like HF Spaces/models), the
   per-log sidecar and cache layout changes too. Copy-on-use fits that model (an isolated runner
   gets its own read-only input), so keep the hub-dataset storage independent of module internals.
-- The owner finds "datasets" a misleading name for module data outputs; see §2.
+- The owner found "datasets" a misleading name for module data outputs; they are now "module
+  outputs" (done, see §2).
 
 ---
 
@@ -66,20 +67,22 @@ Code claims below were checked against `/home/user/MATE` unless marked *(unverif
 
 ## 2. Concept and vocabulary
 
-**Name collision.** "Datasets" already means module data outputs:
-- `routes/datasets.py:33` `prefix="/datasets"`;
-- the Python package `apps/api/src/mate/api/datasets/` (`envelope.py`, `adapters.py`, `transforms.py`);
-- MCP `list_datasets`/`get_dataset` (`mcp/toolsets/analysis.py:344-430`);
-- the manifest `datasets:` key.
+**Naming: done.** "Datasets" used to also mean module data outputs. That concept is now
+**module outputs** everywhere:
+- manifest `datasets:` → `outputs:` (a manifest that still has `datasets:` fails validation);
+- `/api/v1/datasets/catalog` → `/api/v1/module-outputs/catalog` (`routes/module_outputs.py`);
+- package `mate/api/datasets/` → `mate/api/module_outputs/` (`envelope.py`, `adapters.py`, `transforms.py`);
+- MCP `list_datasets`/`get_dataset` → `list_module_outputs`/`get_module_output_data`, no aliases;
+- layout and dashboard cards `dataset_ref`/`dataset_id` → `output_ref`/`output_id` (stored layouts
+  rewritten by migration `0017_rename_module_outputs`, so the hub migration in §3 takes the next
+  free number).
 
-In code the new concept is the **hub dataset**: tables `hub_datasets*`, package `mate/api/hub/`, routes `/api/v1/hub/datasets`, MCP `search_hub_datasets`/`get_hub_dataset`. The UI says **"Datasets"** at `/datasets`, which does not exist today. MCP tool descriptions must say "hub dataset (published event log)" to avoid the clash. Renaming module outputs is a separate cleanup.
-
-*Preferred alternative (owner remark, 2026-11-19):* rename the module concept instead (manifest
-`datasets:` → `outputs:`, `/api/v1/datasets/catalog` → `/api/v1/module-outputs/catalog`, package
-`mate/api/datasets/` → `mate/api/outputs/`, MCP `list_datasets`/`get_dataset` →
-`list_module_outputs`/`get_module_output` with the old MCP names kept as aliases for one release).
-All 10 manifests using the key are in the repo and upload is off, so one PR can switch them. That
-PR goes before Stage 1a, and the hub concept is then simply "dataset" in code and UI, as on HF.
+So "dataset" means only a published event log, and the hub concept is simply **dataset** in code
+and UI, as on HF: the UI says **"Datasets"** at `/datasets`. The `hub_` prefixes used further down
+this plan (`hub_datasets*`, `/api/v1/hub/datasets`, `search_hub_datasets`/`get_hub_dataset`) are the
+pre-rename draft names; drop the prefix when building them. "Hub dataset" in the prose below means
+the same thing. MCP tool descriptions should say "dataset (published event log)", because a client
+may have cached the old module-output tool `get_dataset` from an earlier session.
 
 | Term | Meaning | Storage | Mutable? |
 |---|---|---|---|
@@ -114,7 +117,7 @@ Copy-on-use needs none of these. Hardlinks and symlinks stay **rejected**: `disp
 
 ## 3. Data model + migration
 
-Migration `0017_hub_datasets.py` (latest is `0016_lazy_module_processing.py`). It is additive and uses `op.batch_alter_table("process_logs")` for the new FK column. SQLite cannot ALTER-add a constraint, and Alembic's engine does not set `PRAGMA foreign_keys=ON` (only `db/engine.py:30` does), so the batch recreate does not cascade into `log_module_runs`; state this in the migration.
+Migration `0018_hub_datasets.py` with `down_revision = "0017_rename_module_outputs"` (latest is `0017_rename_module_outputs.py`). It is additive and uses `op.batch_alter_table("process_logs")` for the new FK column. SQLite cannot ALTER-add a constraint, and Alembic's engine does not set `PRAGMA foreign_keys=ON` (only `db/engine.py:30` does), so the batch recreate does not cascade into `log_module_runs`; state this in the migration.
 
 Avoid the circular FK: `hub_datasets.current_revision_id` is a plain column, enforced in the service. Add `tests/test_hub_migration.py` (pattern: `test_card_migration.py`) to run upgrade and downgrade on SQLite; the suite itself only does `create_all` (`tests/conftest.py:65`).
 
@@ -413,10 +416,23 @@ Do not choose a CC license on someone else's behalf. The conservative default is
 
 **Stage 0: measure + decide (no code)**
 - Numbers per §8 step 2, owner answers, and the §10 decisions, recorded in `hub-roadmap.md` §7.2.
+- **Measured on the VM (2026-11-19)**, import pipeline (parse → roles → timestamps → Parquet)
+  in a throwaway api container, 8 GB limit, VM 15 GB RAM:
+
+  | Log | XES | Events | Cases | Activities | Peak RSS | Time | Parquet |
+  |---|---|---|---|---|---|---|---|
+  | `CreditLoanApplication_2020` | 74 MB | 262,200 | 13,087 | 24 | 0.36 GB | 8 s | 3 MB |
+  | `CreditLoanApplication_2025` | 579 MB | 1,202,267 | 31,509 | 5 | 2.04 GB | 52 s | 18 MB |
+
+  Consequences: 60 copy-on-use copies ≈ 1 GB of Parquet, so reference logs (Stage 4b) are not
+  needed; import on prod is fine (no offline `hub.cli`); about four parallel self-uploads would
+  exhaust the api's 8 GB, which is the main reason to publish the log once. Still to measure:
+  module warm time on the 1.2 M-event log. Open: 5 activities in the 2025 log vs 24 in 2020;
+  confirm the activity attribute with the owner.
 - Separate prerequisite PR: the CDE filename sanitisation.
 
 **Stage 1a: data model + copy-on-use + takedown (API)**
-- Migration 0017 (Stage 1 tables only) + migration test.
+- Migration 0018 (Stage 1 tables only, `down_revision = "0017_rename_module_outputs"`) + migration test.
 - `hub/` package; curator publish/patch/disable/purge; public `GET`/`use` (+ `accept` if gating is required).
 - `ensure_log_usable`, lazy seeded run rows, lineage on duplicate (+ `column_roles` fix).
 - Share/egress checks; `source_dataset` on log schemas.
@@ -464,7 +480,7 @@ Do not choose a CC license on someone else's behalf. The conservative default is
 
 ## 10. Open decisions for the owner
 
-1. **Naming**: rename module data outputs (`datasets:` → `outputs:`) in a PR before Stage 1a, so "dataset" means only published event logs. *Rec: yes (owner leaning, see §2).* Fallback: "hub dataset" in code.
+1. **Naming**: *Done.* Module data outputs were renamed (`datasets:` → `outputs:`, see §2) before Stage 1a, so "dataset" means only published event logs and the hub concept is simply "dataset" in code and UI.
 2. **Use model**: copy-on-use (Stage 1) vs reference logs. *Rec: copy-on-use; reference logs only if Stage 0 shows 60 × (Parquet + results) over the disk budget.*
 3. **`use` idempotent per (user, revision)** with an explicit "Add another copy". *Rec: yes.*
 4. **Publishers in Phase 1**: `may_curate_datasets` (admin and not sandboxed). *Rec: yes; `curator` in Stage 5.*
@@ -506,14 +522,14 @@ Verified code anchors:
 - `modules/conformance/module.py:40-48`; `modules/concept_drift_explainer/module.py:48-53,196-214` (unsanitised filename)
 - `modules/complexity/module.py:34-47` (`_cache_is_fresh` mtime check)
 - `mcp/toolsets/analysis.py:286-300` (`cache.dir.iterdir()`); `routes/ai_guidance.py` (5 `ResultCache` sites)
-- `routes/events_sse.py:111-116`; `routes/datasets.py:33`; `apps/api/src/mate/api/datasets/` package
+- `routes/events_sse.py:111-116`; `routes/datasets.py:33`; `apps/api/src/mate/api/datasets/` package (both since renamed to `module_outputs`, §2)
 - `services/log_aggregates.py:1194-1222` (`duplicate_log` copies `detected_schema` but not `column_roles`), `:1232-1255` (soft delete + own rmtree)
 - `ingest/dispatch.py:208,285,289,340,519`; `ingest/xes.py:153,178`; `ingest/storage.py:79-92`; `path_segments.py:18-22`
 - `storage/sync.py:89`; `storage/eviction.py:178-192`; `services/user_deletion.py:122-127`
 - `tests/conftest.py:65` (`create_all`); `tests/test_card_migration.py`
 - `docker-compose.prod.yml:137,184-185`; `apps/api/Dockerfile` (no `USER`)
 - `apps/web/components/modules/guide-markdown.tsx`; `apps/web/components/sidebar.tsx`
-- latest migration `0016_lazy_module_processing.py`
+- latest migration `0017_rename_module_outputs.py`
 
 Unverified: prod `STORAGE_MODE` (`.env.example` says `local`); Parquet size and Arrow `nbytes` of the course log; XES extension exposure in `ingest/xes.py`; license terms of BPIC 2012/2019 per DOI; `ctx_rpc.py:126-128` and `PROTOCOL.md:204-210` (taken from reviews; only relevant to Stage 4b).
 

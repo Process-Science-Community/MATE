@@ -306,17 +306,17 @@ class ManifestFrontend(BaseModel):
     log_filter: bool = True
 
 
-class DatasetEntry(BaseModel):
+class OutputEntry(BaseModel):
     """A named, typed *data* output a module exposes for the platform's generic
-    visualization layer.
+    visualization layer (manifest key ``outputs:``).
 
-    Unlike a ``WidgetEntry`` (which ships a module-authored React component), a
-    dataset is data only: it points at an existing module ``@route`` whose JSON
-    response the platform normalizes into a shape-tagged ``DatasetEnvelope`` and
+    Unlike a ``WidgetEntry`` (which ships a module-authored React component), an
+    output is data only: it points at an existing module ``@route`` whose JSON
+    response the platform normalizes into a shape-tagged ``OutputEnvelope`` and
     renders with one of the platform's *generic* visualizations (bar, line,
-    table, process-map, ...). Surfaced by the dataset catalog
-    (``GET /api/v1/datasets/catalog``) so the Dashboards palette can offer it
-    without loading any bundle.
+    table, process-map, ...). Surfaced by the module-output catalog
+    (``GET /api/v1/module-outputs/catalog``) so the Dashboards palette can offer
+    it without loading any bundle.
     """
 
     id: str
@@ -325,7 +325,7 @@ class DatasetEntry(BaseModel):
     # Lucide icon name (e.g. "Network"); the frontend maps it to a glyph and
     # falls back to a generic icon when unknown or absent.
     icon: str | None = None
-    # The data shape this dataset produces. Drives which generic visualizations
+    # The data shape this output produces. Drives which generic visualizations
     # can render it - a viz declares which shape(s) it `accepts`.
     shape: Literal["table", "graph", "kpi", "tree", "blob"]
     # Module sub-route (leading slash, e.g. "/dfg") whose JSON response carries
@@ -333,15 +333,15 @@ class DatasetEntry(BaseModel):
     # so the existing per-request ephemeral filter + result-cache variant apply
     # unchanged.
     route: str
-    # Which log data model(s) this dataset applies to. A dashboard is created
+    # Which log data model(s) this output applies to. A dashboard is created
     # for one model (case-centric vs object-centric/OCEL) and its palette only
-    # offers datasets whose `log_models` include the board's model. Defaults to
+    # offers outputs whose `log_models` include the board's model. Defaults to
     # case-centric so the common case needs no declaration.
     log_models: list[Literal["case_centric", "object_centric"]] = Field(
         default_factory=lambda: ["case_centric"]
     )
     # Optional JSON-Schema-flavoured params (same dialect as `config_schema`)
-    # the dataset's route accepts as query params. Passed through to the
+    # the output's route accepts as query params. Passed through to the
     # frontend as-is; rendering/validation is the frontend's job.
     params_schema: dict[str, Any] | None = None
 
@@ -404,8 +404,13 @@ MAX_ARTIFACTS = 20
 
 # Author credits were removed from the manifest: a source's `fullCitation`
 # carries the author names, so these keys are rejected instead of silently
-# dropped by `extra="ignore"` (see `_reject_removed_credit_fields`).
+# dropped by `extra="ignore"` (see `_reject_removed_fields`).
 _REMOVED_CREDIT_FIELDS = ("author", "author_url", "authors", "paper_url", "papers")
+
+# Manifest keys that were renamed. Like the credit fields they would otherwise be
+# dropped silently by `extra="ignore"`, so a manifest still using the old key is
+# rejected with the new name (see `_reject_removed_fields`).
+_RENAMED_FIELDS = {"datasets": "outputs"}
 
 
 class Source(BaseModel):
@@ -456,7 +461,7 @@ class Manifest(BaseModel):
     # The works this module implements/cites (max 20). Each entry is
     # `{title, fullCitation, url?}` - the citation string carries the author
     # names, which is why the manifest has no author fields at all (declaring
-    # one is an error, see `_reject_removed_credit_fields`).
+    # one is an error, see `_reject_removed_fields`).
     source: list[Source] = Field(default_factory=list, max_length=MAX_SOURCES)
     # Optional named links (max 20) - the reference implementation's repo, a
     # dataset, a demo, a released model. Rendered as their own row in the "About
@@ -483,8 +488,9 @@ class Manifest(BaseModel):
     # Named, typed *data* outputs (vs `frontend.widgets`, which are rendered
     # React components). Each points at an existing module route; the platform
     # normalizes the response into a shape-tagged envelope and renders it with a
-    # generic visualization. Surfaced by `GET /api/v1/datasets/catalog`.
-    datasets: list[DatasetEntry] = Field(default_factory=list)
+    # generic visualization. Surfaced by `GET /api/v1/module-outputs/catalog`.
+    # (Formerly `datasets:`; that key is rejected, see `_reject_removed_fields`.)
+    outputs: list[OutputEntry] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     default_enabled: bool = True
     # When the module's import-time precompute (`@on_event("log.imported")` +
@@ -519,16 +525,24 @@ class Manifest(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_removed_credit_fields(cls, data: Any) -> Any:
-        """Fail loud on the removed author/paper credit fields.
+    def _reject_removed_fields(cls, data: Any) -> Any:
+        """Fail loud on removed or renamed top-level keys.
 
         `model_config` uses `extra="ignore"`, so a manifest still declaring
         `author:` or `papers:` would silently lose its credits instead of
-        showing them. Reject it with the migration hint: everything is a
-        `source:` entry now, and the author names live in its `fullCitation`.
+        showing them, and one still declaring `datasets:` would silently lose
+        its outputs. Reject both with the migration hint: credits are `source:`
+        entries now (author names live in `fullCitation`), and `datasets:` is
+        `outputs:`.
         """
         if not isinstance(data, dict):
             return data
+        renamed = [old for old in _RENAMED_FIELDS if old in data]
+        if renamed:
+            raise ModuleManifestError(
+                "; ".join(f"`{old}:` was renamed to `{_RENAMED_FIELDS[old]}:`" for old in renamed)
+                + " - rename the key in manifest.yaml (the entries keep the same shape)."
+            )
         found = [key for key in _REMOVED_CREDIT_FIELDS if key in data]
         if found:
             raise ModuleManifestError(

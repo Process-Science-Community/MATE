@@ -88,13 +88,38 @@ class CanvasSettings(BaseModel):
     legacy_granularity: Granularity | None = Field(default=None, alias="granularity", exclude=True)
 
 
-class DatasetRef(BaseModel):
-    """Points a ``kind="viz"`` card at a module dataset (manifest ``datasets:``).
+class OutputRef(BaseModel):
+    """Points a ``kind="viz"`` card at a module output (manifest ``outputs:``).
     The card fetches the data from the module's own route and renders it with a
     generic visualization."""
 
     module_id: str
-    dataset_id: str
+    output_id: str
+
+
+# LEGACY. Before Alembic ``0017`` a viz card's ref was ``dataset_ref`` with an
+# inner ``dataset_id``. Stored boards are rewritten by that migration, but board
+# export files written before it live on users' disks, so the import path maps
+# the old keys onto ``output_ref``/``output_id`` instead of 422ing them.
+_LEGACY_REF_KEY = "dataset_ref"
+_LEGACY_REF_ID_KEY = "dataset_id"
+
+
+def _upgrade_legacy_ref(data: Any) -> Any:
+    """Map a pre-``0017`` card's ``dataset_ref`` onto ``output_ref`` (dict input only)."""
+    if not isinstance(data, dict) or _LEGACY_REF_KEY not in data:
+        return data
+    item: dict[str, Any] = dict(data)  # pyright: ignore[reportUnknownArgumentType]
+    legacy = item.pop(_LEGACY_REF_KEY)
+    if "output_ref" in item:
+        return item
+    if isinstance(legacy, dict):
+        ref: dict[str, Any] = dict(legacy)  # pyright: ignore[reportUnknownArgumentType]
+        if _LEGACY_REF_ID_KEY in ref and "output_id" not in ref:
+            ref["output_id"] = ref.pop(_LEGACY_REF_ID_KEY)
+        legacy = ref
+    item["output_ref"] = legacy
+    return item
 
 
 class DashboardItem(BaseModel):
@@ -110,8 +135,8 @@ class DashboardItem(BaseModel):
     Two card kinds share this shape (discriminated by ``kind``):
       * ``widget`` (default) - a module-authored React component, addressed by
         ``module_id`` + ``widget_id`` (the original, pre-existing shape).
-      * ``viz`` - a generic visualization bound to a module **dataset**,
-        addressed by ``dataset_ref`` + ``viz_id`` + ``mapping``.
+      * ``viz`` - a generic visualization bound to a module **output**,
+        addressed by ``output_ref`` + ``viz_id`` + ``mapping``.
     Items stored before ``kind`` existed deserialize as ``widget`` (the default)
     and keep working, so no migration is needed."""
 
@@ -120,10 +145,10 @@ class DashboardItem(BaseModel):
     # widget cards: both required when kind == "widget".
     module_id: str | None = None
     widget_id: str | None = None
-    # viz cards: dataset_ref is required at drop; viz_id/mapping are filled in
+    # viz cards: output_ref is required at drop; viz_id/mapping are filled in
     # when the user configures the card (a freshly dropped viz card renders an
     # "unconfigured" state until then).
-    dataset_ref: DatasetRef | None = None
+    output_ref: OutputRef | None = None
     viz_id: str | None = None
     # Field-mapping: viz field key -> column id (or list). Opaque to the backend.
     mapping: dict[str, Any] = Field(default_factory=dict)
@@ -148,13 +173,18 @@ class DashboardItem(BaseModel):
     # non-field options). Opaque to the backend; the widget/viz interprets it.
     config: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_ref(cls, data: Any) -> Any:
+        return _upgrade_legacy_ref(data)
+
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
         if self.kind == "widget":
             if not self.module_id or not self.widget_id:
                 raise ValueError("A widget card requires module_id and widget_id.")
-        elif self.kind == "viz" and self.dataset_ref is None:
-            raise ValueError("A viz card requires dataset_ref.")
+        elif self.kind == "viz" and self.output_ref is None:
+            raise ValueError("A viz card requires output_ref.")
         return self
 
 

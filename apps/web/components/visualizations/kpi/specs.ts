@@ -17,7 +17,7 @@ const KPI_EXAMPLE = {
   mean_cycle_time_s: 183600,
 };
 
-// Choices come from the bound dataset's measures (field-mapping-form resolves `enumFrom`).
+// Choices come from the bound output's measures (field-mapping-form resolves `enumFrom`).
 const MEASURE: WidgetPropSchema = {
   type: "string",
   title: "Measure",
@@ -43,7 +43,7 @@ const MAX: WidgetPropSchema = {
   description: "Empty = 1 for percent measures, else the sum of all measures.",
 };
 
-const NEEDS_ONE = "A kpi dataset: an object of named numbers (one measure is shown).";
+const NEEDS_ONE = "A kpi output: an object of named numbers (one measure is shown).";
 
 export const kpiSpecs: VizSpec[] = [
   {
@@ -52,7 +52,7 @@ export const kpiSpecs: VizSpec[] = [
     icon: "LayoutGrid",
     group: "kpi",
     description: "Headline numbers as tiles, in a grid or a single strip.",
-    needs: "A kpi dataset: an object of named numbers (nested objects are flattened).",
+    needs: "A kpi output: an object of named numbers (nested objects are flattened).",
     example: KPI_EXAMPLE,
     accepts: ["kpi"],
     fields: [],
@@ -140,7 +140,7 @@ export const kpiSpecs: VizSpec[] = [
     icon: "CircleDashed",
     group: "kpi",
     description: "Several measures as concentric rings on one scale.",
-    needs: "A kpi dataset: an object of named numbers (up to 8 are shown).",
+    needs: "A kpi output: an object of named numbers (up to 8 are shown).",
     example: { fitness: 0.93, precision: 0.81, generalization: 0.88, simplicity: 0.7 },
     accepts: ["kpi"],
     fields: [],

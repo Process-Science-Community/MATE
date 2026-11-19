@@ -14,7 +14,7 @@ const viz = (i: string, x: number, y: number, w: number, h: number, tab?: string
   i,
   kind: "viz",
   module_id: MODULE,
-  dataset_ref: { module_id: MODULE, dataset_id: "summary" },
+  output_ref: { module_id: MODULE, output_id: "summary" },
   viz_id: "table",
   mapping: {},
   title: `Card ${i}`,

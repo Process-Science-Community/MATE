@@ -215,7 +215,7 @@ import json, os
 DESCRIPTIONS = {
     "processes:read": "List processes (event logs) and read their aggregate stats.",
     "processes:write": "Import, rename, filter, remap, duplicate and delete processes.",
-    "modules:read": "Read module analysis outputs and datasets for your processes.",
+    "modules:read": "Read module analysis results and outputs for your processes.",
     "modules:write": "Change per-module configuration (enable/disable, settings).",
     "modules:manage": "Uninstall modules and restore default modules.",
     "dashboards:read": "List and read dashboards (own and shared with you).",

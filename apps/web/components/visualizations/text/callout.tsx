@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { CircleCheck, Info, OctagonAlert, TriangleAlert, type LucideIcon } from "lucide-react";
 
-import type { BlobData, DatasetEnvelope, KpiData, VizComponentProps } from "@/lib/visualizations/types";
+import type { BlobData, OutputEnvelope, KpiData, VizComponentProps } from "@/lib/visualizations/types";
 import { VizEmpty } from "@/components/visualizations/viz-shell";
 import { statusColor } from "@/components/dashboards/kit/palette";
 import { asTable, columnFormat, formatMeasure, formatValue } from "@/components/visualizations/charts/chart-common";
@@ -24,7 +24,7 @@ const TONES: Record<string, { icon: LucideIcon; color: string } | undefined> = {
 
 /** Values `{field}` can reference: the first table row's columns, every KPI
  * measure key (formatted), or a text blob as `{value}`. */
-function fieldsOf(d: DatasetEnvelope, options: Record<string, unknown>): Record<string, string> {
+function fieldsOf(d: OutputEnvelope, options: Record<string, unknown>): Record<string, string> {
   if (d.shape === "kpi") {
     return Object.fromEntries((d.data as KpiData).items.map((m) => [m.key, formatMeasure(m, options)]));
   }
@@ -35,7 +35,7 @@ function fieldsOf(d: DatasetEnvelope, options: Record<string, unknown>): Record<
 
 /** The text shown when no template is set: the blob text, the first text
  * column of the first row, or the KPI measures as "**Label**: value" lines. */
-function fallback(d: DatasetEnvelope, options: Record<string, unknown>): string {
+function fallback(d: OutputEnvelope, options: Record<string, unknown>): string {
   if (d.shape === "blob") return (d.data as BlobData).value ?? "";
   if (d.shape === "kpi") {
     return (d.data as KpiData).items.map((m) => `**${m.label}**: ${formatMeasure(m, options)}`).join("  \n");
@@ -54,20 +54,20 @@ function fallback(d: DatasetEnvelope, options: Record<string, unknown>): string 
 /** Text & status callout: markdown with `{field}` placeholders filled from the
  * data, an optional chip list from an array column of the first row, and a
  * tone (info / success / warning / danger, or none for plain text). */
-export function CalloutViz({ dataset, options }: VizComponentProps) {
+export function CalloutViz({ output, options }: VizComponentProps) {
   const o = options ?? {};
   const template = optStr(o, "text");
-  const fields = fieldsOf(dataset, o);
+  const fields = fieldsOf(output, o);
   const body = template
     ? template.replace(/\{([\w.-]+)\}/g, (m, k: string) => fields[k] ?? m)
-    : fallback(dataset, o);
+    : fallback(output, o);
   const listField = optStr(o, "list_field");
-  const list = listField ? asTable(dataset).rows[0]?.[listField] : undefined;
+  const list = listField ? asTable(output).rows[0]?.[listField] : undefined;
   const items = Array.isArray(list) ? list : [];
   const tone = TONES[optStr(o, "tone", "info")];
 
   if (!body.trim() && items.length === 0) {
-    return optBool(o, "hide_when_empty", false) ? null : <VizEmpty message={dataset.meta?.note ?? "Nothing to report."} />;
+    return optBool(o, "hide_when_empty", false) ? null : <VizEmpty message={output.meta?.note ?? "Nothing to report."} />;
   }
   const Icon = tone?.icon;
   return (

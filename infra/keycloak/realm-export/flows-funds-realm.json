@@ -330,12 +330,12 @@
     },
     {
       "name": "modules:read",
-      "description": "Read module analysis outputs and datasets for your processes.",
+      "description": "Read module analysis results and outputs for your processes.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
         "display.on.consent.screen": "true",
-        "consent.screen.text": "Read module analysis outputs and datasets for your processes."
+        "consent.screen.text": "Read module analysis results and outputs for your processes."
       }
     },
     {

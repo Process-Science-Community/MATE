@@ -309,7 +309,7 @@ async def test_sandboxed_role_stays_in_its_account(reviewer_client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_dataset_routes_refuse_foreign_and_crafted_log_ids(client: AsyncClient) -> None:
+async def test_module_output_routes_refuse_foreign_and_crafted_log_ids(client: AsyncClient) -> None:
     from mate.api.path_segments import safe_segment
 
     for bad in ("../x", "a/b", "..", "", "x/../../y"):
@@ -318,7 +318,7 @@ async def test_dataset_routes_refuse_foreign_and_crafted_log_ids(client: AsyncCl
     assert safe_segment("01a1c648-b005-7206-9eaa-b764228a3076") == (
         "01a1c648-b005-7206-9eaa-b764228a3076"
     )
-    # The read gate the dataset + AI-context routes now apply before a log id
+    # The read gate the module-output + AI-context routes now apply before a log id
     # reaches the module context / cache paths.
     from mate.api.db.engine import get_sessionmaker
     from mate.api.sharing import user_can_access_log

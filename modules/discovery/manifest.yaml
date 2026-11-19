@@ -146,7 +146,7 @@ frontend:
 # Data-only outputs for the platform's generic visualization layer. Each points
 # at a route above; the platform normalizes the response into a shape-tagged
 # envelope and renders it with a generic viz (no module-authored component).
-datasets:
+outputs:
   - id: dfg
     title: Directly-follows graph
     description: Activities and their directly-follows relations (frequency + performance on edges).

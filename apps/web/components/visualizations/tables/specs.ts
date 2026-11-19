@@ -10,7 +10,7 @@ const NUM: ColumnType[] = ["number", "integer", "duration"];
 const CAT: ColumnType[] = ["string", "boolean", "enum", "datetime"];
 
 /** A column-picker option: the settings form fills its choices from the bound
- * dataset (`ui.enumFrom`). The vizzes also accept "a, b" typed as text. */
+ * output (`ui.enumFrom`). The vizzes also accept "a, b" typed as text. */
 export function columnOption(
   title: string,
   enumFrom: "columns" | "numericColumns",
@@ -34,7 +34,7 @@ export const tableSpecs: VizSpec[] = [
     icon: "Table",
     group: "table",
     description: "Sortable, searchable table with formatted columns.",
-    needs: "A table dataset: any route that returns a list of row objects.",
+    needs: "A table output: any route that returns a list of row objects.",
     example: {
       rows: [
         { activity: "Register", cases: 120, share: 0.48, mean_duration_s: 3600, path: ["Register", "Check"] },
@@ -86,7 +86,7 @@ export const tableSpecs: VizSpec[] = [
     icon: "ListOrdered",
     group: "table",
     description: "Top items with value and share bar; long labels stay readable.",
-    needs: "A table dataset with a label column and, optionally, a numeric value column (else rows are counted).",
+    needs: "A table output with a label column and, optionally, a numeric value column (else rows are counted).",
     example: {
       items: [
         { activity: "Register", cases: 120, owner: "Front office" },

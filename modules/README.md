@@ -149,6 +149,12 @@ frontend:
       help:
         what: Headline cycle-time figures for the filtered log.
 
+outputs:                            # typed data the platform renders itself – see §7 Outputs
+  - id: summary
+    title: Activity summary
+    shape: table                    # table | graph | kpi | tree | blob
+    route: /summary                 # one of your @route.get paths
+
 permissions:
   - read:event_log
   - write:module_results
@@ -160,6 +166,7 @@ Rules the manifest validator enforces:
 - A package cannot appear in both `dependencies.python.packages` and `dependencies.python.inherit` – pick one.
 - Hard-dep cycles in `requirements.modules` abort startup.
 - Two modules declaring the same `id` is a startup error.
+- `datasets:` is the old name of `outputs:` and is rejected ("`datasets:` was renamed to `outputs:`"); rename the key, the entries keep their shape.
 
 `inherit` exists so process-mining modules don't reinstall pandas/numpy/pm4py per module – those weigh hundreds of MB. Anything not inherited is fully isolated to your `.venv`.
 
@@ -509,9 +516,29 @@ Use the shadcn-themed building blocks in `@mate/module-sdk-ts` rather than re-im
 
 **Linking entities.** Wherever your UI renders a variant or an activity, make it clickable: build the href with `variantHref(logId, variantId)` / `activityHref(logId, rawActivityName)` from the SDK (or `@/lib/dashboards/drill`) and render it with `next/link` (a runtime external) — the canonical entity views live at those URLs, and a real `<Link>` keeps route skeletons and cmd-click working. Both helpers take **raw** ids/names and encode once — never pre-encode. Filter-style jumps (e.g. "show variants with this activity") stay explicit buttons using the `DRILL_PARAMS` vocabulary; widgets emitting `onDrill({ params: { activity } })` (or `variant`) land on the entity view automatically unless they target a specific module.
 
+### Outputs (data the platform renders for you)
+
+An **output** is a named, typed piece of data your module exposes – no frontend code. Each `outputs:` entry points at one of your `@route.get` paths (a concrete path such as `/data/rows` may be served by a templated route like `/data/{name}`); the platform calls it, normalizes the JSON into a shape-tagged envelope and renders it with a built-in visualization (bar, line, table, process map, KPI, ...). Outputs show up in a dashboard's **Cards & data** palette, can back `viz` cards in `layout.json`, and are listed for MCP clients (`list_module_outputs` / `get_module_output_data`).
+
+```yaml
+outputs:
+  - id: summary                     # unique within the module
+    title: Activity summary
+    description: Events and cases per activity.   # one-line palette blurb
+    icon: Table                     # Lucide name
+    shape: table                    # table | graph | kpi | tree | blob – picks the compatible visualizations
+    route: /summary                 # GET /api/v1/modules/<id>/summary; filters + result cache apply
+    log_models: [case_centric]      # default; add object_centric for OCEL boards
+    params_schema:                  # optional query params; a `controls` card in layout.json edits them
+      properties:
+        top: {type: integer, default: 10, minimum: 1, maximum: 50}
+```
+
+Use an output when a built-in visualization shows your data well; ship a [widget](#widgets) when it needs custom React. Which route responses each shape accepts: [`docs/DEV_LITE.md` → Visualization catalog](../docs/DEV_LITE.md#visualization-catalog).
+
 ### Layout (no-code alternative to a panel)
 
-A module page does not need React. `modules/<folder>/layout.json` describes it as cards on the dashboard grid, each bound to one of the module's `datasets` (rendered by a built-in visualization) or one of its `frontend.widgets`:
+A module page does not need React. `modules/<folder>/layout.json` describes it as cards on the dashboard grid, each bound to one of the module's `outputs` (rendered by a built-in visualization) or one of its `frontend.widgets`:
 
 ```json
 {
@@ -519,7 +546,7 @@ A module page does not need React. `modules/<folder>/layout.json` describes it a
   "items": [
     {
       "i": "summary-table", "kind": "viz", "module_id": "my_module",
-      "dataset_ref": { "module_id": "my_module", "dataset_id": "summary" },
+      "output_ref": { "module_id": "my_module", "output_id": "summary" },
       "viz_id": "table", "mapping": {}, "title": "Activity summary",
       "x": 0, "y": 0, "w": 12, "h": 8, "config": {}
     }
@@ -527,9 +554,9 @@ A module page does not need React. `modules/<folder>/layout.json` describes it a
 }
 ```
 
-The schema is `mate.sdk.ModuleLayout` / `LayoutItem` (items mirror a dashboard card). Without a panel, the module page renders the layout read-only; with both, the page shows **Panel** and **Layout** tabs. Build it visually in the dev-only Studio (`/dev/studio/<id>` under `make lite`, see [`docs/DEV_LITE.md`](../docs/DEV_LITE.md)) instead of writing it by hand; `mate-module validate` checks that every card points at a declared dataset or widget.
+The schema is `mate.sdk.ModuleLayout` / `LayoutItem` (items mirror a dashboard card). Without a panel, the module page renders the layout read-only; with both, the page shows **Panel** and **Layout** tabs. Build it visually in the dev-only Studio (`/dev/studio/<id>` under `make lite`, see [`docs/DEV_LITE.md`](../docs/DEV_LITE.md)) instead of writing it by hand; `mate-module validate` checks that every card points at a declared output or widget.
 
-The Studio palette lists the platform's visualization catalog (Charts, Process models & graphs, Matrices, KPIs, Tables & lists, Text & status). A catalog card binds your first dataset of a shape it accepts; without one it is a "Needs data" placeholder that shows the manifest and route snippets to add, and `mate-module validate` fails until it is bound. Which route responses each shape accepts: [`docs/DEV_LITE.md` → Visualization catalog](../docs/DEV_LITE.md#visualization-catalog).
+The Studio palette lists the platform's visualization catalog (Charts, Process models & graphs, Matrices, KPIs, Tables & lists, Text & status). A catalog card binds your first output of a shape it accepts; without one it is a "Needs data" placeholder that shows the manifest and route snippets to add, and `mate-module validate` fails until it is bound. Which route responses each shape accepts: [`docs/DEV_LITE.md` → Visualization catalog](../docs/DEV_LITE.md#visualization-catalog).
 
 ### Widgets
 
@@ -813,7 +840,7 @@ Run `make validate` before shipping.
 
 Before submitting a module:
 
-- [ ] `make validate` passes: the manifest loads, `HOW_TO_USE.md` passes the guide check (also `uv run python -m mate.sdk.guide modules/<folder>`), and every `layout.json` card points at a declared dataset or widget.
+- [ ] `make validate` passes: the manifest loads, `HOW_TO_USE.md` passes the guide check (also `uv run python -m mate.sdk.guide modules/<folder>`), and every `layout.json` card points at a declared output or widget.
 - [ ] Every label, default and limit in `HOW_TO_USE.md` was checked against the panel and the code (§2).
 - [ ] `README.md`, if you keep one, holds developer notes only; what users need to know lives in the guide.
 - [ ] `requirements.event_log.log_model` is set to the model the module targets (`case_centric` or `object_centric`).
@@ -872,7 +899,7 @@ Mate module is exactly the intended use.
   `ctx.*` call, no typed request bodies on routes (module config is the input
   channel), no `user_id`/`open_event_log`/OCEL on the proxied context, static
   job titles only.
-- Frontend panels/widgets/`datasets:` work exactly as for Python modules –
+- Frontend panels/widgets/`outputs:` work exactly as for Python modules –
   they never knew what language the backend was.
 
 ### The Java SDK

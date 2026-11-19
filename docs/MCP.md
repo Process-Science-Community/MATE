@@ -42,7 +42,7 @@ Two credentials; both resolve to the same per-user principal:
 | Scope | Grants |
 |---|---|
 | `processes:read` / `processes:write` | List/read log metadata + aggregates / import, rename, filter, remap, duplicate, delete, folders |
-| `modules:read` / `modules:write` / `modules:manage` | Module outputs, results, datasets / per-module config / uninstall + restore defaults |
+| `modules:read` / `modules:write` / `modules:manage` | Module outputs, results, typed output catalog / per-module config / uninstall + restore defaults |
 | `dashboards:read` / `dashboards:write` | Read boards (own + shared) / create, edit, share, delete |
 | `jobs:read` / `jobs:control` | List/get/wait / cancel, retry, queue pause/resume |
 | `watched:read` / `watched:write` | Read watched folders / CRUD + scan |
@@ -102,7 +102,7 @@ MCP serves **aggregates and curated module outputs only**. Structurally unavaila
 - File downloads/exports of any kind (original uploads, XES/CSV exports, the metadata DB, analytics exports)
 - Simulated event rows (agentsimulator) and other row-shaped module artifacts
 
-Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_dataset`, `get_module_results`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` never starts anything: modules that haven't run appear under `skipped`. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
+Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_module_output_data`, `get_module_results`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` never starts anything: modules that haven't run appear under `skipped`. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
 
 ## Tool catalog
 
@@ -145,7 +145,7 @@ Legend: **W** = write (needs the write scope; blocked in read-only mode) · **D*
 | `get_module_output` | One module's curated output for a log (the primary analysis read; starts the module if it hasn't run) |
 | `get_process_overview` | Outputs of every guidance-capable module that has already run, in one call (never starts a module) |
 | `get_module_results` | A module's cached JSON results, canonical view (keys + parsed entries) |
-| `list_datasets` / `get_dataset` | Typed module datasets (table/graph/kpi/tree) → canonical envelope |
+| `list_module_outputs` / `get_module_output_data` | Typed module outputs (manifest `outputs:`; table/graph/kpi/tree/blob) → canonical envelope |
 | `get_cached_guidance` | Stored AI guidance for a module or `"__platform__"` (never triggers an LLM call) |
 | `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts` | Curated shortcuts (performance / conformance / discovery / drift modules) |
 | **W** `set_module_config` | Per-user module config + enabled flag (admin-locked settings refuse) |
@@ -196,7 +196,7 @@ Cross-user platform control: `admin_list_jobs`, `admin_get_job_logs`, `admin_can
 
 **Import and analyse**: `import_process_from_url` → `wait_for_job(job_id)` → log is `ready` once parsed → `get_module_output` (a module that hasn't run starts and answers `[conflict] … computing … wait_for_job('<id>')`; wait, then call again) → read outputs. Same pattern after `set_committed_filter` / `remap_columns` / `reimport_process`.
 
-**Build a dashboard**: `get_dashboard_card_catalog` + `list_datasets` → `create_dashboard(event_log_id=…, items=[…])` → `share_dashboard(target_team_id=…)`.
+**Build a dashboard**: `get_dashboard_card_catalog` + `list_module_outputs` → `create_dashboard(event_log_id=…, items=[…])` → `share_dashboard(target_team_id=…)`.
 
 **Recover a failed run**: `list_jobs(status="failed")` → `get_job` (error detail) → fix cause → `retry_job` → `wait_for_job`.
 

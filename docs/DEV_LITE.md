@@ -43,7 +43,7 @@ Other targets:
 | `make new ID=x [PANEL=1]` | Scaffold `modules/x/` (`mate-module new`) |
 | `make widget ID=x NAME=my-widget` | Add a TSX widget to `modules/x/` (`mate-module widget`, see [Custom widgets](#custom-widgets)) |
 | `make test ID=x` | Run `modules/x/tests` (`mate-module test`) |
-| `make modules` | List every module: id, version, name, runtime (isolation/execution or jvm), UI (panel, layout, widgets, datasets), folder (`mate-module list`) |
+| `make modules` | List every module: id, version, name, runtime (isolation/execution or jvm), UI (panel, layout, widgets, outputs), folder (`mate-module list`) |
 | `make validate` | Check every module's manifest, `HOW_TO_USE.md` and `layout.json` (`mate-module validate`) |
 
 ## Why no Docker
@@ -118,7 +118,7 @@ make lite MODULES=my_module,other_module
 
 1. **New.** `make new ID=my_module` writes `modules/my_module/` with a
    `manifest.yaml` (`in_process`, inherits pandas and duckdb, one `summary` table
-   dataset with a `top` param), a `module.py` (route `GET /summary?top=` with
+   output with a `top` param), a `module.py` (route `GET /summary?top=` with
    activity counts plus a `POST /recount` `@job` example that caches them), a
    `HOW_TO_USE.md` that passes the guide check, a `layout.json` that shows every
    card kind (an intro text, a `top` slider, a **Recount** button and the
@@ -132,7 +132,7 @@ make lite MODULES=my_module,other_module
    The module page renders `layout.json` (with the log filter bar). With a panel
    too, the layout's tabs come first and the panel is the last tab, **Panel**.
 3. **Build the UI.** Open **Dev** in the sidebar (`/dev`): it lists the loaded
-   modules with load errors, datasets, widgets and debug info. **Studio**
+   modules with load errors, outputs, widgets and debug info. **Studio**
    (`/dev/studio/<id>`) edits the module's page as it will look (see
    [Studio](#studio-building-a-page-without-tsx)). **Save** writes
    `modules/<id>/layout.json`; **Reload** reloads it like hot reload does.
@@ -171,7 +171,7 @@ Every card has `i`, `kind`, `x`, `y`, `w`, `h`, optional `title`, `config`, `tab
 
 | Kind | What it shows | Shape |
 |---|---|---|
-| `viz` | a generic visualization of a manifest dataset | `"dataset_ref": {"module_id": "m", "dataset_id": "summary"}, "viz_id": "table"` |
+| `viz` | a generic visualization of a manifest output | `"output_ref": {"module_id": "m", "output_id": "summary"}, "viz_id": "table"` |
 | `widget` | one of `frontend.widgets` (TSX) | `"module_id": "m", "widget_id": "kpi"` |
 | `text` | markdown; frameless on the page | `"config": {"markdown": "## Heading\nIntro."}` |
 | `controls` | a form over page params or the module config | `"module_id": "m", "config": {"source": "params", "keys": ["top"]}` |
@@ -198,13 +198,13 @@ A card without `tab` belongs to the first tab. Without `tabs`, no card may set
 `tab`. Tab ids are lowercase slugs. In the Studio, **Tabs** adds, renames and
 deletes tabs; deleting one moves its cards to the first remaining tab.
 
-### Params: controls -> datasets
+### Params: controls -> outputs
 
-1. Declare the params on the dataset (same dialect as `config_schema`;
+1. Declare the params on the output (same dialect as `config_schema`;
    `ui.widget` picks the control):
 
    ```yaml
-   datasets:
+   outputs:
      - id: summary
        route: /summary
        params_schema:
@@ -217,11 +217,11 @@ deletes tabs; deleting one moves its cards to the first remaining tab.
    reads it from the body and the handler gets `None`:
    `activities: Annotated[list[str] | None, Query()] = None`.
 3. Add a `controls` card with `source: "params"` (`keys: []` means every param
-   of every dataset of the module).
+   of every output of the module).
 
 Param values live on the page, shared by all tabs, and are not saved in the URL.
 Only values the user changed are sent; otherwise the route's Python default
-applies. Each viz card sends only the params its own dataset declares.
+applies. Each viz card sends only the params its own output declares.
 `source: "config"` edits the module config (`config_schema`) instead and saves
 it with a **Save** button.
 
@@ -241,12 +241,12 @@ Checked by `mate.sdk.layout` (load, Studio save) and `make validate`:
   unique; every `tab` names a declared tab.
 - `viz` needs `viz_id`; `widget` needs `widget_id`; `text` needs
   `config.markdown`; `controls` and `action` need `module_id`. A `viz` card
-  without `dataset_ref` is a placeholder: the Studio saves it, but `make
-  validate` fails with "card X has no data yet; declare a <shape> dataset and
+  without `output_ref` is a placeholder: the Studio saves it, but `make
+  validate` fails with "card X has no data yet; declare a <shape> output and
   bind it".
 - Every widget's `entry` (and `settings_entry`) file exists.
-- `controls`: `source` is `params` or `config`; each key is declared in a
-  dataset's `params_schema` (or `config_schema`), and there is something to
+- `controls`: `source` is `params` or `config`; each key is declared in an
+  output's `params_schema` (or `config_schema`), and there is something to
   control at all.
 - `action`: `route` starts with `/` and has no `?`. `validate` checks that the
   route string appears in the module's `.py` files; the Studio save (422)
@@ -260,20 +260,20 @@ Below the module group and **Elements**, the Studio palette has a
 Matrices, KPIs, Tables & lists, Text & status. Groups start collapsed; a search
 opens them all. Dashboards do not show this section.
 
-- Each row shows the viz, one line on what it is for, and a badge: `→ <dataset>`
-  when the module has a dataset of a shape the viz accepts, else `needs data`.
+- Each row shows the viz, one line on what it is for, and a badge: `→ <output>`
+  when the module has an output of a shape the viz accepts, else `needs data`.
 - Click (top fit) or drag a row to add it. The card binds the **first**
-  compatible dataset in manifest order (and log model). Pick another one under
+  compatible output in manifest order (and log model). Pick another one under
   **Data** in the inspector.
 - Some rows are presets (e.g. Ranked bars, Sparkline, Similarity matrix): a base
   viz with preset options. Only `viz_id`, `config` and `mapping` are saved, so
   the inspector's picker lists base vizzes only.
-- Without a compatible dataset the card is a **Needs data** placeholder. In dev
-  it shows what the viz needs plus two snippets to copy: a manifest `datasets:`
+- Without a compatible output the card is a **Needs data** placeholder. In dev
+  it shows what the viz needs plus two snippets to copy: a manifest `outputs:`
   item and a `@route.get` returning sample data. Save both files; the module
   reloads, and the Studio refetches when you switch back to the tab.
 
-A dataset is an existing GET route plus a `shape`. The web adapters
+An output is an existing GET route plus a `shape`. The web adapters
 (`apps/web/lib/visualizations/adapters.ts`) turn the route's JSON into that
 shape, so most routes need no change:
 
@@ -286,7 +286,7 @@ shape, so most routes need no change:
 | `tree` | a process tree (`kind: "process_tree"`, operators kept); a prefix tree (`kind: "prefix_tree"`) |
 | `blob` | `value` (text) or `xml` |
 
-Modules with datasets: discovery, conformance, complexity, cv4cdd,
+Modules with outputs: discovery, conformance, complexity, cv4cdd,
 performance_java, performance, log_evolution, complexity_v2, ocel_discovery
 (OCEL logs) and concept_drift_explainer. `apps/web/e2e/fixtures/e2e_viz` has one
 sample route per shape and rule.
@@ -294,7 +294,7 @@ sample route per shape and rule.
 Not yet: BPMN viewer, sankey, gantt, boxplot, dual axis, calendar heatmap,
 process-map compare mode, split panes, facets, automatic DFG thresholds,
 clicks that set page params, platform vizzes importable from module TSX, a
-`path` selector on datasets, image blobs, and the same adapters in Python (MCP).
+`path` selector on outputs, image blobs, and the same adapters in Python (MCP).
 
 ### Custom widgets
 
@@ -307,13 +307,13 @@ make widget ID=my_module NAME=my-widget
 1. It writes `modules/my_module/widgets/MyWidget.tsx` and adds a
    `frontend.widgets` entry to `manifest.yaml` (comments and key order kept; on
    any error the manifest is left unchanged and the entry is printed to paste).
-2. The widget fetches the module's first dataset route (`--dataset D` picks
-   another; without datasets it points at a TODO route) and draws a bar chart.
+2. The widget fetches the module's first output route (`--output O` picks
+   another; without outputs it points at a TODO route) and draws a bar chart.
    Imports must come from `apps/web/lib/runtime-externals.json`.
 3. In `make lite` it appears in the Studio palette's module group within a few
    seconds; switch back to the tab or press **Reload**. Then `make validate`.
 
-Direct use: `uv run mate-module widget <module> <widget-id> [--title T] [--dataset D] [--dir modules]`.
+Direct use: `uv run mate-module widget <module> <widget-id> [--title T] [--output O] [--dir modules]`.
 Widget ids are kebab-case (`^[a-z][a-z0-9-]*$`); an existing id or file is
 refused.
 

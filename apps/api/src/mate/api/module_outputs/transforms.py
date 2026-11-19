@@ -1,9 +1,9 @@
-"""Transform catalog (Phase 2) - DuckDB-backed shaping over a table dataset.
+"""Transform catalog (Phase 2) - DuckDB-backed shaping over a table output.
 
 A transform chain is a list of ``{op, ...}`` steps applied in order to a
-``table``-shaped :class:`DatasetEnvelope`. Each step runs as SQL over the
+``table``-shaped :class:`OutputEnvelope`. Each step runs as SQL over the
 upstream rows registered as a DuckDB relation, reusing the Events-tab filter SQL
-builders so the editor preview and the materialised dataset never diverge.
+builders so the editor preview and the materialised output never diverge.
 
 Supported ops (v1): ``filter``, ``select``, ``sort``, ``limit``, ``aggregate``.
 """
@@ -13,11 +13,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from mate.api.datasets.envelope import (
+from mate.api.module_outputs.envelope import (
     ColumnSpec,
     ColumnType,
-    DatasetEnvelope,
-    DatasetMeta,
+    OutputEnvelope,
+    OutputMeta,
     table_envelope,
 )
 from mate.api.modules.event_filters import build_filter_where, quote_ident
@@ -216,7 +216,7 @@ def _rename(df: Any, step: dict[str, Any]) -> Any:
     return df.rename(columns={frm: to})
 
 
-def apply_transforms(env: DatasetEnvelope, transforms: list[dict[str, Any]]) -> DatasetEnvelope:
+def apply_transforms(env: OutputEnvelope, transforms: list[dict[str, Any]]) -> OutputEnvelope:
     """Apply an ordered transform chain to a table envelope, returning a new
     table envelope. SQL ops (filter/select/sort/limit/aggregate) run over a
     DuckDB relation; the rest run in pandas. Non-table shapes pass through when
@@ -224,7 +224,7 @@ def apply_transforms(env: DatasetEnvelope, transforms: list[dict[str, Any]]) -> 
     if env.shape != "table":
         if not transforms:
             return env
-        raise TransformError("Transforms apply to table-shaped datasets only.")
+        raise TransformError("Transforms apply to table-shaped outputs only.")
     if not transforms:
         return env
 
@@ -270,7 +270,7 @@ def apply_transforms(env: DatasetEnvelope, transforms: list[dict[str, Any]]) -> 
     return table_envelope(
         columns,
         rows,
-        meta=DatasetMeta(
+        meta=OutputMeta(
             sourceKind=env.meta.sourceKind if env.meta else None,
             rowCount=len(rows),
             note=None if rows else "No rows after transforms.",
@@ -279,11 +279,11 @@ def apply_transforms(env: DatasetEnvelope, transforms: list[dict[str, Any]]) -> 
 
 
 def join_envelopes(
-    left: DatasetEnvelope, right: DatasetEnvelope, step: dict[str, Any]
-) -> DatasetEnvelope:
+    left: OutputEnvelope, right: OutputEnvelope, step: dict[str, Any]
+) -> OutputEnvelope:
     """Join two table envelopes on a shared key (engine-level, two-input)."""
     if left.shape != "table" or right.shape != "table":
-        raise TransformError("join requires two table datasets.")
+        raise TransformError("join requires two table outputs.")
     import duckdb
     import pandas as pd
 
@@ -311,5 +311,5 @@ def join_envelopes(
     return table_envelope(
         columns,
         rows,
-        meta=DatasetMeta(rowCount=len(rows), note=None if rows else "No rows after join."),
+        meta=OutputMeta(rowCount=len(rows), note=None if rows else "No rows after join."),
     )

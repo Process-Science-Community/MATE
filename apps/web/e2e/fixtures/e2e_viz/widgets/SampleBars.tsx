@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import type { WidgetProps } from "@/lib/module-widgets";
 
-// Reads the `rows` dataset's route (manifest `datasets`).
+// Reads the `rows` output's route (manifest `outputs`).
 const ROUTE = "/data/rows";
 
 type Row = Record<string, unknown>;

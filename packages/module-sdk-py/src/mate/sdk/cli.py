@@ -4,14 +4,14 @@
     mate-module validate [PATH ...]      # default: every module under ./modules
     mate-module list [PATH ...]          # id, version, name, runtime, UI, folder
     mate-module test my_module [--dir modules] [PYTEST_ARGS ...]
-    mate-module widget my_module my-widget [--dir modules] [--title T] [--dataset D]
+    mate-module widget my_module my-widget [--dir modules] [--title T] [--output O]
 
 ``widget`` writes ``widgets/MyWidget.tsx`` and adds its ``frontend.widgets`` entry to
 ``manifest.yaml`` as text (comments kept); on any failure the manifest is restored.
 
 ``validate`` checks ``manifest.yaml`` (incl. that widget entry files exist),
 ``HOW_TO_USE.md`` (``mate.sdk.guide``) and, when present, ``layout.json``: its schema,
-that every card points at one of the module's own manifest ``datasets`` /
+that every card points at one of the module's own manifest ``outputs`` /
 ``frontend.widgets`` (a viz card without data is a problem), that ``controls`` keys are declared
 (``params_schema`` / ``config_schema``) and that ``action`` routes exist in the source.
 Exit status 0 when all pass, else 1.
@@ -187,26 +187,26 @@ def _widget(args: argparse.Namespace) -> int:
     if tsx.exists():
         print(f"error: {tsx} already exists; refusing to overwrite it.", file=sys.stderr)
         return 1
-    datasets = {d.id: d for d in manifest.datasets}
-    if args.dataset and args.dataset not in datasets:
+    outputs = {o.id: o for o in manifest.outputs}
+    if args.output and args.output not in outputs:
         print(
-            f"error: dataset {args.dataset!r} is not declared "
-            f"(declared: {', '.join(datasets) or 'none'}).",
+            f"error: output {args.output!r} is not declared "
+            f"(declared: {', '.join(outputs) or 'none'}).",
             file=sys.stderr,
         )
         return 1
-    dataset = datasets.get(args.dataset) if args.dataset else next(iter(datasets.values()), None)
+    output = outputs.get(args.output) if args.output else next(iter(outputs.values()), None)
     title: str = args.title or " ".join(widget_id.split("-")).capitalize()
     route_note = (
-        f"Reads the `{dataset.id}` dataset's route (manifest `datasets`)."
-        if dataset
+        f"Reads the `{output.id}` output's route (manifest `outputs`)."
+        if output
         else "TODO: point this at one of your module's @route.get paths."
     )
     values = {
         "__MODULE_ID__": args.module_id,
         "__WIDGET_ID__": widget_id,
         "__COMPONENT__": component,
-        "__ROUTE__": dataset.route if dataset else "/TODO",
+        "__ROUTE__": output.route if output else "/TODO",
         "__ROUTE_NOTE__": route_note,
         "__TITLE__": title,
     }
@@ -280,26 +280,26 @@ def _layout_problems(folder: Path, manifest: Manifest) -> list[str]:
         return [f"{LAYOUT_FILENAME} is invalid: {exc}"]
     if layout is None:
         return []
-    datasets = {d.id for d in manifest.datasets}
+    outputs = {o.id for o in manifest.outputs}
     widgets = {w.id for w in manifest.frontend.widgets}
-    params = {k for d in manifest.datasets for k in _properties(d.params_schema)}
+    params = {k for o in manifest.outputs for k in _properties(o.params_schema)}
     config_keys = set(_properties(manifest.config_schema))
     problems: list[str] = []
     for item in layout.items:
         where = f"{LAYOUT_FILENAME}: card {item.i!r}"
-        owner = item.dataset_ref.module_id if item.dataset_ref else item.module_id
+        owner = item.output_ref.module_id if item.output_ref else item.module_id
         if owner not in (None, manifest.id):
             problems.append(f"{where} points at module {owner!r}; use this module's own data.")
-        elif item.kind == "viz" and item.dataset_ref is None:
+        elif item.kind == "viz" and item.output_ref is None:
             shape = _VIZ_SHAPE.get(item.viz_id or "", "table")
             problems.append(
-                f"{where} has no data yet; declare a {shape} dataset and bind it "
+                f"{where} has no data yet; declare a {shape} output and bind it "
                 f"(Studio: inspector -> Data)."
             )
-        elif item.dataset_ref and item.dataset_ref.dataset_id not in datasets:
+        elif item.output_ref and item.output_ref.output_id not in outputs:
             problems.append(
-                f"{where} uses dataset {item.dataset_ref.dataset_id!r}, which manifest "
-                f"`datasets` does not declare (declared: {', '.join(sorted(datasets)) or 'none'})."
+                f"{where} uses output {item.output_ref.output_id!r}, which manifest "
+                f"`outputs` does not declare (declared: {', '.join(sorted(outputs)) or 'none'})."
             )
         elif item.kind == "widget" and item.widget_id not in widgets:
             problems.append(
@@ -309,7 +309,7 @@ def _layout_problems(folder: Path, manifest: Manifest) -> list[str]:
         elif item.kind == "controls":
             config_source = item.config.get("source", "params") == "config"
             known = config_keys if config_source else params
-            schema = "`config_schema`" if config_source else "a dataset's `params_schema`"
+            schema = "`config_schema`" if config_source else "an output's `params_schema`"
             keys: list[str] = item.config.get("keys", [])
             if not known:
                 problems.append(f"{where} has nothing to control; declare {schema}.")
@@ -382,7 +382,7 @@ def _list(args: argparse.Namespace) -> int:
             "panel" if m.frontend and m.frontend.panel else "",
             "layout" if (folder / LAYOUT_FILENAME).is_file() else "",
             _count(len(m.frontend.widgets) if m.frontend else 0, "widget"),
-            _count(len(m.datasets), "dataset"),
+            _count(len(m.outputs), "output"),
         ]
         rows.append(
             (m.id, m.version, m.name, runtime, ", ".join(u for u in ui if u) or "-", str(folder))
@@ -434,7 +434,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     widget.add_argument("widget_id", help="widget id, lowercase kebab-case")
     widget.add_argument("--dir", default="modules", help="modules root (default: modules)")
     widget.add_argument("--title", help="card title (default: from the id)")
-    widget.add_argument("--dataset", help="dataset whose route it reads (default: the first)")
+    widget.add_argument("--output", help="output whose route it reads (default: the first)")
     widget.set_defaults(func=_widget)
 
     test = sub.add_parser("test", help="run a module's tests with this Python (extra args: pytest)")

@@ -53,7 +53,7 @@ export const graphSpecs: VizSpec[] = [
     icon: "Workflow",
     group: "graph",
     description: "Directly-follows map: activities as nodes, hand-overs as arrows.",
-    needs: "A graph dataset: activities (id, label, frequency) and edges (source, target, frequency, optional performance_seconds), e.g. a dfg route.",
+    needs: "A graph output: activities (id, label, frequency) and edges (source, target, frequency, optional performance_seconds), e.g. a dfg route.",
     example: DFG_EXAMPLE,
     accepts: ["graph"],
     fields: [],
@@ -113,7 +113,7 @@ export const graphSpecs: VizSpec[] = [
     icon: "CircleDot",
     group: "graph",
     description: "Places, transitions and silent steps with initial and final markings.",
-    needs: "A graph dataset from a petri_net route: places, transitions (label, is_invisible) and arcs (source, target, weight).",
+    needs: "A graph output from a petri_net route: places, transitions (label, is_invisible) and arcs (source, target, weight).",
     example: {
       kind: "petri_net",
       places: [
@@ -152,7 +152,7 @@ export const graphSpecs: VizSpec[] = [
     icon: "ListTree",
     group: "tree",
     description: "Indented list of a hierarchy with values.",
-    needs: "A tree dataset: a process_tree route (root with label/children) or a prefix_tree route (nodes with id, parent, label, frequency).",
+    needs: "A tree output: a process_tree route (root with label/children) or a prefix_tree route (nodes with id, parent, label, frequency).",
     example: {
       kind: "prefix_tree",
       nodes: [
@@ -174,7 +174,7 @@ export const graphSpecs: VizSpec[] = [
     icon: "GitFork",
     group: "tree",
     description: "Node-link tree: process-tree operators or a prefix tree by frequency.",
-    needs: "A tree dataset: a process_tree route (root with operator, label, children) or a prefix_tree route.",
+    needs: "A tree output: a process_tree route (root with operator, label, children) or a prefix_tree route.",
     example: {
       kind: "process_tree",
       root: {

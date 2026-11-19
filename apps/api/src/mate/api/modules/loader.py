@@ -35,6 +35,7 @@ from typing import Annotated, Any, get_type_hints
 import structlog
 from fastapi import APIRouter, FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from starlette.routing import compile_path
 
 from mate.api.auth import CurrentUser, CurrentUserDep
 from mate.api.config import get_settings
@@ -110,6 +111,19 @@ def _topic_matches(pattern: str, topic: str) -> bool:
         if seg != t_segs[idx]:
             return False
     return len(t_segs) >= len(p_segs)
+
+
+def _match_path_template(template: str, path: str) -> dict[str, Any] | None:
+    """Path params when a route template (`/data/{name}`, `{n:int}`) matches a
+    concrete `path`, else None. Uses Starlette's own compiler, so a module output's
+    `route` resolves server-side exactly as the mounted HTTP route would."""
+    if "{" not in template:
+        return None
+    regex, _fmt, convertors = compile_path(template)
+    m = regex.match(path)
+    if m is None:
+        return None
+    return {k: convertors[k].convert(v) for k, v in m.groupdict().items()}
 
 
 async def _dev_fingerprint(folder: Path) -> str | None:
@@ -451,7 +465,7 @@ def _decode_event_filter_header(raw: str | None) -> list[dict[str, Any]] | None:
     return cleaned or None
 
 
-# Public alias for first-party callers (datasets routes) that decode the
+# Public alias for first-party callers (module-outputs routes) that decode the
 # ephemeral filter header the same way module routes do.
 decode_event_filter_header = _decode_event_filter_header
 
@@ -1568,7 +1582,7 @@ class ModuleLoader:
         finally:
             shutil.rmtree(ctx.workdir, ignore_errors=True)
 
-    async def run_dataset_route(
+    async def run_output_route(
         self,
         module_id: str,
         route: str,
@@ -1582,10 +1596,10 @@ class ModuleLoader:
     ) -> Any:
         """Invoke a loaded module's ``@route`` handler programmatically.
 
-        The public entry the dataset layer uses to produce a module's data
+        The public entry the module-output layer uses to produce a module's data
         without an HTTP round-trip - it reuses the module's result cache and the
         ephemeral filter exactly like a real request. Returns the raw handler
-        result (the dataset layer normalizes it into an envelope).
+        result (the module-output layer normalizes it into an envelope).
         ``restrict_event_log=True`` wires the AI/MCP data wall: the handler sees
         its result cache but every raw event-log accessor raises."""
         loaded = self.loaded.get(module_id)
@@ -1593,10 +1607,24 @@ class ModuleLoader:
             raise ValueError(f"Module {module_id!r} is not loaded.")
         inst = loaded.instance
         handler: Callable[..., Any] | None = None
-        for name in dir(inst):
-            spec = get_route_spec(getattr(type(inst), name, None))
-            if spec is not None and spec.path == route and spec.method.lower() == method.lower():
-                handler = getattr(inst, name)
+        path_params: dict[str, Any] = {}
+        # An exact path wins; otherwise a templated route (`/data/{name}`) serves the
+        # concrete output path (`/data/rows`) the way the HTTP router would.
+        for exact in (True, False):
+            for name in dir(inst):
+                spec = get_route_spec(getattr(type(inst), name, None))
+                if spec is None or spec.method.lower() != method.lower():
+                    continue
+                if exact:
+                    if spec.path == route:
+                        handler = getattr(inst, name)
+                        break
+                    continue
+                matched = _match_path_template(spec.path, route)
+                if matched is not None:
+                    handler, path_params = getattr(inst, name), matched
+                    break
+            if handler is not None:
                 break
         if handler is None:
             raise ValueError(f"No {method.upper()} route {route!r} on module {module_id!r}.")
@@ -1607,7 +1635,7 @@ class ModuleLoader:
             filter_override=filter_override,
             restrict_event_log=restrict_event_log,
         )
-        return await self._invoke_handler(handler, ctx, **(params or {}))
+        return await self._invoke_handler(handler, ctx, **{**(params or {}), **path_params})
 
     def _uses_worker_execution(self, module_id: str) -> bool:
         """Whether *module_id* is an in-process module that opted into per-job

@@ -90,20 +90,20 @@ function build(g: GraphData, showWeights: boolean): { nodes: Node[]; edges: Edge
   return { nodes, edges };
 }
 
-/** Petri net for a `graph`-shaped dataset whose nodes are `place` /
+/** Petri net for a `graph`-shaped output whose nodes are `place` /
  * `transition` / `silent` (e.g. a `petri_net` route). Arc weights above 1 are
  * shown as labels. */
-export function PetriNetViz({ dataset, options }: VizComponentProps) {
-  const graph = dataset.shape === "graph" ? (dataset.data as GraphData) : null;
+export function PetriNetViz({ output, options }: VizComponentProps) {
+  const graph = output.shape === "graph" ? (output.data as GraphData) : null;
   const showWeights = optBool(options ?? {}, "show_weights", true);
   const direction: FlowDirection = optStr(options ?? {}, "direction") === "TB" ? "TB" : "LR";
   const built = useMemo(() => (graph ? build(graph, showWeights) : null), [graph, showWeights]);
 
   if (!graph || graph.nodes.length === 0 || !built) {
-    return <VizEmpty message={dataset.meta?.note ?? "No Petri net."} />;
+    return <VizEmpty message={output.meta?.note ?? "No Petri net."} />;
   }
   if (!graph.nodes.some((n) => n.kind === "place")) {
-    return <VizEmpty message="This graph has no places. Use a Petri-net dataset, or the Process map." />;
+    return <VizEmpty message="This graph has no places. Use a Petri-net output, or the Process map." />;
   }
   return <ElkCanvas nodes={built.nodes} edges={built.edges} direction={direction} />;
 }

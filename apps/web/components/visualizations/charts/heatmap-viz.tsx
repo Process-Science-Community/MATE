@@ -39,8 +39,8 @@ const keyOf = (x: string, y: string) => JSON.stringify([x, y]);
  * one category column (activity stats, a time series) shows category x numeric
  * column instead, each column shaded against its own max. Hand-rolled grid
  * (no recharts primitive). */
-export function HeatmapViz({ dataset, mapping, options }: VizComponentProps) {
-  const table = asTable(dataset);
+export function HeatmapViz({ output, mapping, options }: VizComponentProps) {
+  const table = asTable(output);
   const cols = table.columns;
   const cats = categoryCols(cols);
   const has = (id: string) => cats.some((c) => c.id === id);
@@ -53,7 +53,7 @@ export function HeatmapViz({ dataset, mapping, options }: VizComponentProps) {
   const nums = numericCols(cols);
   const wide = !matrix && !mappedX && !mappedY && cats.length === 1 && nums.length > 0;
   if (!wide && (!xCol || !yCol || !val || table.rows.length === 0)) {
-    return <VizEmpty message={dataset.meta?.note ?? "Needs two category columns and a value."} />;
+    return <VizEmpty message={output.meta?.note ?? "Needs two category columns and a value."} />;
   }
 
   const xs: string[] = [];
@@ -70,7 +70,7 @@ export function HeatmapViz({ dataset, mapping, options }: VizComponentProps) {
     if (wide) for (const c of nums) add(c.label, String(r[cats[0].id] ?? ""), r[c.id]);
     else add(String(r[xCol!] ?? ""), String(r[yCol!] ?? ""), r[val!]);
   }
-  if (cell.size === 0) return <VizEmpty message={dataset.meta?.note} />;
+  if (cell.size === 0) return <VizEmpty message={output.meta?.note} />;
   // Wide mode: per-column format and scale (seconds and counts never share one).
   const colOf = new Map(nums.map((c) => [c.label, c.id]));
 

@@ -82,7 +82,7 @@ Cards follow the filters of their dashboard. Each has an info icon with a short 
 - **Conformance score**: the tiles Fitness, Precision, Conforming and Deviations.
 - **Top deviations**: a bar chart of the activities with the most deviations. **Activities shown** (3 to 25, default 10) sets how many bars it draws.
 
-The module also offers the datasets **Conformance KPIs** and **Per-activity deviations** in the **Cards & data** palette of a dashboard.
+The module also offers the outputs **Conformance KPIs** and **Per-activity deviations** in the **Cards & data** palette of a dashboard.
 
 ## Tips and limits
 
