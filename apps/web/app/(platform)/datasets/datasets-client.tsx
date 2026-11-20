@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Database, Loader2, Search, SearchX } from "lucide-react";
 
@@ -27,7 +28,12 @@ function readSort(v: string | null): DatasetSort {
   return v === "uses" ? "uses" : "updated";
 }
 
-export function DatasetsClient() {
+/**
+ * The dataset catalog. With ``namespace`` it is that namespace's page
+ * (``/datasets/{namespace}``, like an organisation page on Hugging Face):
+ * the same search and filters, scoped to the namespace's readable datasets.
+ */
+export function DatasetsClient({ namespace }: { namespace?: string } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -54,7 +60,10 @@ export function DatasetsClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
-  const params = useMemo(() => ({ q: q || undefined, license, sort }), [q, license, sort]);
+  const params = useMemo(
+    () => ({ q: q || undefined, license, sort, namespace }),
+    [q, license, sort, namespace],
+  );
   const { data: licenses } = useLicenses(!hubOff);
   const list = useDatasets(params, !hubOff);
   const items = useMemo(() => list.data?.pages.flatMap((p) => p.items) ?? [], [list.data]);
@@ -75,6 +84,17 @@ export function DatasetsClient() {
 
   return (
     <PageContainer>
+      {namespace && (
+        <div className="mb-4 space-y-1">
+          <Link
+            href="/datasets"
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+          >
+            All datasets
+          </Link>
+          <h1 className="font-mono text-2xl font-semibold tracking-tight">{namespace}</h1>
+        </div>
+      )}
       <PageHeader className="items-center">
         <div className="relative w-full max-w-md">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -148,8 +168,12 @@ export function DatasetsClient() {
         ) : (
           <EmptyState
             icon={Database}
-            title="No datasets yet"
-            description="Published event logs appear here. Use one to get your own copy, ready to analyse."
+            title={namespace ? "No datasets here" : "No datasets yet"}
+            description={
+              namespace
+                ? "This namespace has no datasets you can see."
+                : "Published event logs appear here. Use one to get your own copy, ready to analyse."
+            }
           />
         )
       ) : (

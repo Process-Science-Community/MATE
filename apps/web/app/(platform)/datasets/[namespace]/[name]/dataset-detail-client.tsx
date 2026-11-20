@@ -164,7 +164,13 @@ function Header({ ds }: { ds: DatasetDetail }) {
         <h1 className="text-2xl font-semibold tracking-tight">{ds.title}</h1>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1 font-mono">
-            {ds.slug}
+            <Link
+              href={`/datasets/${encodeURIComponent(ds.namespace)}`}
+              className="underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {ds.namespace}
+            </Link>
+            /{ds.name}
             <button
               type="button"
               onClick={copyLink}

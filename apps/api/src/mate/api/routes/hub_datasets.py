@@ -62,12 +62,20 @@ async def list_datasets(
     user: CurrentUserDep,
     q: Annotated[str | None, Query(max_length=200)] = None,
     license: Annotated[str | None, Query(max_length=32)] = None,
+    namespace: Annotated[str | None, Query(max_length=64)] = None,
     sort: Annotated[Literal["updated", "uses"], Query()] = "updated",
     limit: Annotated[int, Query(ge=1, le=50)] = 24,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DatasetPage:
     items, total = await service.list_datasets(
-        session, user, q=q, license=license, sort=sort, limit=limit, offset=offset
+        session,
+        user,
+        q=q,
+        license=license,
+        namespace=namespace,
+        sort=sort,
+        limit=limit,
+        offset=offset,
     )
     return DatasetPage(items=items, total=total, limit=limit, offset=offset)
 
