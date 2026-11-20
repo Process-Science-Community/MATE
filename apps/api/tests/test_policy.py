@@ -489,6 +489,26 @@ async def test_model_card_lock_sets_sentinel(
     models = (await c.get(f"/api/v1/modules/{_MID}/models")).json()
     assert models == {"locked": True, "selected": "pinned"}
 
+    # A pinned model is in every account's config, so it is not a "non-default"
+    # setting: the dataset publish dialog must not warn about it (and students
+    # get the same pin, so the curator's results apply to them).
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.modules import get_module_loader
+
+    loader = get_module_loader()
+    async with get_sessionmaker()() as session:
+        assert await loader.config_is_default(session, _MID, TEST_USER_ID)
+    # A real per-user change still counts. Unlock the config card first: the
+    # control rows are shared by every test on this database.
+    await _unlock_card(c, "config")
+    put = await c.put(
+        f"/api/v1/modules/{_MID}/config",
+        json={"config": {"threshold": 0.7}, "enabled": True},
+    )
+    assert put.status_code == 200, put.text
+    async with get_sessionmaker()() as session:
+        assert not await loader.config_is_default(session, _MID, TEST_USER_ID)
+
 
 @pytest.mark.asyncio
 async def test_ai_card_lock_sets_sentinel(

@@ -1740,7 +1740,7 @@ class ModuleLoader:
         return cfg_json
 
     async def _normalised_config(
-        self, session: AsyncSession, module_id: str, user_id: str
+        self, session: AsyncSession, module_id: str, user_id: str, *, fresh: bool = False
     ) -> dict[str, Any]:
         """The resolved config without lock sentinels and without keys whose value
         equals the manifest's ``config_schema`` default.
@@ -1759,12 +1759,31 @@ class ModuleLoader:
             for key, spec in cast("dict[str, object]", props).items():
                 if isinstance(spec, dict) and "default" in spec:
                     defaults[key] = cast("dict[str, Any]", spec)["default"]
+        resolved = (
+            await self.resolved_config_for_fresh_account(session, module_id, user_id)
+            if fresh
+            else await self.resolved_config(session, module_id, user_id)
+        )
         return {
             k: v
-            for k, v in (await self.resolved_config(session, module_id, user_id)).items()
+            for k, v in resolved.items()
             if k not in {MODEL_LOCK_SENTINEL, AI_LOCK_SENTINEL}
             and not (k in defaults and v == defaults[k])
         }
+
+    async def resolved_config_for_fresh_account(
+        self, session: AsyncSession, module_id: str, user_id: str
+    ) -> dict[str, Any]:
+        """What :meth:`resolved_config` gives an account that never saved this
+        module's settings: no per-user row, only the admin-locked card overlays
+        (e.g. a platform-wide pinned model)."""
+        from mate.api.modules.cards import resolve_card_overlays
+
+        loaded_mod = self.loaded.get(module_id)
+        if loaded_mod is None:
+            return {}
+        cfg, _ = await resolve_card_overlays(session, loaded_mod.manifest, {}, user_id)
+        return cfg
 
     async def config_fingerprint(self, session: AsyncSession, module_id: str, user_id: str) -> str:
         """sha256 of the normalised config (:meth:`_normalised_config`).
@@ -1777,8 +1796,13 @@ class ModuleLoader:
         return hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()
 
     async def config_is_default(self, session: AsyncSession, module_id: str, user_id: str) -> bool:
-        """True if the user's config for ``module_id`` equals the manifest defaults."""
-        return not await self._normalised_config(session, module_id, user_id)
+        """True if the user's config for ``module_id`` equals what an account that
+        never changed it gets: the manifest defaults plus any admin-locked values.
+        A platform-wide pinned model is part of everyone's config, so it must not
+        make the curator's settings count as non-default."""
+        return await self._normalised_config(
+            session, module_id, user_id
+        ) == await self._normalised_config(session, module_id, user_id, fresh=True)
 
     def run_version(self, module_id: str) -> str | None:
         """The version a ``log_module_runs`` row records for ``module_id``.
