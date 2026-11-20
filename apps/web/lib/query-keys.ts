@@ -118,6 +118,7 @@ export function datasetsListPath(p: DatasetListParams = {}): string {
   const qs = new URLSearchParams();
   if (p.q) qs.set("q", p.q);
   if (p.license) qs.set("license", p.license);
+  if (p.namespace) qs.set("namespace", p.namespace);
   if (p.sort) qs.set("sort", p.sort);
   if (p.limit !== undefined) qs.set("limit", String(p.limit));
   if (p.offset !== undefined) qs.set("offset", String(p.offset));

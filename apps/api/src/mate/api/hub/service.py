@@ -711,6 +711,7 @@ async def list_datasets(
     sort: str,
     limit: int,
     offset: int,
+    namespace: str | None = None,
 ) -> tuple[list[DatasetSummary], int]:
     if sort not in SORTS:
         raise _422(f"sort must be one of {', '.join(SORTS)}.")
@@ -723,6 +724,11 @@ async def list_datasets(
         conds.append(HubDataset.search_text.like(f"%{_escape_like(tok)}%", escape="\\"))
     if license:
         conds.append(HubDataset.license_id == license)
+    if namespace is not None:
+        # The namespace page (/datasets/{namespace}). An unknown or malformed
+        # namespace is simply empty - same as one whose datasets the user
+        # cannot read, so the page never reveals that private datasets exist.
+        conds.append(HubDataset.namespace == namespace)
     for cond in conds:
         stmt = stmt.where(cond)
         count_stmt = count_stmt.where(cond)

@@ -1244,6 +1244,7 @@ export type DatasetSort = "updated" | "uses";
 export interface DatasetListParams {
   q?: string;
   license?: string;
+  namespace?: string;
   sort?: DatasetSort;
   limit?: number;
   offset?: number;

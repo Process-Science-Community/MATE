@@ -340,6 +340,15 @@ async def test_catalog_search_escapes_like_and_matches_tags() -> None:
         assert await search(q=f"{tok} sale off") == [made["plain"], made["pct"]]
         assert await search(q=tok, license="cc-by-nc-4.0") == [made["nc"]]
 
+        # The namespace page lists what the viewer may read there, nothing else:
+        # a private dataset in the same namespace is as invisible as an unknown
+        # namespace.
+        ns = uniq("ns-")
+        shown = (await publish(c, state, log_id, ns=ns, name="open"))["slug"]
+        await publish(c, state, log_id, ns=ns, name="draft", visibility="private")
+        assert await search(namespace=ns) == [shown]
+        assert await search(namespace=uniq("ns-")) == []
+
         # sort=uses counts distinct users (a second copy by one user is not a use).
         assert (await use(c, state, STUDENT, made["axb"])).status_code == 201
         assert (await use(c, state, OTHER, made["axb"])).status_code == 201
