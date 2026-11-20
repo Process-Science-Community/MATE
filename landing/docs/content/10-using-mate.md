@@ -134,6 +134,42 @@ The card per folder shows mode, interval, last scan, and a status badge (`active
 | Source & schema | Original filename, format, import time, time bounds, per-column labels. |
 | Edit history | Every cell edit with its timestamp. |
 | Maintenance | Re-run import, delete. |
+| Publish as dataset | Admins only: publish the log to the dataset catalog. |
+
+# Datasets
+
+A dataset is a published, read-only event log in the catalog at **Datasets** (`/datasets`). Admins publish them; everyone uses them the same way.
+
+## Finding a dataset
+
+Search matches title, summary, `namespace/name` and tags; filter by license, sort by last update or by number of users. You see a dataset only if its visibility includes you:
+
+| Visibility | Who sees it |
+| --- | --- |
+| Private | Admins (a draft). |
+| Restricted | Members of one team. |
+| Public | Every signed-in account. Reviewer accounts see only openly licensed public datasets. |
+
+A dataset you cannot see answers "not found". The page shows the card (license, citation, publisher, source), statistics (cases, events, activities, variants, time span, columns), the top activities and variants, and the first 50 rows.
+
+## Using a dataset
+
+**Use this dataset** copies it into your own processes – the event data and the module results that were precomputed for it, never the original upload. Your copy is an ordinary log: filter it, edit cells, build dashboards. Nothing you do changes the dataset.
+
+| Aspect | Behaviour |
+| --- | --- |
+| Repeat clicks | Open your existing copy. **Add another copy** makes a fresh one. |
+| Precomputed modules | Open instantly on your copy as long as you keep that module's default settings and have not filtered or edited the data. Other modules compute on first open. |
+| Attribution | A banner on the process and module pages names the dataset, its license and citation; dashboards on a copy carry the same footer. Cite the dataset when you publish results. |
+| Not available | Re-import and column remapping (there is no original file). |
+| External AI | Allowed unless the dataset's license forbids it; then MATE AI and MCP clients refuse the copy. |
+| Withdrawn | If an admin withdraws the dataset, your copy stops serving data and shows why; you can still delete it. |
+
+## Publishing (admins)
+
+Settings tab of your own log → **Publish as dataset**. The log must be ready, case-centric, not itself a copy, and have no committed filter. Fill in the card: namespace and name (the URL), title, license (a curated list; `other` needs a name and URL), citation and publisher (required beyond private), source URL or DOI, tags, and whether external AI is allowed. Start **private**, check the page, then widen visibility from the curator panel on the dataset page, where **Disable**, **Enable** and **Purge** also live.
+
+Only results of modules that precompute on import, up to date for the log, ship with a dataset; the dialog lists them. Run those modules with default settings before publishing.
 
 # Exploring a process
 

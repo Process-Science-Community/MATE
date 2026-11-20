@@ -101,6 +101,9 @@ export function prefetchModules(qc: QueryClient): Promise<void> {
  */
 export function prefetchProcessTabs(qc: QueryClient, log: EventLogDetail): void {
   if (log.status !== "ready") return;
+  // A copy of a withdrawn (disabled/purged) dataset answers 410 on every data
+  // route; only its metadata row is readable, so there is nothing to warm.
+  if (log.source_dataset && log.source_dataset.status !== "active") return;
   const logId = log.id;
 
   if (log.log_model === "object_centric") {

@@ -13,7 +13,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mate.api.schemas.common import UtcDateTime
-from mate.api.schemas.event_logs import LogModel
+from mate.api.schemas.event_logs import LogModel, SourceDataset
 
 # The board grid. One fixed 12-column layout - there is no per-board snap
 # level any more. Absolute size floors live on the widget manifest
@@ -216,6 +216,9 @@ class DashboardDetail(BaseModel):
     # read-only (no edit toolbar, no save). The owner-only mutation routes also
     # 404 for a non-owner, so this is defence-in-depth, not the only gate.
     is_owner: bool = True
+    # Set when the bound log was copied from a published dataset - the board
+    # footer cites it (owners and share recipients alike).
+    source_dataset: SourceDataset | None = None
 
 
 class DashboardCreate(BaseModel):

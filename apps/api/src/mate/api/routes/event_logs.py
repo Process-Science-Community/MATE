@@ -25,6 +25,8 @@ from mate.api.auth import (
 )
 from mate.api.db.models import EventLog
 from mate.api.db.session import SessionDep
+from mate.api.hub import gate as hub_gate
+from mate.api.hub import service as hub_service
 from mate.api.ingest import staging
 from mate.api.ingest.archive import (
     ArchiveEntry,
@@ -56,6 +58,7 @@ from mate.api.schemas.event_logs import (
     LogProbeResponse,
     ProbeColumn,
     RemapColumnRoles,
+    SourceDataset,
     StageResponse,
     XmlColumnMapping,
     XmlProbeResponse,
@@ -710,13 +713,23 @@ async def list_event_logs(
         like = f"%{q.lower()}%"
         stmt = stmt.where(EventLog.name.ilike(like))
     rows = (await session.execute(stmt)).scalars().all()
-    return [EventLogSummary.model_validate(r) for r in rows]
+    sources = await hub_gate.source_datasets_for(session, rows)
+    out: list[EventLogSummary] = []
+    for r in rows:
+        item = EventLogSummary.model_validate(r)
+        info = sources.get(r.id)
+        if info is not None:
+            item.source_dataset = SourceDataset.model_validate(info.as_dict())
+        out.append(item)
+    return out
 
 
 @router.get("/{log_id}", response_model=EventLogDetail)
 async def get_event_log(log_id: str, session: SessionDep, user: CurrentUserDep) -> EventLogDetail:
-    row = await get_owned_event_log(session, log_id, user.id)
-    return EventLogDetail.model_validate(row)
+    # Exempt from the dataset takedown gate: the web renders the "withdrawn"
+    # panel from `source_dataset.status`.
+    row = await get_owned_event_log(session, log_id, user.id, allow_unavailable=True)
+    return await hub_service.log_detail(session, row, user)
 
 
 @router.delete("/{log_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -726,7 +739,8 @@ async def delete_event_log(
     runtime: _RuntimeDep,
     user: CurrentUserDep,
 ) -> None:
-    row = await get_owned_event_log(session, log_id, user.id)
+    # Exempt from the takedown gate: the owner can always delete a withdrawn copy.
+    row = await get_owned_event_log(session, log_id, user.id, allow_unavailable=True)
     await log_aggregates.delete_log_and_data(session, runtime, row, user.id)
 
 
@@ -761,7 +775,7 @@ async def update_event_log(
     if payload.position is not None:
         row.position = payload.position
     await session.commit()
-    return EventLogDetail.model_validate(row)
+    return await hub_service.log_detail(session, row, user)
 
 
 @router.post(
@@ -823,4 +837,4 @@ async def duplicate_event_log(
     """
     src = await get_owned_event_log(session, log_id, user.id)
     duplicate = await log_aggregates.duplicate_log(session, src, user.id)
-    return EventLogDetail.model_validate(duplicate)
+    return await hub_service.log_detail(session, duplicate, user)

@@ -31,6 +31,7 @@ export function MaintenanceSection({ log }: { log: EventLogDetail }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const importing = log.status === "importing";
+  const fromDataset = !!log.source_dataset;
 
   const onReimport = async () => {
     try {
@@ -55,6 +56,15 @@ export function MaintenanceSection({ log }: { log: EventLogDetail }) {
   return (
     <SectionShell title="Maintenance" description="Operations that affect the underlying parquet files.">
       <div className="space-y-4">
+        {fromDataset ? (
+          <div className="rounded-md border border-border/60 p-3">
+            <p className="text-sm font-medium">Re-run import</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Created from a dataset – there is no original upload to re-import. Use the dataset
+              again for a fresh copy.
+            </p>
+          </div>
+        ) : (
         <div className="flex items-start justify-between gap-4 rounded-md border border-border/60 p-3">
           <div className="space-y-1">
             <p className="text-sm font-medium">Re-run import</p>
@@ -74,6 +84,7 @@ export function MaintenanceSection({ log }: { log: EventLogDetail }) {
             Re-run import
           </Button>
         </div>
+        )}
 
         <div className="flex items-start justify-between gap-4 rounded-md border border-destructive/30 p-3">
           <div className="space-y-1">

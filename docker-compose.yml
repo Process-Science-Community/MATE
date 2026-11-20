@@ -119,6 +119,8 @@ services:
       # (it runs inside the API with every account's data and the secrets).
       # Modules ship by reviewed pull request; see docs/strategy/hub-roadmap.md.
       MODULE_UPLOAD_ENABLED: ${MODULE_UPLOAD_ENABLED:-false}
+      # Dataset hub (/datasets). false hides routes + nav; gates on derived logs stay.
+      HUB_DATASETS_ENABLED: ${HUB_DATASETS_ENABLED:-true}
       # Realm roles confined to their own account: no module upload, no custom
       # watched-folder path, no API tokens (see docs/REVIEWER_ACCESS.md).
       SANDBOXED_ROLES: ${SANDBOXED_ROLES:-reviewer}

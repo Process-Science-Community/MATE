@@ -25,8 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.auth import CurrentUserDep, get_owned_event_log
 from mate.api.dashboard_templates import get_template, list_templates
-from mate.api.db.models import Dashboard, DashboardShare, Team, User
+from mate.api.db.models import Dashboard, DashboardShare, EventLog, Team, TeamMember, User
 from mate.api.db.session import SessionDep
+from mate.api.hub.access import recipient_may_read_derived_log
+from mate.api.hub.gate import lineage_for, source_datasets_for
 from mate.api.schemas.dashboards import (
     GRID_COLS,
     LEGACY_GRANULARITY_COLS,
@@ -41,6 +43,7 @@ from mate.api.schemas.dashboards import (
     DashboardTemplate,
     DashboardUpdate,
 )
+from mate.api.schemas.event_logs import SourceDataset
 from mate.api.schemas.sharing import DashboardShareOut, ShareCreate
 from mate.api.sharing import (
     can_share_with_team,
@@ -252,6 +255,57 @@ def dashboard_detail(row: Dashboard, *, is_owner: bool = True) -> DashboardDetai
     )
 
 
+async def dashboard_detail_full(
+    session: AsyncSession, row: Dashboard, *, is_owner: bool = True
+) -> DashboardDetail:
+    """``dashboard_detail`` plus the bound log's dataset attribution."""
+    detail = dashboard_detail(row, is_owner=is_owner)
+    if row.event_log_id:
+        log_row = await session.get(EventLog, row.event_log_id)
+        if log_row is not None and log_row.dataset_revision_id is not None:
+            info = (await source_datasets_for(session, [log_row])).get(log_row.id)
+            if info is not None:
+                detail.source_dataset = SourceDataset.model_validate(info.as_dict())
+    return detail
+
+
+async def live_team_members(session: AsyncSession, team_id: str) -> set[str]:
+    team = await session.get(Team, team_id)
+    if team is None or team.deleted_at is not None:
+        return set()
+    rows = await session.execute(select(TeamMember.user_id).where(TeamMember.team_id == team_id))
+    return set(rows.scalars().all())
+
+
+async def _dataset_id_of_board(session: AsyncSession, dashboard_id: str) -> str | None:
+    """The dataset behind the board's log, if that log is a dataset copy."""
+    dash = await session.get(Dashboard, dashboard_id)
+    if dash is None or not dash.event_log_id:
+        return None
+    log_row = await session.get(EventLog, dash.event_log_id)
+    if log_row is None or log_row.dataset_revision_id is None:
+        return None
+    lineage = await lineage_for(session, log_row)
+    return lineage.dataset.id if lineage is not None and lineage.dataset is not None else None
+
+
+async def _restricted_dataset_audience(
+    session: AsyncSession, dashboard_id: str
+) -> tuple[bool, str | None]:
+    """``(restricted, audience_team_id)`` of the dataset behind the board's log."""
+    dash = await session.get(Dashboard, dashboard_id)
+    if dash is None or not dash.event_log_id:
+        return False, None
+    log_row = await session.get(EventLog, dash.event_log_id)
+    if log_row is None or log_row.dataset_revision_id is None:
+        return False, None
+    lineage = await lineage_for(session, log_row)
+    ds = lineage.dataset if lineage is not None else None
+    if ds is None or ds.visibility != "restricted":
+        return False, None
+    return True, ds.audience_team_id
+
+
 async def get_owned_dashboard(session: AsyncSession, dashboard_id: str, user_id: str) -> Dashboard:
     """Owner-only gate for mutations: 404 for missing AND foreign boards."""
     row = await session.get(Dashboard, dashboard_id)
@@ -351,7 +405,7 @@ async def create_dashboard(
     session.add(row)
     await session.commit()
     log.info("dashboard.created", dashboard_id=row.id, template=payload.template_id)
-    return dashboard_detail(row)
+    return await dashboard_detail_full(session, row)
 
 
 @router.get("/templates", response_model=list[DashboardTemplate])
@@ -380,7 +434,7 @@ async def get_dashboard(
 ) -> DashboardDetail:
     # Owner or share recipient may view; recipients get a read-only board.
     row = await get_accessible_dashboard(session, dashboard_id, user.id)
-    return dashboard_detail(row, is_owner=row.user_id == user.id)
+    return await dashboard_detail_full(session, row, is_owner=row.user_id == user.id)
 
 
 @router.patch("/{dashboard_id}", response_model=DashboardDetail)
@@ -393,7 +447,7 @@ async def update_dashboard(
     row = await get_owned_dashboard(session, dashboard_id, user.id)
     await apply_dashboard_update(session, row, payload, user.id)
     await session.commit()
-    return dashboard_detail(row)
+    return await dashboard_detail_full(session, row)
 
 
 @router.delete("/{dashboard_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -447,7 +501,7 @@ async def import_dashboard(
     session.add(row)
     await session.commit()
     log.info("dashboard.imported", dashboard_id=row.id, cards=len(payload.items))
-    return dashboard_detail(row)
+    return await dashboard_detail_full(session, row)
 
 
 # --- Sharing (owner-managed) -------------------------------------------------
@@ -522,6 +576,37 @@ async def create_share_for_owner(
 
     if (await session.execute(dup)).first() is not None:
         raise HTTPException(status_code=409, detail="Already shared with this target.")
+
+    # A user who could not read the dataset (e.g. a sandboxed account and a
+    # non-open license) cannot be handed its copy either. The read side
+    # (`sharing.user_can_read_log`) re-checks this on every request; refusing
+    # here just keeps the owner from creating a share that never works.
+    if payload.target_user_id is not None:
+        dataset_id = await _dataset_id_of_board(session, dashboard_id)
+        if dataset_id is not None and not await recipient_may_read_derived_log(
+            session, dataset_id, payload.target_user_id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="This dashboard uses a dataset this user may not access.",
+            )
+
+    # A board over a restricted dataset's copy may only go to the dataset's
+    # audience (the read side re-checks membership in `sharing`).
+    restricted, audience = await _restricted_dataset_audience(session, dashboard_id)
+    if restricted:
+        if payload.target_team_id is not None:
+            ok = audience is not None and payload.target_team_id == audience
+        else:
+            ok = audience is not None and payload.target_user_id in await live_team_members(
+                session, audience
+            )
+        if not ok:
+            raise HTTPException(
+                status_code=403,
+                detail="This dashboard uses a restricted dataset; share it only with its "
+                "audience team.",
+            )
 
     share = DashboardShare(
         id=uuid7_str(),

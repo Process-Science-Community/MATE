@@ -30,11 +30,12 @@ import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Any, get_type_hints
+from typing import Annotated, Any, cast, get_type_hints
 
 import structlog
 from fastapi import APIRouter, FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.routing import compile_path
 
 from mate.api.auth import CurrentUser, CurrentUserDep
@@ -42,6 +43,7 @@ from mate.api.config import get_settings
 from mate.api.db.engine import get_sessionmaker
 from mate.api.db.models import EventLog, ModuleConfig
 from mate.api.events import EventBus
+from mate.api.hub.gate import ensure_external_ai_allowed, ensure_log_usable
 from mate.api.jobs.runtime import JobHandle, JobRuntime
 from mate.api.modules.availability import Availability
 from mate.api.modules.availability import evaluate as evaluate_availability
@@ -552,6 +554,14 @@ def _build_endpoint_signature(extras: list[inspect.Parameter]) -> inspect.Signat
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
+
+def module_run_version(loaded: Any) -> str:
+    """The version a ``log_module_runs`` row records for a loaded module: the
+    manifest version, salted with the code fingerprint in env=dev so a code edit
+    makes earlier results stale."""
+    fp = getattr(loaded, "dev_fingerprint", None)
+    return f"{loaded.manifest.version}+dev.{fp}" if fp else loaded.manifest.version
 
 
 class ModuleLoader:
@@ -1693,6 +1703,92 @@ class ModuleLoader:
 
         return _run_in_process
 
+    async def resolved_config(
+        self, session: AsyncSession, module_id: str, user_id: str
+    ) -> dict[str, Any]:
+        """The config a handler sees: the user's ``ModuleConfig`` row with every
+        admin-locked settings card overlaid (plus the lock sentinels).
+
+        Per-user config is always the base; each admin-locked settings card
+        (mate.api.modules.cards) overlays only the config_json slice it owns, so
+        locking one card never drops another card's per-user value. A locked model
+        card additionally gets the __model_admin_locked__ sentinel so the module's
+        /models route renders read-only; a locked AI card the ai sentinel so a
+        module's action routes can refuse.
+        """
+        from mate.api.modules.cards import (
+            AI_LOCK_SENTINEL,
+            CARD_AI,
+            CARD_MODEL,
+            MODEL_LOCK_SENTINEL,
+            resolve_card_overlays,
+        )
+
+        cfg_json: dict[str, Any] = {}
+        row = await session.get(ModuleConfig, (user_id, module_id))
+        if row is not None and row.config_json:
+            cfg_json = dict(row.config_json)
+        loaded_mod = self.loaded.get(module_id)
+        if loaded_mod is not None:
+            cfg_json, controlled_cards = await resolve_card_overlays(
+                session, loaded_mod.manifest, cfg_json, user_id
+            )
+            if controlled_cards.get(CARD_MODEL):
+                cfg_json[MODEL_LOCK_SENTINEL] = True
+            if controlled_cards.get(CARD_AI):
+                cfg_json[AI_LOCK_SENTINEL] = True
+        return cfg_json
+
+    async def _normalised_config(
+        self, session: AsyncSession, module_id: str, user_id: str
+    ) -> dict[str, Any]:
+        """The resolved config without lock sentinels and without keys whose value
+        equals the manifest's ``config_schema`` default.
+
+        The settings card saves the whole merged dict, so a user who pressed Save
+        without changing anything stores the defaults explicitly; that must not
+        count as a different config than an empty one.
+        """
+        from mate.api.modules.cards import AI_LOCK_SENTINEL, MODEL_LOCK_SENTINEL
+
+        defaults: dict[str, Any] = {}
+        loaded = self.loaded.get(module_id)
+        schema: dict[str, Any] = (loaded.manifest.config_schema or {}) if loaded is not None else {}
+        props: object = schema.get("properties")
+        if isinstance(props, dict):
+            for key, spec in cast("dict[str, object]", props).items():
+                if isinstance(spec, dict) and "default" in spec:
+                    defaults[key] = cast("dict[str, Any]", spec)["default"]
+        return {
+            k: v
+            for k, v in (await self.resolved_config(session, module_id, user_id)).items()
+            if k not in {MODEL_LOCK_SENTINEL, AI_LOCK_SENTINEL}
+            and not (k in defaults and v == defaults[k])
+        }
+
+    async def config_fingerprint(self, session: AsyncSession, module_id: str, user_id: str) -> str:
+        """sha256 of the normalised config (:meth:`_normalised_config`).
+
+        Stored on a dataset revision (never the config itself - an AI card may
+        hold API keys) and compared on use: a student whose config differs from
+        the curator's recomputes instead of reading the seeded results.
+        """
+        cfg = await self._normalised_config(session, module_id, user_id)
+        return hashlib.sha256(json.dumps(cfg, sort_keys=True, default=str).encode()).hexdigest()
+
+    async def config_is_default(self, session: AsyncSession, module_id: str, user_id: str) -> bool:
+        """True if the user's config for ``module_id`` equals the manifest defaults."""
+        return not await self._normalised_config(session, module_id, user_id)
+
+    def run_version(self, module_id: str) -> str | None:
+        """The version a ``log_module_runs`` row records for ``module_id``.
+
+        The manifest version; in env=dev with a code fingerprint, a code edit makes
+        earlier results stale.
+        """
+        loaded = self.loaded.get(module_id)
+        return module_run_version(loaded) if loaded is not None else None
+
     async def _make_context(
         self,
         module_id: str,
@@ -1733,29 +1829,7 @@ class ModuleLoader:
                 # sentinel so the module's /models route renders read-only. Each
                 # card resolves defensively inside resolve_card_overlays, so a
                 # single failed lookup degrades to the per-user value.
-                row = await session.get(ModuleConfig, (user_id, module_id))
-                if row is not None and row.config_json:
-                    cfg_json = dict(row.config_json)
-                loaded_mod = self.loaded.get(module_id)
-                if loaded_mod is not None:
-                    from mate.api.modules.cards import (
-                        AI_LOCK_SENTINEL,
-                        CARD_AI,
-                        CARD_MODEL,
-                        MODEL_LOCK_SENTINEL,
-                        resolve_card_overlays,
-                    )
-
-                    cfg_json, controlled_cards = await resolve_card_overlays(
-                        session, loaded_mod.manifest, cfg_json, user_id
-                    )
-                    if controlled_cards.get(CARD_MODEL):
-                        cfg_json[MODEL_LOCK_SENTINEL] = True
-                    # AI card locked → inject the ai sentinel so a module's
-                    # action routes (e.g. CDE's Pinecone rebuild, which uses the
-                    # admin-pinned embedding dimension) can refuse.
-                    if controlled_cards.get(CARD_AI):
-                        cfg_json[AI_LOCK_SENTINEL] = True
+                cfg_json = await self.resolved_config(session, module_id, user_id)
                 # Modules this user has installed - scopes ctx.registry so
                 # cross-module RPC can only reach the user's own modules.
                 owned_ids = await user_module_ids(session, user_id)
@@ -1775,6 +1849,30 @@ class ModuleLoader:
                             storage_user_id = log_row.user_id
         except Exception:
             cfg_json = {}
+
+        # Dataset takedown + egress gate. Outside the try above on purpose: that
+        # block swallows every exception, and a withdrawn dataset must stop module
+        # routes, @job handlers, shared-dashboard reads and AI guidance alike (none
+        # of them pass through get_owned_event_log). No query for ordinary logs.
+        if log_id:
+            async with get_sessionmaker()() as gate_session:
+                gate_row = await gate_session.get(EventLog, log_id)
+                # Only for a log the caller may read (own, or granted by a share -
+                # storage_user_id moved to the owner). A foreign log falls through
+                # to the ordinary not-found path, so a 410 never discloses that
+                # someone else's withdrawn copy exists.
+                if (
+                    gate_row is not None
+                    and gate_row.dataset_revision_id is not None
+                    and (gate_row.user_id == user_id or storage_user_id == gate_row.user_id)
+                ):
+                    await ensure_log_usable(gate_session, gate_row)
+                    gate_mod = self.loaded.get(module_id)
+                    ai = gate_mod.manifest.ai_models if gate_mod is not None else None
+                    if ai is not None and (ai.llm is not None or ai.embedding is not None):
+                        # A module with an AI card sends the log's data to an
+                        # external provider - refuse it on a no-egress dataset.
+                        await ensure_external_ai_allowed(gate_session, gate_row)
 
         # A dashboard's ephemeral filter *replaces* the committed Events-tab
         # filter for this one request - the dashboard scopes its own dataset
@@ -1811,9 +1909,15 @@ class ModuleLoader:
             sm_ = get_sessionmaker()
             async with sm_() as session:
                 other = await session.get(EventLog, other_log_id)
-            if other is None or other.user_id != user_id:
-                # Same response whether missing or another tenant's - never
-                # confirm the existence of a log the caller doesn't own.
+                withdrawn = False
+                if other is not None and other.dataset_revision_id is not None:
+                    try:
+                        await ensure_log_usable(session, other)
+                    except HTTPException:
+                        withdrawn = True
+            if other is None or other.user_id != user_id or withdrawn:
+                # Same response whether missing, another tenant's or withdrawn
+                # (a disabled dataset) - never confirm what the caller can't read.
                 raise PermissionError(f"Event log {other_log_id} not found.")
             if other.log_model == "object_centric":
                 raise ValueError(

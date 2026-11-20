@@ -790,3 +790,213 @@ async def test_mcp_overview_does_not_start_modules(tmp_path: Path) -> None:
 
         await asyncio.sleep(0.3)
         assert await module_jobs(log_id, "precompute_mod") == []  # an overview is read-only
+
+
+# --------------------------------------------------------------------------- #
+# Logs copied from a dataset: shipped results seed the run on first open
+# --------------------------------------------------------------------------- #
+
+
+async def _seeded_copy(
+    c: AsyncClient,
+    st: dict[str, Any],
+    mods: tuple[str, ...],
+    curator_config: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Curator warms `mods` on a log, publishes it; a student uses it.
+
+    Returns ``(dataset slug, the student's log id)``. Every module gets a
+    ``summary.json`` result next to its (fresh) run row. ``curator_config`` is
+    stored as the curator's saved settings for every module before publishing.
+    """
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.db.models import ModuleConfig
+
+    from .hub_support import STUDENT, be, import_log, publish, results_dir, use, warm
+
+    if curator_config is not None:
+        async with get_sessionmaker()() as s:
+            for mid in mods:
+                row = await s.get(ModuleConfig, (TEST_USER_ID, mid))
+                if row is None:
+                    s.add(
+                        ModuleConfig(
+                            user_id=TEST_USER_ID, module_id=mid, config_json=curator_config
+                        )
+                    )
+                else:
+                    row.config_json = curator_config
+            await s.commit()
+    log_id = await import_log(c, st)
+    for mid in mods:
+        await warm(c, log_id, mid)
+        (results_dir(TEST_USER_ID, log_id, mid) / "summary.json").write_text('{"n": 1}')
+    ds = await publish(c, st, log_id)
+    assert ds["revision"]["canonical_modules"] == sorted(mods)
+    r = await use(c, st, STUDENT, ds["slug"])
+    assert r.status_code == 201, r.text
+    be(st, STUDENT)
+    return ds["slug"], r.json()["log"]["id"]
+
+
+def _spy_submits(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    from mate.api.modules import get_module_loader
+
+    loader = get_module_loader()
+    calls: list[str] = []
+    real = loader.submit_precompute
+
+    async def spy(module_id: str, *a: Any, **kw: Any) -> str:
+        calls.append(module_id)
+        return await real(module_id, *a, **kw)
+
+    monkeypatch.setattr(loader, "submit_precompute", spy)
+    return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mod", "saved_defaults"),
+    [("precompute_mod", False), ("eager_mod", False), ("precompute_mod", True)],
+)
+async def test_seeded_results_become_ready_on_first_open_without_compute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mod: str, saved_defaults: bool
+) -> None:
+    """``saved_defaults``: the curator pressed Save on the settings card, which
+    stores the full dict incl. defaults. A student on an empty config must still
+    get the shipped result (the fingerprint ignores values equal to defaults)."""
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.db.models import ModuleConfig
+    from mate.api.events import get_event_bus
+    from mate.api.modules import get_module_loader
+
+    from .conftest import multi_user_client
+    from .hub_support import HUB_USERS, STUDENT
+
+    async with multi_user_client(HUB_USERS, mods=(mod,), tmp_path=tmp_path) as (c, st):
+        curator_config: dict[str, Any] | None = None
+        if saved_defaults:
+            manifest = get_module_loader().loaded[mod].manifest
+            monkeypatch.setattr(
+                manifest,
+                "config_schema",
+                {"properties": {"threshold": {"type": "number", "default": 0.5}}},
+            )
+            curator_config = {"threshold": 0.5}
+        try:
+            _slug, new_id = await _seeded_copy(c, st, (mod,), curator_config)
+        finally:
+            async with get_sessionmaker()() as s:  # shared worker DB: don't leak
+                row = await s.get(ModuleConfig, (TEST_USER_ID, mod))
+                if row is not None:
+                    await s.delete(row)
+                    await s.commit()
+        coordinator = coordinator_or_fail()
+        # Nothing happens on use: the module shows idle until opened.
+        states = {s.module_id: s.status for s in await coordinator.list_states(STUDENT, new_id)}
+        assert states[mod] == "idle"
+
+        calls = _spy_submits(monkeypatch)
+        events: list[dict[str, Any]] = []
+        async with get_event_bus().subscribe(["module_run.updated"]) as stream:
+            result = await coordinator.ensure(STUDENT, new_id, mod)
+            env = await asyncio.wait_for(stream.__anext__(), timeout=5)
+            events.append(env.payload)
+        assert [s.status for s in result] == ["ready"]
+        assert calls == []
+        assert events[0]["user_id"] == STUDENT and events[0]["status"] == "ready"
+        row = await run_row(new_id, mod)
+        assert (row.status, row.job_id, row.data_revision) == ("ready", None, 0)
+        assert await module_jobs(new_id, mod) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("miss", ["version", "config", "cell_edit", "filter", "missing_files"])
+async def test_seed_gate_misses_recompute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, miss: str
+) -> None:
+    from sqlalchemy import select
+
+    from mate.api.db.engine import get_sessionmaker
+    from mate.api.db.models import HubDatasetRevision, ModuleConfig
+
+    from .conftest import multi_user_client
+    from .hub_support import HUB_USERS, STUDENT, get_log, set_log
+
+    mod = "precompute_mod"
+    async with multi_user_client(HUB_USERS, mods=(mod,), tmp_path=tmp_path) as (c, st):
+        _slug, new_id = await _seeded_copy(c, st, (mod,))
+        target = new_id
+        rev_id = (await get_log(new_id)).dataset_revision_id
+        if miss == "version":
+            async with get_sessionmaker()() as s:
+                rev = (
+                    await s.execute(
+                        select(HubDatasetRevision).where(HubDatasetRevision.id == rev_id)
+                    )
+                ).scalar_one()
+                rev.canonical_results = {
+                    mod: {**rev.canonical_results[mod], "module_version": "0.0.0-old"}
+                }
+                await s.commit()
+        elif miss == "config":
+            async with get_sessionmaker()() as s:
+                s.add(ModuleConfig(user_id=STUDENT, module_id=mod, config_json={"x": 2}))
+                await s.commit()
+        elif miss == "cell_edit":
+            r = await c.patch(
+                f"/api/v1/event-logs/{new_id}/events/0", json={"field": "resource", "value": "z"}
+            )
+            assert r.status_code == 200, r.text
+            assert (await get_log(new_id)).data_revision == 1
+        elif miss == "filter":
+            await set_log(
+                new_id, active_filter=[{"field": "activity", "op": "equals", "value": "ship"}]
+            )
+        elif miss == "missing_files":
+            dup = await c.post(f"/api/v1/event-logs/{new_id}/duplicate")
+            assert dup.status_code == 201, dup.text
+            target = dup.json()["id"]
+            assert (await get_log(target)).dataset_revision_id == rev_id
+
+        calls = _spy_submits(monkeypatch)
+        try:
+            result = await coordinator_or_fail().ensure(STUDENT, target, mod)
+        finally:
+            # The session DB is shared by the tests of this worker: the student's
+            # config must not leak into the next seeded-copy test.
+            async with get_sessionmaker()() as s:
+                row = await s.get(ModuleConfig, (STUDENT, mod))
+                if row is not None:
+                    await s.delete(row)
+                    await s.commit()
+        assert [s.status for s in result] == ["queued"]
+        assert calls == [mod]
+
+
+@pytest.mark.asyncio
+async def test_filter_commit_on_derived_log_reruns_only_opened_modules(tmp_path: Path) -> None:
+    from .conftest import multi_user_client
+    from .hub_support import HUB_USERS, STUDENT
+
+    mods = ("eager_mod", "precompute_mod")
+    async with multi_user_client(HUB_USERS, mods=mods, tmp_path=tmp_path) as (c, st):
+        _slug, new_id = await _seeded_copy(c, st, mods)
+        coordinator = coordinator_or_fail()
+        await coordinator.ensure(STUDENT, new_id, "precompute_mod")  # the one opened
+        assert (await run_row(new_id, "precompute_mod")).status == "ready"
+
+        resp = await c.put(
+            f"/api/v1/event-logs/{new_id}/active-filter",
+            json={"filter": [{"field": "activity", "op": "equals", "value": "register order"}]},
+        )
+        assert resp.status_code == 200, resp.text
+
+        async def _rerun() -> bool:
+            row = await run_row(new_id, "precompute_mod")
+            return row is not None and row.status == "ready" and row.data_revision == 1
+
+        await wait_until(_rerun, what="the opened module to rerun on the filtered data")
+        assert len(await module_jobs(new_id, "precompute_mod")) == 1
+        assert await module_jobs(new_id, "eager_mod") == []
+        assert await run_row(new_id, "eager_mod") is None

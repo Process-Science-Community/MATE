@@ -8,6 +8,8 @@ import { SchemaSection } from "./schema-section";
 import { QualitySection } from "./quality-section";
 import { MaintenanceSection } from "./maintenance-section";
 import { EditHistorySection } from "./edit-history-section";
+import { PublishDatasetSection } from "./publish-dataset-section";
+import { useHubStatus } from "@/lib/hub-queries";
 
 export interface SettingsTabProps {
   logId: string;
@@ -19,6 +21,10 @@ export function SettingsTab({ logId, log }: SettingsTabProps) {
   // case-centric concepts (and their endpoints reject OCEL logs). Object-centric
   // logs only get the model-agnostic General + Maintenance sections.
   const objectCentric = log.log_model === "object_centric";
+  // Publishing is curator-only (admin, not sandboxed) and case-centric only; a
+  // copy of a dataset cannot be republished.
+  const canCurate = useHubStatus().data?.can_curate === true;
+  const canPublish = canCurate && !objectCentric && !log.source_dataset;
   return (
     <div className="space-y-8">
       <GeneralSection logId={logId} log={log} />
@@ -30,6 +36,7 @@ export function SettingsTab({ logId, log }: SettingsTabProps) {
           <EditHistorySection logId={logId} />
         </>
       )}
+      {canPublish && <PublishDatasetSection logId={logId} log={log} />}
       <MaintenanceSection log={log} />
     </div>
   );

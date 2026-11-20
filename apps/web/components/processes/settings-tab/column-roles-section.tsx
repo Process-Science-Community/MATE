@@ -119,6 +119,28 @@ export function ColumnRolesSection({ logId, log }: { logId: string; log: EventLo
     }
   };
 
+  if (log.source_dataset) {
+    const mapped = Object.entries(current);
+    return (
+      <SectionShell title="Column roles" description="Which source column holds each canonical field.">
+        <p className="mb-3 text-xs text-muted-foreground">
+          Created from a dataset – the mapping was set by its curator and can&apos;t be changed
+          here. Use the dataset again for a fresh copy.
+        </p>
+        {mapped.length > 0 && (
+          <dl className="grid max-w-2xl grid-cols-[140px_1fr] gap-x-3 gap-y-1.5 text-sm">
+            {mapped.map(([role, col]) => (
+              <div key={role} className="contents">
+                <dt className="text-xs font-medium text-muted-foreground">{role}</dt>
+                <dd className="truncate font-mono text-xs">{col}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </SectionShell>
+    );
+  }
+
   if (columns.length === 0) {
     return (
       <SectionShell title="Column roles" description="Map your columns to the canonical roles.">

@@ -19,7 +19,14 @@ from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mate.api.db.models import Dashboard, DashboardShare, EventLog, TeamMember, User
+from mate.api.db.models import (
+    Dashboard,
+    DashboardShare,
+    EventLog,
+    HubDatasetRevision,
+    TeamMember,
+    User,
+)
 
 
 def user_label(u: User | None) -> str:
@@ -98,6 +105,20 @@ async def can_share_with_user(session: AsyncSession, target_user_id: str, user_i
     return (await session.execute(stmt)).first() is not None
 
 
+async def _dataset_audience_ok(session: AsyncSession, log_id: str, user_id: str) -> bool:
+    """A log copied from a non-public dataset is readable through a share only by
+    someone who may read the dataset itself (``hub.access``)."""
+    row = await session.get(EventLog, log_id)
+    if row is None or row.dataset_revision_id is None:
+        return True
+    rev = await session.get(HubDatasetRevision, row.dataset_revision_id)
+    from mate.api.hub.access import recipient_may_read_derived_log
+
+    return await recipient_may_read_derived_log(
+        session, rev.dataset_id if rev is not None else None, user_id
+    )
+
+
 async def user_can_read_log(session: AsyncSession, log_id: str, user_id: str) -> bool:
     """Does *user_id* have read access to *log_id*'s data via a shared dashboard?
 
@@ -116,7 +137,9 @@ async def user_can_read_log(session: AsyncSession, log_id: str, user_id: str) ->
         )
         .limit(1)
     )
-    return (await session.execute(dash_stmt)).first() is not None
+    if (await session.execute(dash_stmt)).first() is None:
+        return False
+    return await _dataset_audience_ok(session, log_id, user_id)
 
 
 async def user_can_access_log(session: AsyncSession, log_id: str, user_id: str) -> bool:
@@ -175,7 +198,9 @@ async def user_can_read_log_module(
             )
         )
     ).all()
-    return any(module_id in _dashboard_module_ids(layout_json) for (layout_json,) in rows)
+    if not any(module_id in _dashboard_module_ids(layout_json) for (layout_json,) in rows):
+        return False
+    return await _dataset_audience_ok(session, log_id, user_id)
 
 
 async def user_can_access_log_module(

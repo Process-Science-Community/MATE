@@ -24,6 +24,10 @@ import { LogStatusBanner } from "@/components/processes/log-status-banner";
 import { OcelObjectsTab } from "@/components/processes/ocel/ocel-objects-tab";
 import { OcelEventsTab } from "@/components/processes/ocel/ocel-events-tab";
 import { OcelRelationshipsTab } from "@/components/processes/ocel/ocel-relationships-tab";
+import {
+  DatasetLineageBanner,
+  isWithdrawn,
+} from "@/components/datasets/dataset-lineage-banner";
 import { useEventLog } from "@/lib/queries";
 import { prefetchProcessTabs } from "@/lib/client-prefetch";
 import { formatRelative } from "@/lib/format";
@@ -73,7 +77,7 @@ export function ProcessDetailClient({ logId }: { logId: string }) {
   // click renders from cache instead of a skeleton. prefetchQuery no-ops while
   // the data is still fresh, so refires (log refetches) are cheap.
   useEffect(() => {
-    if (log?.status === "ready") prefetchProcessTabs(qc, log);
+    if (log) prefetchProcessTabs(qc, log);
   }, [qc, log]);
 
   const setTab = useCallback(
@@ -113,6 +117,16 @@ export function ProcessDetailClient({ logId }: { logId: string }) {
         title="Process not found"
         description={(error as Error)?.message ?? "It may have been deleted."}
       />
+    );
+  }
+
+  // A copy of a withdrawn dataset: only the metadata row is readable, so show
+  // the withdrawn panel (with "Delete my copy") instead of any tab content.
+  if (isWithdrawn(log.source_dataset)) {
+    return (
+      <PageContainer>
+        <DatasetLineageBanner log={log} />
+      </PageContainer>
     );
   }
 
@@ -200,6 +214,7 @@ export function ProcessDetailClient({ logId }: { logId: string }) {
             </Button>
           </div>
         )}
+        <DatasetLineageBanner log={log} />
         <LogStatusBanner log={log} />
 
         <TabsContent value="overview">

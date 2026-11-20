@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mate.api.db.models import EventLog, Folder, Job, WatchedFolder
+from mate.api.hub.gate import ensure_log_usable
 
 
 def _404(detail: str) -> HTTPException:
@@ -27,12 +28,21 @@ async def get_owned_event_log(
     user_id: str,
     *,
     allow_deleted: bool = False,
+    allow_unavailable: bool = False,
 ) -> EventLog:
+    """The caller's own log, else 404.
+
+    A log copied from a dataset that has since been withdrawn (disabled /
+    purged) raises 410 unless ``allow_unavailable`` - only reading the log's
+    metadata and deleting it are exempt (see ``mate.api.hub.gate``).
+    """
     row = await session.get(EventLog, log_id)
     if row is None or row.user_id != user_id:
         raise _404("Event log not found.")
     if not allow_deleted and row.deleted_at is not None:
         raise _404("Event log not found.")
+    if not allow_unavailable and row.dataset_revision_id is not None:
+        await ensure_log_usable(session, row)
     return row
 
 

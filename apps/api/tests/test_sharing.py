@@ -7,14 +7,11 @@ exactly what they should.
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
-from .conftest import TEST_USER_ID
+from .conftest import TEST_USER_ID, act_as, multi_user_client
 
 OWNER_ID = TEST_USER_ID
 RECIPIENT_ID = "00000000-0000-7000-8000-0000000000a2"
@@ -26,62 +23,11 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _user(uid: str, roles: tuple[str, ...] = ("user",)):
-    from mate.api.auth.dependencies import CurrentUser
-
-    return CurrentUser(
-        id=uid,
-        email=f"{uid}@mate.local",
-        preferred_username=uid[:8],
-        name=uid[:8],
-        roles=roles,
-    )
+def _multi_user_client():
+    return multi_user_client((RECIPIENT_ID, ADMIN_ID, STRANGER_ID))
 
 
-async def _seed_users() -> None:
-    from mate.api.db.engine import get_sessionmaker
-    from mate.api.db.models import User
-
-    sm = get_sessionmaker()
-    async with sm() as s:
-        for uid in (RECIPIENT_ID, ADMIN_ID, STRANGER_ID):
-            if await s.get(User, uid) is None:
-                s.add(
-                    User(
-                        id=uid,
-                        email=f"{uid}@mate.local",
-                        preferred_username=uid[:8],
-                        name=uid[:8],
-                        created_at=_now(),
-                        last_seen_at=_now(),
-                    )
-                )
-        await s.commit()
-
-
-@contextlib.asynccontextmanager
-async def _multi_user_client() -> AsyncIterator[tuple[AsyncClient, dict]]:
-    from mate.api.auth.dependencies import get_current_user
-    from mate.api.main import create_app
-
-    app = create_app()
-    state = {"user": _user(OWNER_ID)}
-
-    async def _current():
-        return state["user"]
-
-    app.dependency_overrides[get_current_user] = _current
-    transport = ASGITransport(app=app)
-    async with (
-        AsyncClient(transport=transport, base_url="http://testserver") as c,
-        app.router.lifespan_context(app),
-    ):
-        await _seed_users()
-        yield c, state
-
-
-def _act_as(state: dict, uid: str, roles: tuple[str, ...] = ("user",)) -> None:
-    state["user"] = _user(uid, roles)
+_act_as = act_as
 
 
 @pytest.mark.asyncio

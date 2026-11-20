@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, FileText, FileUp, X } from "lucide-react";
+import Link from "next/link";
+import { Database, ExternalLink, FileText, FileUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { useHubStatus } from "@/lib/hub-queries";
 
 const ACCEPT =
   ".xes,.xes.gz,.csv,.xml,.json,.jsonocel,.xmlocel,.sqlite,.gz,.gzip,.bz2,.xz,.lzma,.zip," +
@@ -93,8 +95,9 @@ export function DropZone({
 
 /** Shown under an empty dropzone – a way in for people with no log at hand. */
 export function SampleDataHint() {
+  const hubEnabled = useHubStatus().data?.enabled === true;
   return (
-    <div className="flex items-center justify-center">
+    <div className="flex flex-wrap items-center justify-center">
       <a
         href="https://www.processmining.org/event-data.html"
         target="_blank"
@@ -104,6 +107,15 @@ export function SampleDataHint() {
         <ExternalLink className="h-3.5 w-3.5" />
         Just exploring? Get public event logs from processmining.org
       </a>
+      {hubEnabled && (
+        <Link
+          href="/datasets"
+          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Database className="h-3.5 w-3.5" />
+          Or start from a published dataset →
+        </Link>
+      )}
     </div>
   );
 }

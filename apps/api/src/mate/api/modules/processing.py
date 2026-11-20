@@ -31,18 +31,21 @@ import contextlib
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import structlog
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from mate.api.db.models import EventLog, Job, LogModuleRun, ModuleConfig
+from mate.api.db.models import EventLog, HubDatasetRevision, Job, LogModuleRun, ModuleConfig
 from mate.api.events import EventBus
+from mate.api.hub.gate import ensure_log_usable
 from mate.api.modules.cache import ResultCache
 from mate.api.modules.defaults import get_precompute_overrides, resolve_precompute_mode
 from mate.api.modules.installs import user_module_ids
-from mate.api.modules.loader import ModuleLoader
+from mate.api.modules.loader import ModuleLoader, module_run_version
 from mate.api.tasks import spawn
 
 log = structlog.get_logger(__name__)
@@ -67,6 +70,31 @@ _ERROR_MAX = 2000
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+class LogUnavailableError(LookupError):
+    """The log was copied from a dataset an administrator has withdrawn.
+
+    A ``LookupError`` so every caller that already skips a missing log
+    (dispatch, the working-set refresh, MCP reads) skips this one too.
+    """
+
+
+async def _ensure_usable(session: AsyncSession, row: EventLog) -> None:
+    if row.dataset_revision_id is None:
+        return
+    try:
+        await ensure_log_usable(session, row)
+    except HTTPException as exc:
+        raise LogUnavailableError(str(exc.detail)) from exc
+
+
+def _seed_present(dir_: Path, keys: list[str]) -> bool:
+    """Every seeded result key has its file in the module's cache dir."""
+    return all(
+        any((dir_ / f"{key}{ext}").is_file() for ext in (".json", ".parquet", ".bin"))
+        for key in keys
+    )
 
 
 @dataclass(frozen=True)
@@ -174,6 +202,9 @@ class _Read:
     prereqs: list[str]
     prereq_rows: dict[str, _Row | None]
     log_row: EventLog
+    # Canonical result shipped with the dataset this log was copied from (see
+    # `mate.api.hub`): {"module_version", "config_hash", "keys"} or None.
+    seed: dict[str, Any] | None = None
 
 
 class ModuleProcessingCoordinator:
@@ -203,11 +234,7 @@ class ModuleProcessingCoordinator:
 
     def _version(self, module_id: str) -> str | None:
         loaded = self._loader.loaded.get(module_id)
-        if loaded is None:
-            return None
-        # env=dev: a code edit (new fingerprint) makes earlier results stale.
-        fp = getattr(loaded, "dev_fingerprint", None)
-        return f"{loaded.manifest.version}+dev.{fp}" if fp else loaded.manifest.version
+        return module_run_version(loaded) if loaded is not None else None
 
     def _is_import_root(self, module_id: str) -> bool:
         return any(
@@ -299,6 +326,13 @@ class ModuleProcessingCoordinator:
             log_row = await session.get(EventLog, log_id)
             if log_row is None or log_row.deleted_at is not None or log_row.user_id != user_id:
                 raise LookupError(f"Event log {log_id!r} not found.")
+            await _ensure_usable(session, log_row)
+            seed: dict[str, Any] | None = None
+            if log_row.dataset_revision_id is not None:
+                rev = await session.get(HubDatasetRevision, log_row.dataset_revision_id)
+                found: object = (rev.canonical_results or {}).get(module_id) if rev else None
+                if isinstance(found, dict):
+                    seed = {str(k): v for k, v in found.items()}
             owned = await user_module_ids(session, user_id)
             if module_id not in owned or module_id not in self._loader.loaded:
                 raise LookupError(f"Module {module_id!r} is not installed.")
@@ -328,6 +362,7 @@ class ModuleProcessingCoordinator:
                 prereqs=prereqs,
                 prereq_rows=rows,
                 log_row=log_row,
+                seed=seed,
             )
 
     def _state(self, module_id: str, read: _Read) -> RunState:
@@ -387,6 +422,27 @@ class ModuleProcessingCoordinator:
                     status="unavailable",
                     precompute=read.mode,
                     error=read.unavailable_reason,
+                )
+
+            if row is None and await self._seed_applies(user_id, log_id, module_id, read, version):
+                # A log copied from a dataset ships this module's canonical result:
+                # record it as computed instead of running the job. Only on first
+                # open (no row yet), so a filter commit later reruns just the
+                # modules the student actually opened.
+                now = _utcnow()
+                await self._write_row(
+                    user_id,
+                    log_id,
+                    module_id,
+                    status="ready",
+                    job_id=None,
+                    revision=read.revision,
+                    version=version,
+                    finished_at=now,
+                )
+                await self._publish_run(user_id, log_id, module_id, "ready", None)
+                return RunState(
+                    module_id=module_id, status="ready", precompute=read.mode, finished_at=now
                 )
 
             old_job_id = row.job_id if row is not None and row.status in _IN_FLIGHT else None
@@ -458,6 +514,37 @@ class ModuleProcessingCoordinator:
             return RunState(
                 module_id=module_id, status="queued", job_id=job_id, precompute=read.mode
             )
+
+    async def _seed_applies(
+        self, user_id: str, log_id: str, module_id: str, read: _Read, version: str | None
+    ) -> bool:
+        """Whether the dataset-seeded result still describes this log for this user.
+
+        Unchanged data (revision 0 - every data change bumps it, reimport/remap
+        are refused on derived logs - and no committed filter), the same module
+        version, ready prerequisites, the curator's config, and the result files
+        actually present (a duplicate of a derived log has lineage but no results).
+        """
+        seed = read.seed
+        if seed is None or read.revision != 0 or read.log_row.active_filter:
+            return False
+        if seed.get("module_version") != version:
+            return False
+        for dep in read.prereqs:
+            if _derive(read.prereq_rows.get(dep), read.revision, self._version(dep)) != "ready":
+                return False
+        async with self._sessionmaker() as session:
+            fp = await self._loader.config_fingerprint(session, module_id, user_id)
+        if seed.get("config_hash") != fp:
+            return False
+        keys = [str(k) for k in (seed.get("keys") or [])]
+        cache_dir = ResultCache(log_id, module_id, user_id).dir
+        # S3 mode: the reaper may have evicted the copied results; pull them back
+        # rather than recompute (no-op locally).
+        from mate.api.storage import sync as storage_sync
+
+        await storage_sync.hydrate_dir(cache_dir)
+        return await asyncio.to_thread(_seed_present, cache_dir, keys)
 
     def _submission(
         self, read: _Read, module_id: str, user_id: str, parent_job_id: str | None
@@ -735,6 +822,7 @@ class ModuleProcessingCoordinator:
             log_row = await session.get(EventLog, log_id)
             if log_row is None or log_row.deleted_at is not None or log_row.user_id != user_id:
                 raise LookupError(f"Event log {log_id!r} not found.")
+            await _ensure_usable(session, log_row)
             owned = await user_module_ids(session, user_id)
             modes = await self._modes(session)
             rows = {

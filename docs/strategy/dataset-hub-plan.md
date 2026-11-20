@@ -7,7 +7,7 @@
 > 4. Visibility is `private | restricted (team) | public`. Pseudonymised data is personal data: it can never be `public`, and anonymous `reviewer` accounts see only open-licensed, ungated data.
 > 5. The course case-study log is the first dataset. Stage 0 measures import RSS, Parquet size and Arrow `nbytes`, and the chair answers the rights and privacy questions before anything goes beyond `private`.
 
-Status: proposal, 2026-11-19, revised after the security, storage-scale, legal-license and UX-scope reviews. Scope: hub-roadmap Stage 3 items "Dataset pages" and "Shared example logs" (`docs/strategy/hub-roadmap.md:198-202`, §7.2 `:252-268`). They are brought forward for the course case-study log: 591 MB XES, 30-60 students; the load test targets 60.
+Status: **Stage 1a + 1b implemented** (2026-11-19; see "Implementation status" below). The rest of this document is the plan as reviewed, revised after the security, storage-scale, legal-license and UX-scope reviews; where it disagrees with the owner decisions below, the decisions win. Scope: hub-roadmap Stage 3 items "Dataset pages" and "Shared example logs" (`docs/strategy/hub-roadmap.md:198-202`, §7.2 `:252-268`). They are brought forward for the course case-study log: 591 MB XES, 30-60 students; the load test targets 60.
 
 Code claims below were checked against `/home/user/MATE` unless marked *(unverified)*.
 
@@ -20,6 +20,52 @@ Code claims below were checked against `/home/user/MATE` unless marked *(unverif
   gets its own read-only input), so keep the hub-dataset storage independent of module internals.
 - The owner found "datasets" a misleading name for module data outputs; they are now "module
   outputs" (done, see §2).
+
+**Owner decisions (2026-11-19, approved; they override the rest of this plan):**
+- Naming: the concept is "dataset" in UI and code. Tables `hub_datasets` / `hub_dataset_revisions`,
+  package `apps/api/src/mate/api/hub/`, routes `/api/v1/hub/datasets…`, web route `/datasets`.
+- Copy-on-use only (Parquet + whitelisted canonical results, never the upload); no reference logs
+  (measured: 579 MB XES → 18 MB Parquet). `use` is idempotent per (user, revision), with
+  "Add another copy".
+- Publishing is admin-only and never from a sandboxed account (`may_curate_datasets`). Import
+  route: the admin imports the log on prod as their own log and publishes it from the log's
+  Settings tab. No offline CLI.
+- Visibility `private | restricted (one existing team) | public`; non-readers get 404. Reviewer
+  (sandboxed) accounts see only `public` datasets under an open license (CC-BY-4.0, CC-BY-SA-4.0,
+  CC0-1.0, ODC-BY, ODbL, PDDL); `4tu-general-terms` is not open.
+- No gating / terms acceptance in Stage 1 (`accept_terms` dropped).
+- **Course log:** `allow_external_ai = true` (the owner: "don't block it, it's fine");
+  `retention_until` none; license `4tu-general-terms`. **Visibility: `public`** (chair,
+  2026-11-19: no objection, because both logs are time-shifted variants, not the originals).
+  Reviewer accounts still do not see them (4TU terms are not an open license).
+- **Both course logs are published as marked course variants:** 2020 = BPI Challenge 2012
+  (https://data.4tu.nl/articles/dataset/BPI_Challenge_2012/12689204), 2025 = BPI Challenge
+  2017 (https://data.4tu.nl/articles/_/12721292/1); timestamps shifted to be more recent;
+  adapted by the Chair of Information Systems and Business Process Management, University of
+  Münster. Distinct titles ("Process Thinking: Credit Loan Application 2020/2025"), a
+  modification note at the top, citation of the original plus the course variant. Card values:
+  `docs/DEPLOY.md`, "Publishing a dataset".
+- The course-team join link is **not** built: not needed for public datasets. Restricted
+  visibility uses existing team membership.
+
+**Implementation status (2026-11-19).** Stage 1a + 1b as listed in §9, with these deviations
+from the plan text, all from the post-implementation reviews:
+- **Only precompute results ship.** A module's results are canonical only if it precomputes on
+  import and has a fresh `ready` run row (the run row's `data_revision` proves the results match
+  the current data; every edit and filter commit bumps it). Results of on-demand modules
+  (`performance`, `conformance`, `pcomp`, `process_comparison`) never ship: their freshness is
+  mtime-only (a filter commit does not touch the Parquet), and `pcomp`/`process_comparison` store
+  results computed against a *second* log in this log's cache dir – shipping them would leak the
+  curator's other logs. Those modules compute per student on first open. The publish dialog lists
+  exactly the shippable modules (`GET /hub/publish-candidates/{log_id}`).
+- The seed config fingerprint ignores values equal to the manifest defaults, so a curator who
+  pressed Save on a settings card still matches students on default settings; the dialog warns
+  when the curator's settings really differ.
+- Sandboxed state is persisted per user (`UserSetting auth.sandboxed`, synced at login) so a
+  dashboard share cannot hand a reviewer a copy of a non-open dataset.
+- MCP `list_processes` and `mate://processes` omit no-egress and withdrawn copies (as the AI chat
+  catalog does). `use` obeys the S3 storage quota (507). A purge that cannot delete the files
+  records nothing (500).
 
 ---
 
@@ -450,7 +496,7 @@ Do not choose a CC license on someone else's behalf. The conservative default is
   fix; logs of this shape imported earlier need a re-map (Settings → Column roles).
 - Separate prerequisite PR: the CDE filename sanitisation.
 
-**Stage 1a: data model + copy-on-use + takedown (API)**
+**Stage 1a: data model + copy-on-use + takedown (API)** – *implemented 2026-11-19*
 - Migration 0018 (Stage 1 tables only, `down_revision = "0017_rename_module_outputs"`) + migration test.
 - `hub/` package; curator publish/patch/disable/purge; public `GET`/`use` (+ `accept` if gating is required).
 - `ensure_log_usable`, lazy seeded run rows, lineage on duplicate (+ `column_roles` fix).
@@ -468,7 +514,7 @@ Do not choose a CC license on someone else's behalf. The conservative default is
   - downgrade only after purge, and it refuses while `dataset_revision_id` rows exist.
 - Risk: medium (takedown gate coverage). Mitigate with a test parametrised over the router's log-scoped routes.
 
-**Stage 1b: web**
+**Stage 1b: web** – *implemented 2026-11-19 (no accept dialog: gating dropped)*
 - List + search + license filter, detail, accept dialog, idempotent use, badge/banner, sidebar entry, empty states, attribution on dashboards, admin publish wizard.
 - Verify: `make lite` + `make e2e` (search → use → open process → module page shows results with no run), and report what was seen.
 - Rollback: revert. Risk: low.
@@ -504,10 +550,10 @@ Do not choose a CC license on someone else's behalf. The conservative default is
 3. **`use` idempotent per (user, revision)** with an explicit "Add another copy". *Rec: yes.*
 4. **Publishers in Phase 1**: `may_curate_datasets` (admin and not sandboxed). *Rec: yes; `curator` in Stage 5.*
 5. **Hosting policy vs "hub, not publisher"** (`hub-roadmap.md:4-7`): host only with documented permission from the rights holder (declaration item 1); otherwise link-only. *Rec: adopt; record in the decisions log.*
-6. **Course log visibility, license, gating, egress**: from the chair's answers. *Rec if any doubt: `other` + `restricted` (course team) + `accept_terms` + `allow_external_ai=false`.*
+6. **Course log visibility, license, gating, egress**: *Decided except visibility:* `4tu-general-terms`, no gating, `allow_external_ai=true` (owner, 2026-11-19). Visibility `public` as marked course variants (chair, 2026-11-19).
 7. **Reviewer accounts**: see only `public` + open license + ungated datasets. *Rec: yes.*
 8. **Unpublish semantics**: copies keep working where the license is irrevocable; otherwise follow the terms. *Rec: yes; disable/purge cut off everything.*
-9. **Seeded results with a non-default config**: recompute (`config_hash` mismatch). *Rec: yes.*
+9. **Seeded results with a non-default config**: recompute (`config_hash` mismatch; values equal to the manifest default do not count as a difference). *Decided: yes.*
 10. **Acceptance records**: CASCADE on user deletion (lose the record) vs keep a pseudonymous hash. *Rec: CASCADE; disclose. Only relevant if gating is chosen.*
 11. **Import route**: prod vs offline `hub.cli`. *Rec: decide from Stage 0 RSS; offline if > 5 GB.*
 12. **Retention**: open licenses → `deprecated` at semester end; DUA or personal data → `retention_until` → disable → purge, including derived logs. *Rec: yes.*

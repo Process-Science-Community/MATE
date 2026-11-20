@@ -83,7 +83,7 @@ claude mcp add --transport http mate https://<host>/mcp
 
 ## Conventions (read once, they apply everywhere)
 
-- **Errors** carry a stable machine-readable prefix: `[not_found]` `[forbidden]` `[conflict]` `[invalid]` `[rate_limited]` `[timeout]` `[read_only]` `[consent_required]` `[scope_missing]` `[confirm_required]` `[internal]`. `404` semantics everywhere: a foreign user's resource is indistinguishable from a missing one.
+- **Errors** carry a stable machine-readable prefix: `[not_found]` `[forbidden]` `[conflict]` `[invalid]` `[rate_limited]` `[timeout]` `[read_only]` `[consent_required]` `[scope_missing]` `[confirm_required]` `[gone]` `[internal]`. `404` semantics everywhere: a foreign user's resource is indistinguishable from a missing one.
 - **Destructive tools** (marked **D** below) take `confirm: bool`. Without `confirm=true` they mutate **nothing** and return a dry-run preview (`{"confirmed": false, "preview": {...}}`) describing exactly what would happen — inspect, then re-call with `confirm=true`.
 - **Long operations** (imports, remap, reimport, committed filters, retries) return `{"job_id": …}` immediately. Follow up with `get_job(job_id)` or block on `wait_for_job(job_id, timeout_seconds)` — hitting the timeout is not an error, you get the current state with `"timed_out": true`; call it again to keep waiting. An imported log is `ready` as soon as it is parsed; module analyses compute lazily, the first time you read them (see **The data wall** below: a module's first read starts it).
 - **Pagination**: list tools take `cursor` + `limit` (max 200) and return `{"items": [...], "next_cursor": ..., "total": ...}`. Pass `next_cursor` back verbatim; it is opaque.
@@ -102,7 +102,7 @@ MCP serves **aggregates and curated module outputs only**. Structurally unavaila
 - File downloads/exports of any kind (original uploads, XES/CSV exports, the metadata DB, analytics exports)
 - Simulated event rows (agentsimulator) and other row-shaped module artifacts
 
-Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_module_output_data`, `get_module_results`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` never starts anything: modules that haven't run appear under `skipped`. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not.
+Module outputs are read under a restricted context that raises on any raw-log accessor, so they only ever see a module's *computed* results — never raw events. **Modules compute on demand:** the first read of a module that hasn't run for the process (`get_module_output`, `get_bottlenecks` / `get_conformance` / `get_process_model` / `get_drifts`, `get_module_output_data`, `get_module_results`) starts its job and fails with `[conflict] Module '…' is computing for this process - call wait_for_job('<job_id>') and retry`; once it finishes, the same call returns data. A module whose run failed is reported as `[conflict]` with the module's own error. `get_process_overview` never starts anything: modules that haven't run appear under `skipped`. Case-*level* metadata (case ids, durations, event counts in `get_variant_cases`) is deliberately available; event-level is not. On a log copied from a published dataset, `get_module_output` and `get_module_output_data` add an `attribution` object (`slug`, `title`, `revision`, `license_id`, `citation`); `list_processes` / `get_process` carry `source_dataset`.
 
 ## Tool catalog
 
@@ -117,8 +117,8 @@ Legend: **W** = write (needs the write scope; blocked in read-only mode) · **D*
 ### processes (`processes:read` / `processes:write`)
 | Tool | |
 |---|---|
-| `list_processes` | Your event logs with aggregate stats (filter by `status`, `q`; paginated) |
-| `get_process` | Full metadata for one log: counts, dates, column roles, schema, applied filter |
+| `list_processes` | Your event logs with aggregate stats (filter by `status`, `q`; paginated). Copies of a dataset whose license forbids external AI, or that was withdrawn, are not listed |
+| `get_process` | Full metadata for one log: counts, dates, column roles, schema, applied filter. A log copied from a published dataset carries `source_dataset` (slug, title, revision, license, citation, publisher) - cite it |
 | `get_activities` | Unique activities + event counts, frequency-ordered |
 | `get_activity` | One activity in depth: counts/shares, per-case occurrences, start/end role, containing variants |
 | `get_variants` | Aggregate variants: sequence, case count/pct, durations (sort/filter/paginate) |
@@ -212,6 +212,8 @@ Cross-user platform control: `admin_list_jobs`, `admin_get_job_logs`, `admin_can
 | `[conflict]` "… is computing for this process" | The read started the module — `wait_for_job` on the job id in the message, then repeat the call |
 | `[conflict]` "… failed for this process" | The module's run failed (the message carries its error) — fix the cause (e.g. CV4CDD needs a model), then `get_module_output` again |
 | `[conflict]` "not ready" on aggregates | Log still `importing` — `wait_for_job` on the import |
+| `[forbidden]` "…license of this dataset does not allow…external AI" | The log was copied from a published dataset whose license forbids sending its data to external AI. Every read tool refuses it; `delete_process` still works |
+| `[gone]` | The log was copied from a dataset an administrator has withdrawn. Its data can no longer be read; `delete_process` still works |
 | `[confirm_required]` message in a preview | Expected: re-call the destructive tool with `confirm=true` |
 | `429` / `[rate_limited]` | Per-user bucket (writes have a tighter one) — honor the retry hint |
 | `403` "Origin not allowed" | Browser-origin request from a foreign origin — use a native/server client |

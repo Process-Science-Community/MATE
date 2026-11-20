@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
+import { DatasetAttribution } from "@/components/datasets/dataset-attribution";
 import { CardPalette } from "@/components/dashboards/card-palette";
 import { CardInspector } from "@/components/dashboards/card-inspector";
 import { CanvasZoomControls } from "@/components/dashboards/canvas-zoom-controls";
@@ -715,6 +716,12 @@ export function DashboardView({ dashboardId }: { dashboardId: string }) {
               </motion.div>
             )}
           </AnimatePresence>
+          {/* Attribution for boards bound to a dataset copy – owners and share
+              recipients alike. Only while the saved binding is still the one
+              shown (an unsaved log switch has no lineage info yet). */}
+          {logId && logId === dashboard.event_log_id && (
+            <DatasetAttribution source={dashboard.source_dataset} />
+          )}
         </div>
       </div>
       {isOwner && (

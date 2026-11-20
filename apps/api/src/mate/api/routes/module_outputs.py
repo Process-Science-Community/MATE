@@ -20,7 +20,9 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from mate.api.auth import CurrentUserDep
+from mate.api.db.models import EventLog
 from mate.api.db.session import SessionDep
+from mate.api.hub.gate import ensure_log_usable
 from mate.api.module_outputs.adapters import resolve_output
 from mate.api.module_outputs.envelope import OutputEnvelope
 from mate.api.module_outputs.transforms import TransformError, apply_transforms
@@ -107,6 +109,11 @@ async def _assert_can_read_log(
     # a dashboard that actually places THIS module (not every module on the log).
     if not await user_can_access_log_module(session, log_id, user_id, module_id):
         raise HTTPException(status_code=404, detail="Event log not found.")
+    # A copy of a withdrawn dataset: 410 before the output is even resolved (the
+    # module-context gate would catch it later, but only for a real output).
+    row = await session.get(EventLog, log_id)
+    if row is not None and row.dataset_revision_id is not None:
+        await ensure_log_usable(session, row)
 
 
 @router.get("/{module_id}/{output_id}", response_model=OutputEnvelope)

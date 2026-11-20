@@ -379,6 +379,29 @@ async function authedFetch(path: string, init: RequestInit, headers: Headers): P
   return retry;
 }
 
+let lastGoneRefresh = 0;
+
+/**
+ * A 410 means the log's dataset was withdrawn (the hub publishes no bus event
+ * for a takedown). Open pages hold the log's metadata – `status: active` – in the
+ * app cache for up to a minute, so refetch it: every view then switches to the
+ * withdrawn panel. Only the metadata queries (the list and each log's detail,
+ * both exempt from the 410) are refetched, so this cannot loop; throttled
+ * because one page fires many 410s at once. Module pages and dashboards own
+ * isolated QueryClients, which is why this lives here and not in a QueryCache.
+ */
+function refreshLogMetadataOnGone(): void {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  if (now - lastGoneRefresh < 5_000) return;
+  lastGoneRefresh = now;
+  void import("@/lib/get-query-client").then(({ getAppQueryClient }) =>
+    getAppQueryClient().invalidateQueries({
+      predicate: (q) => q.queryKey[0] === "event-logs" && q.queryKey.length <= 2,
+    }),
+  );
+}
+
 export async function api<T = unknown>(
   path: string,
   init: RequestInit & { json?: unknown } = {},
@@ -396,6 +419,7 @@ export async function api<T = unknown>(
     } catch {
       /* keep as text */
     }
+    if (res.status === 410) refreshLogMetadataOnGone();
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;

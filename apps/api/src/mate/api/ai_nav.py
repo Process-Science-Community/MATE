@@ -375,10 +375,21 @@ async def list_user_processes(session: AsyncSession, user_id: str) -> list[Proce
     """The user's ready event logs with row-level stats (no expensive queries)."""
     from sqlalchemy import desc
 
-    from mate.api.db.models import EventLog
+    from mate.api.db.models import EventLog, HubDataset, HubDatasetRevision
 
+    # A log copied from a dataset whose license forbids external AI - or one an
+    # administrator withdrew - never reaches the LLM, not even its name. Outer
+    # joins keep it one query; the flag is read live (the snapshot only when the
+    # dataset row is gone, which also counts as withdrawn).
     rows = await session.execute(
-        select(EventLog)
+        select(
+            EventLog,
+            HubDataset.allow_external_ai,
+            HubDataset.status,
+            HubDatasetRevision.purged_at,
+        )
+        .outerjoin(HubDatasetRevision, EventLog.dataset_revision_id == HubDatasetRevision.id)
+        .outerjoin(HubDataset, HubDataset.id == HubDatasetRevision.dataset_id)
         .where(
             EventLog.user_id == user_id,
             EventLog.deleted_at.is_(None),
@@ -388,7 +399,11 @@ async def list_user_processes(session: AsyncSession, user_id: str) -> list[Proce
         .limit(_MAX_PROCESSES)
     )
     out: list[ProcessInfo] = []
-    for r in rows.scalars().all():
+    for r, allow_ai, ds_status, purged_at in rows.all():
+        if r.dataset_revision_id is not None and (
+            not allow_ai or ds_status != "active" or purged_at is not None
+        ):
+            continue
         out.append(
             ProcessInfo(
                 id=r.id,

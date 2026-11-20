@@ -16,6 +16,8 @@ from mate.api.routes.event_log_data import router as event_log_data_router
 from mate.api.routes.event_logs import router as event_logs_router
 from mate.api.routes.events_sse import router as events_sse_router
 from mate.api.routes.folders import router as folders_router
+from mate.api.routes.hub_datasets import router as hub_datasets_router
+from mate.api.routes.hub_datasets import status_router as hub_status_router
 from mate.api.routes.jobs import router as jobs_router
 from mate.api.routes.mcp_admin import router as mcp_admin_router
 from mate.api.routes.module_outputs import router as module_outputs_router
@@ -55,6 +57,10 @@ v1.include_router(preferences_router)
 v1.include_router(dashboards_router)
 v1.include_router(module_outputs_router)
 v1.include_router(sharing_router)
+# Routers are built at import time: HUB_DATASETS_ENABLED is a per-request
+# dependency on the hub router, not a conditional include.
+v1.include_router(hub_status_router)
+v1.include_router(hub_datasets_router)
 v1.include_router(events_sse_router)
 
 __all__ = ["v1"]

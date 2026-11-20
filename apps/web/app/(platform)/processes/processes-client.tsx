@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FolderPlus, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
+import { Database, FolderPlus, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +14,7 @@ import {
   ProcessesTable,
 } from "@/components/processes/processes-table";
 import { useEventLogs } from "@/lib/queries";
+import { useHubStatus } from "@/lib/hub-queries";
 import { cn } from "@/lib/cn";
 import type { LogModel } from "@/lib/api-types";
 
@@ -109,6 +110,7 @@ function ProcessList({ model }: { model: ModelFilter }) {
   const q = sp.get("q") ?? undefined;
   const status = sp.get("status") ?? undefined;
   const { data, isLoading, isError, error } = useEventLogs({ q, status });
+  const hubEnabled = useHubStatus().data?.enabled === true;
 
   if (isLoading) return <ListSkeleton />;
   if (isError) {
@@ -135,10 +137,19 @@ function ProcessList({ model }: { model: ModelFilter }) {
           </Button>
         }
         secondaryAction={
-          <Button variant="outline" disabled className="gap-2 cursor-not-allowed">
-            <Plus className="h-4 w-4" />
-            Try with sample data
-          </Button>
+          hubEnabled ? (
+            <Button asChild variant="outline" className="cursor-pointer">
+              <Link href="/datasets" className="gap-2">
+                <Database className="h-4 w-4" />
+                Browse datasets
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" disabled className="gap-2 cursor-not-allowed">
+              <Plus className="h-4 w-4" />
+              Try with sample data
+            </Button>
+          )
         }
       />
     );

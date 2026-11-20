@@ -6,7 +6,9 @@ machine-readable ``[code]`` prefix an agent can branch on, followed by a
 human-readable explanation. Codes:
 
     not_found | forbidden | conflict | invalid | rate_limited | timeout |
-    read_only | consent_required | scope_missing | confirm_required | internal
+    read_only | consent_required | scope_missing | confirm_required | gone | internal
+
+``gone`` = the log was copied from a dataset an administrator has withdrawn.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ CODE_READ_ONLY = "read_only"
 CODE_CONSENT_REQUIRED = "consent_required"
 CODE_SCOPE_MISSING = "scope_missing"
 CODE_CONFIRM_REQUIRED = "confirm_required"
+CODE_GONE = "gone"
 CODE_INTERNAL = "internal"
 
 
@@ -48,6 +51,7 @@ _STATUS_TO_CODE = {
     403: CODE_FORBIDDEN,
     404: CODE_NOT_FOUND,
     409: CODE_CONFLICT,
+    410: CODE_GONE,
     413: CODE_INVALID,
     422: CODE_INVALID,
     429: CODE_RATE_LIMITED,
