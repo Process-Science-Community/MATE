@@ -40,7 +40,7 @@ Code claims below were checked against `/home/user/MATE` unless marked *(unverif
   Reviewer accounts still do not see them (4TU terms are not an open license).
 - **Both course logs are published as marked course variants:** 2020 = BPI Challenge 2012
   (https://data.4tu.nl/articles/dataset/BPI_Challenge_2012/12689204), 2025 = BPI Challenge
-  2017 (https://data.4tu.nl/articles/_/12721292/1); timestamps shifted to be more recent;
+  2017 (https://data.4tu.nl/articles/dataset/BPI_Challenge_2017/12696884); timestamps shifted to be more recent;
   adapted by the Chair of Information Systems and Business Process Management, University of
   Münster. Distinct titles ("Process Thinking: Credit Loan Application 2020/2025"), a
   modification note at the top, citation of the original plus the course variant. Card values:
@@ -417,7 +417,9 @@ It covers cached results, AI guidance (`routes/ai_guidance.py`, 5 `ResultCache` 
 (`CreditLoanApplication_2020.xes`, `CreditLoanApplication_2025.xes`, with the course data
 dictionary DD-EVL-2026-01):
 - Rights holder / source: Eindhoven University of Technology via 4TU.Centre for Research Data,
-  https://data.4tu.nl/articles/_/12721292/1. The hosting page must show the publisher details.
+  https://data.4tu.nl/articles/dataset/BPI_Challenge_2017/12696884 (the link first given,
+  `12721292`, is the 4TU General Terms of Use record). The hosting page must show the publisher
+  details.
 - Personal data: real company data, anonymised by blinding all data about individuals.
 - Audience: the Process Thinking course only → `restricted` to a course team, not `public`.
 - License: 4TU General Terms of Use (`4tu-general-terms`); all academic uses permitted;

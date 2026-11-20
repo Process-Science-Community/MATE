@@ -852,7 +852,9 @@ with the rest of `data/`. Students never write there.
    |---|---|---|
    | Namespace / name | `process-thinking` / `credit-loan-application-2020` | `process-thinking` / `credit-loan-application-2025` |
    | Title | Process Thinking: Credit Loan Application 2020 | Process Thinking: Credit Loan Application 2025 |
-   | Source URL | https://data.4tu.nl/articles/dataset/BPI_Challenge_2012/12689204 | https://data.4tu.nl/articles/_/12721292/1 |
+   | Source URL | https://data.4tu.nl/articles/dataset/BPI_Challenge_2012/12689204 | https://data.4tu.nl/articles/dataset/BPI_Challenge_2017/12696884 |
+   | Source DOI | `10.4121/uuid:3926db30-f712-4394-aebc-75976070e91f` | `10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b` |
+   | License URL (4TU terms) | https://doi.org/10.4121/resource:terms_of_use | same |
    | Publisher | Eindhoven University of Technology (4TU.Centre for Research Data), `https://data.4tu.nl` | same |
    | License | 4TU General Terms of Use | same |
    | Tags | `process-thinking`, `loan-application`, `bpi-challenge-2012`, `course-variant` | same with `bpi-challenge-2017` |
@@ -863,9 +865,12 @@ with the rest of `data/`. Students never write there.
    the process more recent [2020 only, if the file has English `W_` names: and the workflow
    activities were translated to English]. This is not the original BPI Challenge data: cite
    the original when you publish results, and do not compare results with analyses of the
-   original log." Citation: the original BPI Challenge dataset (as given on its 4TU page) plus
-   "Process Thinking course variant, Chair of Information Systems and Business Process
-   Management, University of Münster, 2026".
+   original log." Citation (the 4TU page's own text, plus the course variant):
+   "van Dongen, Boudewijn (2012): BPI Challenge 2012. Version 1. 4TU.ResearchData. dataset.
+   https://doi.org/10.4121/uuid:3926db30-f712-4394-aebc-75976070e91f. Process Thinking course
+   variant, Chair of Information Systems and Business Process Management, University of
+   Münster, 2026." For 2025: `(2017)`, `BPI Challenge 2017` and
+   `https://doi.org/10.4121/uuid:5f3067df-f10b-45da-b98b-86ae4c7a310b`.
 5. **QA** with two other accounts: one ordinary user (Use → their copy opens; module pages open
    without a compute; a license banner shows on the process and module pages) and one
    `reviewer` (must get 404 on the dataset page: 4TU terms are not an open license).
