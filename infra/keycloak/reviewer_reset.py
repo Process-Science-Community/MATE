@@ -201,7 +201,7 @@ class Snapshot:
             "SELECT r.user_id, r.log_id, r.module_id, r.status, r.job_id, "
             "left(coalesce(r.error, ''), 160) AS error, "
             "(r.data_revision <> l.data_revision) AS stale, l.name AS log_name, "
-            "(l.deleted_at IS NOT NULL) AS log_deleted "
+            "(l.deleted_at IS NOT NULL) AS log_deleted, r.module_version "
             "FROM log_module_runs r JOIN process_logs l ON l.id = r.log_id "
             f"WHERE r.user_id IN ({ids}) ORDER BY l.name, r.module_id"
         )
@@ -224,6 +224,14 @@ class Snapshot:
             "SELECT created_by AS uid, count(*) AS n FROM hub_datasets "
             f"WHERE created_by IN ({ids}) GROUP BY 1"
         )
+
+        # Stale like processing._derive: data moved on, or the deployed module
+        # version differs from the one the result was computed with.
+        versions = json.loads(os.environ.get("MODULE_VERSIONS") or "{}")
+        for row in self.runs:
+            want = versions.get(row["module_id"])
+            if want and row["module_version"] and row["module_version"] != want:
+                row["stale"] = True
 
     def of(
         self, rows: list[dict[str, Any]], uid: str, key: str = "user_id"
@@ -448,6 +456,13 @@ def cmd_wait(manifest: dict[str, Any]) -> int:
                 return 0
         else:
             quiet = 0
+        abort_cmd = os.environ.get("WAIT_ABORT_CMD")
+        if abort_cmd and seeded < n_users:
+            hit = subprocess.run(abort_cmd, shell=True, capture_output=True, text=True, check=False)
+            if hit.returncode == 0 and hit.stdout.strip():
+                print("✗ the seeder failed for an account:", file=sys.stderr)
+                print(hit.stdout.strip()[-2000:], file=sys.stderr)
+                return 1
         if time.monotonic() > deadline:
             print(f"✗ timed out after {timeout:.0f}s: {status}", file=sys.stderr)
             return 1

@@ -32,7 +32,8 @@
 #
 #   --dry-run / report  what testing changed per account (no writes)
 #   backup              pg_dump + data folders into BACKUP_DIR/reviewer-reset-<stamp>/
-#   reset [--yes]       backup, then reset as above (asks for confirmation without --yes)
+#   reset [--yes]       backup, then reset as above (asks for confirmation without --yes);
+#                       can take an hour or more (cv4cdd): run it inside tmux/screen
 #   verify              check every account against the seeded state (exit 1 on a difference)
 #
 # Env: KC_CONTAINER, REALM, KC_SERVER, KEYCLOAK_ADMIN(_PASSWORD) as in
@@ -66,6 +67,7 @@ esac
 KC_CONTAINER="${KC_CONTAINER:-mate-keycloak}"
 API_CONTAINER="${API_CONTAINER:-mate-api}"
 DB_CONTAINER="${DB_CONTAINER:-mate-app-db}"
+export REVIEWER_RESET_PSQL="${REVIEWER_RESET_PSQL:-docker exec -i $DB_CONTAINER psql -U mate -d mate}"
 KC_DB_CONTAINER="${KC_DB_CONTAINER:-mate-keycloak-db}"
 WEB_CONTAINER="${WEB_CONTAINER:-mate-web}"
 REALM="${REALM:-flows-funds}"
@@ -126,13 +128,16 @@ fi
 mapfile -t ACCOUNTS < <(py ids "$MANIFEST")   # "<username> <id>", ids already UUID-checked
 IDS=()
 for line in "${ACCOUNTS[@]}"; do IDS+=("${line#* }"); done
+[ "${#IDS[@]}" -gt 0 ] || { echo "✗ no accounts read from $MANIFEST." >&2; exit 1; }
 
 echo "→ Accounts from $MANIFEST: ${#IDS[@]}"
-echo "→ Checking them against Keycloak ($KC_SERVER, realm $REALM)"
-kc config credentials --server "$KC_SERVER" --realm master \
+if [ "$CMD" = backup ]; then do_backup_only=1; else do_backup_only=0; fi
+[ "$do_backup_only" = 1 ] || echo "→ Checking them against Keycloak ($KC_SERVER, realm $REALM)"
+[ "$do_backup_only" = 1 ] || kc config credentials --server "$KC_SERVER" --realm master \
   --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD" >/dev/null 2>&1 \
   || { echo "✗ kcadm login failed (check KC_SERVER / KEYCLOAK_ADMIN_PASSWORD)." >&2; exit 1; }
 for line in "${ACCOUNTS[@]}"; do
+  [ "$do_backup_only" = 1 ] && break
   name="${line%% *}"; uid="${line#* }"
   # Only reviewer accounts: the id must exist and hold `reviewer` and not `admin`.
   roles="$(kc get "users/$uid/role-mappings/realm" -r "$REALM" 2>/dev/null \
@@ -190,12 +195,26 @@ print(f"{hits} {'removed' if mode == 'purge' else 'present'}")
 PY
 }
 
+module_versions() {  # JSON {module_id: manifest version} of the deployed modules
+  in_api python3 -I -c '
+import json, re
+from pathlib import Path
+out = {}
+for f in Path("/app/modules").glob("*/manifest.yaml"):
+    m = re.search(r"^version:\s*[\x27\x22]?([^\x27\x22\s#]+)", f.read_text(encoding="utf-8"), re.M)
+    if m:
+        out[f.parent.name] = m.group(1)
+print(json.dumps(out))'
+}
+export MODULE_VERSIONS=""
+
 cv4cdd_model_ok() {
   in_api sh -c 'ls /app/modules/cv4cdd/model/*/saved_model.pb >/dev/null 2>&1'
 }
 
 # ── report ───────────────────────────────────────────────────────────────────
 do_report() {
+  MODULE_VERSIONS="$(module_versions)"
   echo "→ What differs from the seeded state (no writes)"
   py report "$MANIFEST"
   echo
@@ -237,6 +256,7 @@ do_backup() {
 # ── verify ───────────────────────────────────────────────────────────────────
 do_verify() {
   local rc=0
+  MODULE_VERSIONS="$(module_versions)"
   echo "→ Database"
   py verify "$MANIFEST" || rc=1
   echo "→ Data folders match the database"
@@ -307,6 +327,12 @@ restart_api_on_exit() {
   echo "! starting the api again after a failure (backup: $BACKUP)" >&2
   "${DC[@]}" start api >/dev/null || echo "✗ could not start the api: run '${DC[*]} start api'" >&2
 }
+busy="$(py busy "$MANIFEST")"   # again: the prompt and the backup took a while
+if [ "$busy" != "none" ] && [ "${ALLOW_BUSY:-0}" != "1" ]; then
+  echo "✗ other accounts started jobs meanwhile ($busy); nothing deleted, api not restarted." >&2
+  echo "  Re-run later (the manifest's warm_modules is already updated), or with ALLOW_BUSY=1." >&2
+  exit 1
+fi
 trap restart_api_on_exit EXIT
 "${DC[@]}" stop api >/dev/null
 
@@ -325,7 +351,10 @@ for line in "${ACCOUNTS[@]}"; do
 done
 
 echo "→ Starting the api (it re-seeds the accounts)"
+START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 "${DC[@]}" start api >/dev/null
+# The seeder skips a failed account until the next api start: stop waiting then.
+export WAIT_ABORT_CMD="docker logs --since $START $API_CONTAINER 2>&1 | grep -E 'sample_content\.(seed_failed|manifest_invalid)'"
 
 echo "→ Waiting for seeding and precompute"
 if ! py wait "$MANIFEST"; then

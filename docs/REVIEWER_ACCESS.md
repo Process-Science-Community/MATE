@@ -142,6 +142,7 @@ cd ~/mate
 export KC_SERVER=http://localhost:8080/auth
 ./infra/keycloak/reset-reviewer-accounts.sh --dry-run   # what testing changed, per account; no writes
 ./infra/keycloak/reset-reviewer-accounts.sh reset       # asks for "RESET"; --yes skips the prompt
+# reset waits for the full precompute (cv4cdd: an hour or more): run it inside tmux/screen
 ./infra/keycloak/reset-reviewer-accounts.sh verify      # re-check later; exit 1 on a difference
 ```
 
@@ -170,10 +171,14 @@ export KC_SERVER=http://localhost:8080/auth
   - 0 analytics rows, and data folders that match the database,
   - `create-reviewer-accounts.sh status`, with no lockout.
   It does not log in, so it creates no state.
-- **Restore:** the app-db dump covers the whole instance. Restoring it rolls back **every** account, so use it only if the reset itself went wrong:
-  1. stop the api,
-  2. `gunzip -c app-db.sql.gz | docker exec -i mate-app-db psql -U mate mate` into an emptied database,
-  3. untar `reviewer-data.tgz` into `data/` as root.
+- **Restore:** the app-db dump covers the whole instance. Restoring it rolls back **every** account, so use it only if the reset itself went wrong (`$DC` as above, `B` = the backup folder):
+  ```bash
+  $DC stop api
+  docker exec mate-app-db psql -U mate -d postgres -c 'DROP DATABASE mate WITH (FORCE)' -c 'CREATE DATABASE mate OWNER mate'
+  gunzip -c "$B/app-db.sql.gz" | docker exec -i mate-app-db psql -U mate -d mate -v ON_ERROR_STOP=1 --single-transaction
+  sudo tar xzf "$B/reviewer-data.tgz" -C ~/mate/data
+  $DC start api
+  ```
 - **The reset does not clear** the API's stdout logs or the browser's own localStorage, for example `ff.analytics`. Use a fresh private window for the next test.
 
 ## After the review
