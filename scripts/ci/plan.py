@@ -62,6 +62,23 @@ API_NARROW_INPUTS: dict[str, tuple[str, ...]] = {
 }
 
 # Paths that change the CI contract itself -> full suite.
+# The host side of the worker bridge and everything a ctx.* RPC lands in. The
+# cross-runtime conformance suite (test_worker_conformance.py) runs its JVM cases
+# only in the jvm lane, so a change here must select it: on 19 Nov 2026 a change
+# to event_log_access.py broke every JVM precompute and no lane ran the JVM side.
+BRIDGE_HOST_PATHS: tuple[str, ...] = (
+    "apps/api/src/mate/api/modules/ctx_rpc.py",
+    "apps/api/src/mate/api/modules/subprocess_host.py",
+    "apps/api/src/mate/api/modules/subprocess_worker.py",
+    "apps/api/src/mate/api/modules/job_worker.py",
+    "apps/api/src/mate/api/modules/event_log_access.py",
+    "apps/api/src/mate/api/modules/object_centric_log_access.py",
+    "apps/api/src/mate/api/modules/cache.py",
+    "apps/api/src/mate/api/modules/runtimes/**",
+    "apps/api/tests/test_worker_conformance.py",
+    "apps/api/tests/fixtures/conformance_worker/**",
+)
+
 FULL_TRIGGERS: tuple[str, ...] = (
     ".github/workflows/ci.yml",
     "scripts/ci/**",
@@ -190,6 +207,9 @@ def classify(path: str, plan: Plan, all_modules: Sequence[str]) -> None:
         plan.add("static", "python-source")
         hit = True
 
+    if _match(p, BRIDGE_HOST_PATHS):
+        plan.add("jvm", "bridge-host")
+
     if p.startswith("apps/api/"):
         plan.add("api", "api-owner")
         plan.add("static", "api-owner")
@@ -217,7 +237,7 @@ def classify(path: str, plan: Plan, all_modules: Sequence[str]) -> None:
             or "/widgets/" in p
         ):
             plan.add("web", "module-frontend")
-        if mod == "performance_java" or p.startswith("modules/runtimes/"):
+        if mod == "performance_java":
             plan.add("jvm", "jvm-module")
         return
 

@@ -17,7 +17,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from plan import API_DECLARED_INPUTS, API_NARROW_INPUTS, LANES, REPO, _match, plan_for
+from plan import (
+    API_DECLARED_INPUTS,
+    API_NARROW_INPUTS,
+    BRIDGE_HOST_PATHS,
+    LANES,
+    REPO,
+    _match,
+    plan_for,
+)
 
 MODS = ["discovery", "conformance", "pcomp"]
 
@@ -98,6 +106,27 @@ def test_ops_inputs_run_api() -> None:
 
 def test_jvm_sdk_runs_jvm_only() -> None:
     assert lanes("packages/module-sdk-jvm/build.gradle.kts") == {"jvm"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # 7c9f31f changed this file alone and broke every JVM precompute; the
+        # JVM conformance cases never ran because no rule selected the jvm lane.
+        "apps/api/src/mate/api/modules/event_log_access.py",
+        "apps/api/src/mate/api/modules/ctx_rpc.py",
+        "apps/api/src/mate/api/modules/runtimes/jvm.py",
+        "apps/api/tests/fixtures/conformance_worker/module.py",
+    ],
+)
+def test_bridge_host_change_runs_jvm_conformance(path: str) -> None:
+    assert {"api", "jvm"} <= lanes(path)
+
+
+def test_bridge_host_paths_exist() -> None:
+    for pat in BRIDGE_HOST_PATHS:
+        base = pat[:-3] if pat.endswith("/**") else pat
+        assert (REPO / base).exists(), f"stale bridge host path: {pat}"
 
 
 def test_uv_lock_runs_python_not_web() -> None:
