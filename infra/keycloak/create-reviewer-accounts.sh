@@ -442,8 +442,14 @@ mapping = {
 manifest = {
     "tracking_exempt": True,
     "users": users,
-    # Precomputed for every sample log; the other modules compute on first open.
-    "warm_modules": ["discovery", "complexity", "performance"],
+    # Precomputed for every sample log at seeding: every bundled module with a
+    # precompute, so reviewers find all results ready (same list as
+    # reset-reviewer-accounts.sh WARM_MODULES). Modules without one compute on open.
+    "warm_modules": [
+        "discovery", "complexity", "complexity_over_time", "complexity_v2",
+        "complexity_v2_over_time", "log_evolution", "cv4cdd", "performance_over_time",
+        "performance_java",
+    ],
     "logs": [
         {"file": "helpdesk-sample-a.csv", "name": "Helpdesk ticketing (sample A)", "csv_mapping": mapping},
         {"file": "helpdesk-sample-b.csv", "name": "Helpdesk ticketing (sample B)", "csv_mapping": mapping},
