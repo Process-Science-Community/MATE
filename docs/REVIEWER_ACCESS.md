@@ -26,7 +26,8 @@ university login. On <https://mate.uni-muenster.de/login> the same door is the
 | Accounts | `infra/keycloak/create-reviewer-accounts.sh` | Uses kcadm against the running Keycloak and is idempotent. It creates `reviewer1..5` with the realm role `reviewer` and a generated password (4 × 5 random letters/digits joined by `-`, ~119 bits) (not temporary, no required actions). It sets first/last name to "Reviewer" / "N" and no email. If the realm's user profile requires an email, it sets a placeholder `reviewerN@reviewers.invalid` (non-routable, marked verified) instead, so that no profile form appears and asks a reviewer for their real address. |
 | Login door | `/login/start?local=1` (`apps/web/app/(auth)/login/start/route.ts`, already existed) | Starts the sign-in without `kc_idp_hint`, so Keycloak shows its own form. The normal **Login** button still sends `KEYCLOAK_IDP_HINT`, so university users keep going straight to SSO. |
 | Tracking exemption | `apps/api/src/mate/api/services/tracking_exemption.py` | Applies even under `USER_TRACKING_ONBOARDING=force`. An account is exempt if it holds a role from `USER_TRACKING_EXEMPT_ROLES` (default `reviewer`), is listed in `USER_TRACKING_EXEMPT_USERS`, or carries the persisted `analytics.exempt` flag. Nothing is recorded for an exempt account: no client events, request events, job outcomes or MCP audit. `GET /usage/config` returns `enabled: false`, so the browser does not capture either. Tests: `apps/api/tests/test_tracking_exemption.py`. |
-| Demo content | `apps/api/src/mate/api/services/sample_content.py`, `SAMPLE_CONTENT_MANIFEST` | At API start, each account in the manifest is seeded once. It imports the logs through the normal import job, so discovery precomputes eagerly, then creates the dashboard from the `process-overview` template. Only after all accounts have their logs does it warm the modules listed in the manifest (`warm_modules`: discovery, complexity, performance) on every sample log. Heavy modules such as cv4cdd compute when a reviewer first opens them; precomputing all 13 default modules for 15 logs would block the shared job queue for a long time. The script writes the manifest and the sample CSVs to `data/sample-content/reviewers/`. Tests: `apps/api/tests/test_sample_content.py`. |
+| Demo content | `apps/api/src/mate/api/services/sample_content.py`, `SAMPLE_CONTENT_MANIFEST` | At API start, each account in the manifest is seeded once. It imports the logs through the normal import job, so discovery precomputes eagerly, then creates the dashboard from the `process-overview` template. Only after all accounts have their logs does it warm the modules listed in the manifest (`warm_modules`) on every sample log: every bundled module with a precompute (discovery, the complexity family, log_evolution, cv4cdd, performance_over_time, performance_java), so reviewers find every result ready. That is about 9 jobs per log, about 135 for 5 accounts, on the shared queue, so seed or reset when the instance is quiet. Modules without a precompute (performance, conformance, …) compute on open. The script writes the manifest and the sample CSVs to `data/sample-content/reviewers/`. Tests: `apps/api/tests/test_sample_content.py`. |
+| Reset | `infra/keycloak/reset-reviewer-accounts.sh`, `reviewer_reset.py` | Puts the accounts back to the first-login state after someone tested them. See [Resetting the accounts](#resetting-the-accounts-after-testing). |
 | Expiry | `infra/systemd/mate-reviewer-expiry.{service,timer}`, `infra/install-reviewer-expiry.sh` | Runs `create-reviewer-accounts.sh expire` daily. It does nothing before `REVIEWER_EXPIRES` (2026-12-15). From that date it disables the accounts and ends their sessions. |
 | Sandbox | `SANDBOXED_ROLES` (default `reviewer`) | Reviewers can use every installed module, but cannot upload modules (that code runs inside the API process), create a watched folder on a custom host/bucket path (only the managed per-account folder), or mint API tokens (a token is checked against MATE only, so it would outlive the disabled Keycloak account). |
 
@@ -128,7 +129,59 @@ The VM checkout is `~/mate`; `DC="docker compose -f docker-compose.yml -f docker
    above) lists the accounts, their roles, the expiry date and the redirect
    check.
 
-After the review:
+## Resetting the accounts after testing
+
+Seeding runs **once per account**: at API start the seeder skips every account
+that has the `user_settings` row `sample_content.seeded`. Inside a run it also
+reuses a log or dashboard that already has the seeded name. Deleting the flag
+alone is therefore not enough. Use the reset script, which never changes a
+password, username, role or the enabled flag:
+
+```bash
+cd ~/mate
+export KC_SERVER=http://localhost:8080/auth
+./infra/keycloak/reset-reviewer-accounts.sh --dry-run   # what testing changed, per account; no writes
+./infra/keycloak/reset-reviewer-accounts.sh reset       # asks for "RESET"; --yes skips the prompt
+# reset waits for the full precompute (cv4cdd: an hour or more): run it inside tmux/screen
+./infra/keycloak/reset-reviewer-accounts.sh verify      # re-check later; exit 1 on a difference
+```
+
+- **`--dry-run`** lists, per account:
+  - extra, deleted or changed logs, and changed or extra dashboards,
+  - `user_settings` keys (onboarding/tour state shown; other values such as `ai.config` are not printed),
+  - jobs by status, module results, uninstalled modules and changed module settings,
+  - analytics rows, Keycloak sessions and lockouts, data folders and web sessions,
+  - other accounts' running jobs.
+- **`reset`** works in this order:
+  1. Backs up to `~/backups/reviewer-reset-<stamp>/` (mode 700). The backup holds a `pg_dump` of app-db and of keycloak-db, a tar of `data/users/<id>` + `data/staging/<id>`, the manifest and the dry-run report.
+  2. Sets the manifest's `warm_modules`.
+  3. Stops the api.
+  4. Deletes the reviewers' rows in one transaction. It keeps only the `users` row and the `analytics.exempt` / `auth.sandboxed` safety flags.
+  5. Deletes their data folders and web sessions, ends their Keycloak sessions and clears a login lockout.
+  6. Starts the api, which re-seeds the accounts and precomputes every module.
+  7. Waits for seeding and precompute (up to 3 h), then runs `verify`.
+- **What it refuses:**
+  - it stops if another account has queued or running jobs, because the restart would fail them (`ALLOW_BUSY=1` overrides),
+  - it stops if the cv4cdd model is missing,
+  - it refuses an id from the manifest that is not a `reviewer` (or is an `admin`) in Keycloak.
+- **Shared objects:** shares *to* a reviewer and team memberships belong to other accounts. They are reported, never deleted.
+- **`verify`** checks every account:
+  - exactly the manifest's logs (ready, unchanged) and dashboard, and no onboarding/tour row, so both show on first login,
+  - 0 failed or active jobs, and every module result ready and current (`REQUIRED_MODULES`, default `cv4cdd performance_over_time`, must be ready on every log),
+  - 0 analytics rows, and data folders that match the database,
+  - `create-reviewer-accounts.sh status`, with no lockout.
+  It does not log in, so it creates no state.
+- **Restore:** the app-db dump covers the whole instance. Restoring it rolls back **every** account, so use it only if the reset itself went wrong (`$DC` as above, `B` = the backup folder):
+  ```bash
+  $DC stop api
+  docker exec mate-app-db psql -U mate -d postgres -c 'DROP DATABASE mate WITH (FORCE)' -c 'CREATE DATABASE mate OWNER mate'
+  gunzip -c "$B/app-db.sql.gz" | docker exec -i mate-app-db psql -U mate -d mate -v ON_ERROR_STOP=1 --single-transaction
+  sudo tar xzf "$B/reviewer-data.tgz" -C ~/mate/data
+  $DC start api
+  ```
+- **The reset does not clear** the API's stdout logs or the browser's own localStorage, for example `ff.analytics`. Use a fresh private window for the next test.
+
+## After the review
 
 - `create-reviewer-accounts.sh disable` disables the accounts early.
 - `enable` re-enables them, for example to extend access. Also set

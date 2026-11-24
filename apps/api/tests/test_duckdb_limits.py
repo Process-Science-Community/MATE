@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from typing import Any
 
 import duckdb
 import pytest
@@ -112,3 +113,48 @@ async def test_cancelled_query_does_not_strand_its_worker_thread() -> None:
     await asyncio.wait_for(access.__aexit__(None, None, None), timeout=10)
     # Every worker thread must be free again: this is the join that hung.
     await asyncio.wait_for(loop.shutdown_default_executor(), timeout=10)
+
+
+@pytest.mark.asyncio
+async def test_one_read_serves_repeated_and_overlapping_scopes() -> None:
+    """The subprocess/JVM bridge (`ctx_rpc`) wraps every `ctx.event_log` RPC of
+    a job in its own `async with` on the job's one `EventLogAccess`. A read that
+    stayed closed after its first exit failed every later RPC with "read is
+    closed" (performance_java, 19-23 Nov 2026), and an overlapping RPC must not
+    lose the connection when the other one exits."""
+    import asyncio
+
+    from mate.api.ingest.storage import log_paths
+    from mate.api.modules.event_log_access import EventLogAccess
+
+    log_id = str(uuid.uuid4())
+    paths = log_paths(log_id, TEST_USER_ID)
+    paths.root.mkdir(parents=True, exist_ok=True)
+    events = str(paths.events).replace("'", "''")
+    duckdb.connect(":memory:").execute(
+        "COPY (SELECT 'c1' AS case_id, 'a' AS activity, TIMESTAMP '2026-01-01' AS timestamp)"
+        f" TO '{events}' (FORMAT parquet)"
+    )
+
+    access = EventLogAccess(log_id, TEST_USER_ID)
+    for _ in range(2):
+        async with access as read:
+            assert await read.duckdb_fetch("SELECT count(*) FROM events") == [(1,)]
+
+    outer_entered, inner_done = asyncio.Event(), asyncio.Event()
+
+    async def outer() -> list[Any]:
+        async with access as read:
+            outer_entered.set()
+            await inner_done.wait()
+            return await read.duckdb_fetch("SELECT count(*) FROM events")
+
+    async def inner() -> None:
+        await outer_entered.wait()
+        async with access as read:
+            await read.duckdb_fetch("SELECT 1")
+        inner_done.set()
+
+    result, _ = await asyncio.gather(outer(), inner())
+    assert result == [(1,)]
+    assert access._conn is None, "last exit must close"  # pyright: ignore[reportPrivateUsage]

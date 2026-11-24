@@ -364,6 +364,39 @@ async def test_duckdb_fetch_rows(bridge, ctx) -> None:
 
 
 @pytest.mark.asyncio
+async def test_real_event_log_serves_every_rpc_of_a_context(bridge, tmp_path) -> None:
+    """The host answers each `ctx.event_log` RPC inside its own `async with` on
+    the context's one *real* `EventLogAccess` (ctx_rpc). Every later RPC on that
+    context must still be served, in sequence and overlapping. The stub event
+    log above never closes, so it hid a regression: a read that refused to
+    reopen after its first exit failed every bridged precompute in prod
+    (performance_java, "read is closed", Nov 2026)."""
+    import uuid
+
+    import duckdb
+
+    from mate.api.ingest.storage import log_paths
+    from mate.api.modules.event_log_access import EventLogAccess
+
+    log_id = str(uuid.uuid4())
+    paths = log_paths(log_id, "conformance-user")
+    paths.root.mkdir(parents=True, exist_ok=True)
+    events = str(paths.events).replace("'", "''")
+    duckdb.connect(":memory:").execute(
+        "COPY (SELECT 'c1' AS case_id, 'a' AS activity, TIMESTAMP '2026-01-01' AS timestamp)"
+        f" TO '{events}' (FORMAT parquet)"
+    )
+    ctx = StubCtx(tmp_path)
+    ctx.event_log = EventLogAccess(log_id, "conformance-user")  # type: ignore[assignment]
+
+    b, _ = bridge
+    for _ in range(3):
+        assert await b.call_handler("duckdb", ctx, (), {}) == [[1, "two"]]
+    overlapping = await asyncio.gather(*(b.call_handler("duckdb", ctx, (), {}) for _ in range(3)))
+    assert overlapping == [[[1, "two"]]] * 3
+
+
+@pytest.mark.asyncio
 async def test_materialize_parquet_handoff(bridge, ctx, runtime) -> None:
     b, _ = bridge
     result = await b.call_handler("materialize_info", ctx, (), {})

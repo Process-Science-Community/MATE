@@ -46,6 +46,19 @@ this file adds the verification and CI rules every change follows. Rationale and
 - Keep tests fast and isolated (the API suite runs under pytest-xdist): no shared mutable files
   outside `tmp_path`, no dependence on test order.
 
+**Changing a shared contract** (an object, function or protocol other code depends on: its
+lifecycle, re-entrancy, threading, errors or return shape)
+- Find every caller first (`rg` the symbol and its uses, e.g. `async with ctx.event_log`) and
+  list them in the commit message with how each is affected. "Callers: none outside this file" is
+  a valid entry; skipping the search is not.
+- Each caller path must be covered by a test that exercises the **real** implementation of the
+  thing you changed. A stub of the changed component proves nothing about it. Stubs are for
+  what lies outside the contract. Why: 7c9f31f made `EventLogAccess` refuse to reopen; the bridge
+  (`ctx_rpc.py`) re-enters it per RPC, its conformance tests used a never-closing stub, and every
+  JVM precompute failed in prod for four days (`test_real_event_log_serves_every_rpc_of_a_context`).
+- The worker bridge's host side is listed in `BRIDGE_HOST_PATHS` (`scripts/ci/plan.py`); a change
+  there runs the `jvm` lane. Add a new bridge-facing file to that list in the same change.
+
 **Changing CI itself**
 - Measure before and after (lane time, jobs, `backtest.py`) and report correctness, feedback
   time and compute side by side. Don't assume another project's tools or numbers transfer.

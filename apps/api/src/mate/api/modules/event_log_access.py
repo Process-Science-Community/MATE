@@ -214,10 +214,29 @@ class EventLogAccess:
         # it from the event loop and leave the worker thread blocked forever.
         self._conn_lock = threading.Lock()
         self._closed = False
+        # Open `async with` scopes. One instance is entered repeatedly and even
+        # concurrently: the subprocess/JVM bridge (`ctx_rpc`) wraps every
+        # `ctx.event_log` RPC of a job in its own scope on the job's single
+        # instance. Only the last exit closes; a new first enter reopens.
+        self._depth = 0
         # Pins the log dir against the S3 cache reaper for the read's lifetime.
         self._lease: str | None = None
 
     async def __aenter__(self) -> EventLogAccess:
+        self._depth += 1
+        if self._depth > 1:
+            return self
+        try:
+            await self._open()
+        except BaseException:
+            self._depth -= 1
+            raise
+        return self
+
+    async def _open(self) -> None:
+        # The previous scope's close is complete (it held the lock), so no
+        # statement of it is still running: the read may serve again.
+        self._closed = False
         # Lease before hydrate so the reaper can't evict the tree out from under
         # the read (or mid-download). Released in __aexit__ / on the error path.
         self._lease = await eviction.acquire_lease_async(self._paths.root)
@@ -235,9 +254,11 @@ class EventLogAccess:
             eviction.release_lease(self._lease)
             self._lease = None
             raise
-        return self
 
     async def __aexit__(self, *exc: object) -> None:
+        self._depth -= 1
+        if self._depth > 0:
+            return
         try:
             # A worker thread may still be querying (a cancelled job). Close under
             # the lock once it lets go, and interrupt it (thread-safe) until then:
