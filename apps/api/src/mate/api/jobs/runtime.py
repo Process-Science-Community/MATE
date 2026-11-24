@@ -438,6 +438,16 @@ class JobRuntime:
             if user_sem is not None:
                 user_sem.release()
 
+    @contextlib.asynccontextmanager
+    async def offload_slot(self) -> AsyncGenerator[None, None]:
+        """Admit one heavy child process of the current job under the same global
+        + per-user caps as `run_offloaded`. `execution: worker` jobs (JobWorker:
+        cv4cdd's TensorFlow at ~2.4 GB each) take it too: without it they were
+        bounded only by the job slots, and a multi-account warm-up ran enough of
+        them at once to OOM-kill them in the 8 GB api container (Nov 2026)."""
+        async with self._offload_slot(_CURRENT_USER.get()):
+            yield
+
     async def run_offloaded(
         self,
         offload: tuple[str, str, str] | None,

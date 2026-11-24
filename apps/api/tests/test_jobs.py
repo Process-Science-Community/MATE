@@ -523,3 +523,78 @@ async def test_interrupted_precompute_resumes_on_restart() -> None:
                 if row is not None:
                     await session.delete(row)
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_worker_execution_jobs_share_the_offload_caps(tmp_path: Path) -> None:
+    """`execution: worker` jobs (JobWorker children, cv4cdd's TensorFlow at ~2.4 GB)
+    must wait for the same global + per-user slots as `run_offloaded`. They used
+    to be bounded only by the job slots: the reviewer warm-up (5 accounts) ran
+    several at once and the 8 GB api container OOM-killed them (Nov 2026).
+    Drives the real `ModuleLoader._invoke_handler` and the real caps; only the
+    child process is stood in for."""
+    from unittest.mock import MagicMock
+
+    from mate.api.config import get_settings
+    from mate.api.events.bus import EventBus
+    from mate.api.jobs.runtime import _CURRENT_JOB, _CURRENT_USER, JobRuntime
+    from mate.api.modules import loader as loader_mod
+    from mate.api.modules.loader import ModuleLoader
+
+    rt = JobRuntime(
+        settings=get_settings().model_copy(
+            update={"module_process_pool_size": 2, "max_offloads_per_user": 1}
+        ),
+        bus=EventBus(),
+    )
+    ld = ModuleLoader(modules_dir=tmp_path, bus=MagicMock(), runtime=rt, registry=MagicMock())
+    ld._uses_worker_execution = lambda _mid: True  # type: ignore[method-assign]
+    ld._offload_meta = lambda _mid: ("folder", "site", "module.py")  # type: ignore[method-assign]
+
+    live, peak = 0, 0
+    release = asyncio.Event()
+
+    class _FakeWorker:
+        def __init__(self, **_kw: object) -> None:
+            pass
+
+        async def run(self, *_a: object) -> str:
+            nonlocal live, peak
+            live += 1
+            peak = max(peak, live)
+            try:
+                await release.wait()
+            finally:
+                live -= 1
+            return "ok"
+
+    original = loader_mod.JobWorker
+    loader_mod.JobWorker = _FakeWorker  # type: ignore[misc,assignment]
+
+    async def handler(_ctx: object) -> None:  # never runs in-process here
+        raise AssertionError("worker-execution job ran in-process")
+
+    async def one_job(user: str, n: int) -> object:
+        ctx = MagicMock(module_id="cv4cdd", _ff_job_id=f"job-{user}-{n}")
+        ctx.workdir = str(tmp_path / f"w-{user}-{n}")
+        jtok, utok = _CURRENT_JOB.set(f"job-{user}-{n}"), _CURRENT_USER.set(user)
+        try:
+            return await ld._invoke_handler(handler, ctx)
+        finally:
+            _CURRENT_JOB.reset(jtok)
+            _CURRENT_USER.reset(utok)
+
+    # Five accounts x two jobs, like the reviewer warm-up.
+    tasks = [asyncio.create_task(one_job(f"u{u}", n)) for u in range(5) for n in range(2)]
+    try:
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if live >= 2:
+                break
+        await asyncio.sleep(0.1)  # give a wrongly admitted extra a chance to show
+        assert peak == 2, f"{peak} worker children at once; global cap is 2"
+    finally:
+        release.set()
+        results = await asyncio.gather(*tasks)
+        loader_mod.JobWorker = original  # type: ignore[misc]
+    assert results == ["ok"] * 10

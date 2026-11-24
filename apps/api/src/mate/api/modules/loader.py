@@ -1585,7 +1585,11 @@ class ModuleLoader:
                         site_packages=site_packages,
                         job_id=job_id,
                     )
-                    return await worker.run(bound_method.__name__, ctx, args, kwargs)
+                    # A worker child is a heavy process like an offload: it waits
+                    # for a pool slot (MODULE_PROCESS_POOL_SIZE / per user). Its
+                    # ctx RPCs cannot start a nested offload, so this can't deadlock.
+                    async with self.runtime.offload_slot():
+                        return await worker.run(bound_method.__name__, ctx, args, kwargs)
             if inspect.iscoroutinefunction(bound_method):
                 return await bound_method(ctx, *args, **kwargs)
             return await asyncio.to_thread(bound_method, ctx, *args, **kwargs)
